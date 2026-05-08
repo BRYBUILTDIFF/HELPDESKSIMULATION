@@ -14,7 +14,7 @@ async function chat(req, res, next) {
     const message = String(req.body.message || "").trim();
     const history = Array.isArray(req.body.history) ? req.body.history : [];
 
-    const policyResult = evaluatePromptPolicy(message);
+    const policyResult = evaluatePromptPolicy(message, history);
     if (policyResult.directReply) {
       return res.status(200).json({
         reply: policyResult.directReply,

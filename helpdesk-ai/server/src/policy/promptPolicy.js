@@ -133,8 +133,32 @@ function isGreetingOnly(text) {
   return GREETING_PATTERNS.some((pattern) => pattern.test(text)) && text.split(" ").length <= 6;
 }
 
-function evaluatePromptPolicy(message) {
+function buildHistoryContext(history) {
+  if (!Array.isArray(history)) {
+    return "";
+  }
+  return history
+    .filter(
+      (entry) =>
+        entry &&
+        (entry.role === "user" || entry.role === "assistant") &&
+        typeof entry.content === "string" &&
+        entry.content.trim()
+    )
+    .slice(-8)
+    .map((entry) => entry.content.trim())
+    .join(" ");
+}
+
+function isShortFollowUp(text) {
+  return /^(yes|no|yep|nope|ok|okay|sure|continue|go ahead|proceed|please continue|correct|right)\b[.!?]*$/i.test(
+    text
+  );
+}
+
+function evaluatePromptPolicy(message, history = []) {
   const normalized = normalize(message);
+  const historyContext = normalize(buildHistoryContext(history));
 
   if (!normalized) {
     return {
@@ -167,6 +191,17 @@ function evaluatePromptPolicy(message) {
   const inScopeScore = countKeywordMatches(normalized, IN_SCOPE_KEYWORDS);
   const outScopeScore = countKeywordMatches(normalized, OUT_OF_SCOPE_KEYWORDS);
   const hasInScopeIntent = matchesAnyPattern(normalized, IN_SCOPE_INTENT_PATTERNS);
+  const historyInScopeScore = historyContext ? countKeywordMatches(historyContext, IN_SCOPE_KEYWORDS) : 0;
+  const historyHasInScopeIntent = historyContext ? matchesAnyPattern(historyContext, IN_SCOPE_INTENT_PATTERNS) : false;
+  const followUpNeedsContext = isShortFollowUp(normalized);
+
+  if (followUpNeedsContext && (historyInScopeScore > 0 || historyHasInScopeIntent)) {
+    return {
+      allowed: true,
+      code: "ALLOWED_CONTEXT_FOLLOW_UP",
+      reason: "Short follow-up allowed using recent in-scope context."
+    };
+  }
 
   if (outScopeScore > 0 && inScopeScore === 0 && !hasInScopeIntent) {
     return {

@@ -2,7 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useAxios } from "../../hooks/useAxios";
-import { simulations } from "./helpdeskData";
+import SimulationScenarioCanvas, {
+  applyActionToEnvironment,
+  applyHardwareControlToEnvironment,
+  createEnvironmentStateForScenario,
+  getHardwareSceneControls,
+  normalizeEnvironmentStateForScenario
+} from "./Modules/SimulationScenarioCanvas";
 import "./dashboard.css";
 
 const QUESTION_BANK = [
@@ -23,46 +29,156 @@ const THEME_STORAGE_KEY = "helpdesk_simulation_theme";
 
 const SIM_ACTION_LIBRARY = {
   network: [
-    { label: "Check adapter status", output: "Adapter status checked. Link looks active, no hardware fault detected." },
-    { label: "Run IP renew", output: "Executed IP renew flow. Device received a valid lease from DHCP." },
-    { label: "Flush DNS cache", output: "DNS cache flushed. Name resolution state refreshed." },
-    { label: "Ping gateway", output: "Gateway ping successful. Local network path is reachable." },
-    { label: "Escalate to network team", output: "Escalation note prepared for network operations with troubleshooting summary." }
+    {
+      label: "Adapter Diagnostics",
+      output: "NIC status and driver health validated. Link is active and adapter responds normally.",
+      keywords: ["adapter", "ethernet", "wifi", "network", "lan"]
+    },
+    {
+      label: "DHCP Lease Renew",
+      output: "IP lease renewed successfully. Host received a valid address, gateway, and DNS values.",
+      keywords: ["dhcp", "ip renew", "renew", "address"]
+    },
+    {
+      label: "DNS Cache Reset",
+      output: "Local resolver cache flushed and registration refreshed.",
+      keywords: ["dns", "name resolution", "resolve", "lookup"]
+    },
+    {
+      label: "Gateway Reachability Test",
+      output: "Gateway latency is stable and local route is healthy.",
+      keywords: ["gateway", "ping", "router", "route"]
+    },
+    {
+      label: "Network Escalation Packet",
+      output: "Escalation handoff drafted with traces, lease details, and replication notes.",
+      keywords: ["escalate", "handoff", "network team"]
+    }
   ],
   email: [
-    { label: "Check OWA access", output: "OWA login check passed. Mailbox is accessible via web." },
-    { label: "Toggle Work Offline", output: "Outlook offline mode toggled. Client is attempting to reconnect." },
-    { label: "Restart Outlook", output: "Outlook restart simulated. Sync workers reinitialized." },
-    { label: "Repair profile", output: "Mail profile repair task queued. Corrupt profile risk reduced." },
-    { label: "Run send/receive", output: "Manual send/receive completed. Queue processing resumed." }
+    {
+      label: "Mailbox Access Probe",
+      output: "Mailbox access via OWA succeeds. Server-side mailbox is available.",
+      keywords: ["owa", "mailbox", "access", "exchange", "email"]
+    },
+    {
+      label: "Outlook Connectivity Reset",
+      output: "Client offline/online state cycled and transport session rebuilt.",
+      keywords: ["outlook", "offline", "sync"]
+    },
+    {
+      label: "Profile Repair Wizard",
+      output: "Outlook profile integrity check completed with repaired account metadata.",
+      keywords: ["profile", "repair", "account"]
+    },
+    {
+      label: "Send/Receive Queue Run",
+      output: "Send/receive queue processed and pending items synchronized.",
+      keywords: ["send/receive", "queue", "sync"]
+    }
   ],
   printer: [
-    { label: "Check printer power", output: "Power status verified. Printer responds to local panel input." },
-    { label: "Clear print queue", output: "Queued jobs cleared. Spool backlog removed." },
-    { label: "Restart print spooler", output: "Print Spooler service restarted successfully." },
-    { label: "Set printer online", output: "Printer switched from offline to online state." },
-    { label: "Print test page", output: "Test page sent and acknowledged by the device." }
+    {
+      label: "Printer Power & Link Check",
+      output: "Printer power and interface link validated.",
+      keywords: ["power", "printer", "link", "offline"]
+    },
+    {
+      label: "Spool Queue Cleanup",
+      output: "Stuck jobs removed and print queue reset.",
+      keywords: ["queue", "spool", "stuck", "job"]
+    },
+    {
+      label: "Spooler Service Restart",
+      output: "Print Spooler restarted. Service dependencies are healthy.",
+      keywords: ["spooler", "service", "restart"]
+    },
+    {
+      label: "Device Online Recovery",
+      output: "Device state switched to online and endpoint heartbeat restored.",
+      keywords: ["online", "offline", "device"]
+    },
+    {
+      label: "Controlled Test Print",
+      output: "Test page transmitted and printer acknowledged completion.",
+      keywords: ["test page", "print", "output"]
+    }
   ],
   security: [
-    { label: "Isolate endpoint", output: "Endpoint isolated from network. Containment state active." },
-    { label: "Notify security team", output: "Security incident channel notified with incident metadata." },
-    { label: "Run offline scan", output: "Offline scan simulated. Threat traces captured for report." },
-    { label: "Reset credentials", output: "Credential reset checklist started from clean device guidance." },
-    { label: "Prepare reimage plan", output: "Reimage recommendation drafted with post-restore checklist." }
+    {
+      label: "Endpoint Isolation Control",
+      output: "Endpoint isolated from lateral movement paths.",
+      keywords: ["isolate", "contain", "endpoint", "network"]
+    },
+    {
+      label: "Security Bridge Alert",
+      output: "Security response channel notified with incident context.",
+      keywords: ["security", "incident", "soc", "alert"]
+    },
+    {
+      label: "Offline Threat Scan",
+      output: "Offline scanning routine completed and suspicious artifacts tagged.",
+      keywords: ["scan", "malware", "virus", "threat"]
+    },
+    {
+      label: "Credential Recovery Workflow",
+      output: "Credential reset sequence initiated from trusted endpoint guidance.",
+      keywords: ["credential", "password", "reset", "account"]
+    },
+    {
+      label: "Reimage & Restore Plan",
+      output: "Reimage recommendation prepared with backup and restore checkpoints.",
+      keywords: ["reimage", "restore", "clean"]
+    }
   ],
   hardware: [
-    { label: "Verify power path", output: "Power path inspected. Outlet and cable checks completed." },
-    { label: "Reseat components", output: "Component reseat checklist completed for RAM/GPU devices." },
-    { label: "Run diagnostics", output: "Hardware diagnostics executed. Capturing component health status." },
-    { label: "Check event logs", output: "System event logs reviewed for boot/device errors." },
-    { label: "Escalate to L2", output: "Escalation package prepared with diagnostics and timeline." }
+    {
+      label: "Power Cycle Controller",
+      output: "Forced power cycle executed to clear transient kernel lock state.",
+      keywords: ["force restart", "hold power", "power button", "restart"]
+    },
+    {
+      label: "Boot Interrupt Trigger",
+      output: "Boot interruption succeeded and recovery flow became available.",
+      keywords: ["f8", "shift+f8", "automatic repair", "interrupt boot", "recovery"]
+    },
+    {
+      label: "Recovery Menu Navigator",
+      output: "Reached Troubleshoot > Advanced options > Startup Settings path.",
+      keywords: ["troubleshoot", "advanced options", "startup settings", "restart"]
+    },
+    {
+      label: "Safe Mode Launcher",
+      output: "Safe Mode selected and minimal driver stack started.",
+      keywords: ["safe mode", "press 4", "f4"]
+    },
+    {
+      label: "Dump & Driver Analyzer",
+      output: "Crash dump metadata reviewed; suspected driver class identified for next checks.",
+      keywords: ["bsod", "blue screen", "dump", "driver", "crash"]
+    }
   ],
   general: [
-    { label: "Validate prerequisites", output: "Prerequisite checks completed. Baseline condition confirmed." },
-    { label: "Execute next action", output: "Next troubleshooting action executed and logged." },
-    { label: "Capture result", output: "Outcome captured and attached to the simulation timeline." },
-    { label: "Add escalation note", output: "Escalation note drafted in case issue persists." },
-    { label: "Prepare closure summary", output: "Closure summary drafted with actions and findings." }
+    {
+      label: "Prerequisite Verifier",
+      output: "Baseline prerequisites validated before execution.",
+      keywords: ["check", "verify", "prerequisite"]
+    },
+    {
+      label: "Step Execution Engine",
+      output: "Current troubleshooting action executed and tracked.",
+      keywords: ["run", "execute", "step", "next"]
+    },
+    {
+      label: "Outcome Recorder",
+      output: "Observed result captured in simulation evidence log.",
+      keywords: ["result", "outcome", "capture"]
+    },
+    {
+      label: "Escalation Draft Tool",
+      output: "Escalation narrative prepared with completed diagnostics.",
+      keywords: ["escalate", "handoff"]
+    }
   ]
 };
 
@@ -235,6 +351,9 @@ function normalizeAssistantText(rawText) {
 
 function inferScenarioType(seedText = "") {
   const text = String(seedText || "").toLowerCase();
+  if (/(boot|hardware|bios|power supply|bsod|blue screen|driver|ram|gpu|device|safe mode|startup settings|automatic repair)/i.test(text)) {
+    return "hardware";
+  }
   if (/(internet|network|dns|dhcp|wifi|router|vpn|gateway|ipconfig|ping)/i.test(text)) {
     return "network";
   }
@@ -247,14 +366,15 @@ function inferScenarioType(seedText = "") {
   if (/(malware|virus|security|unauthorized|incident|soc|breach|phishing)/i.test(text)) {
     return "security";
   }
-  if (/(boot|hardware|bios|power supply|bsod|driver|ram|gpu|device)/i.test(text)) {
-    return "hardware";
-  }
   return "general";
 }
 
 function detectScenarioTypeFromContext({ steps = [], sourceText = "", firstPromptText = "" }) {
   const joinedSteps = Array.isArray(steps) ? steps.join(" ") : "";
+  const directType = inferScenarioType(`${sourceText} ${joinedSteps}`);
+  if (directType !== "general") {
+    return directType;
+  }
   return inferScenarioType(`${firstPromptText} ${sourceText} ${joinedSteps}`);
 }
 
@@ -264,10 +384,10 @@ function createSimulationCanvasState(steps, scenarioType) {
     scenarioType: scenarioType || "general",
     currentIndex: 0,
     completed: safeSteps.map(() => false),
-    notes: "",
     evidence: [],
     actionsTakenByStep: safeSteps.map(() => []),
     resolved: false,
+    environmentState: createEnvironmentStateForScenario(scenarioType || "general"),
     createdAt: new Date().toISOString()
   };
 }
@@ -281,10 +401,13 @@ function normalizeSimulationCanvasState(state, steps, fallbackType) {
     scenarioType: state?.scenarioType || fallbackType || "general",
     currentIndex: Number.isInteger(state?.currentIndex) ? Math.max(0, state.currentIndex) : 0,
     completed: safeSteps.map((_, idx) => Boolean(completed[idx])),
-    notes: typeof state?.notes === "string" ? state.notes : "",
     evidence: Array.isArray(state?.evidence) ? state.evidence : [],
     actionsTakenByStep: safeSteps.map((_, idx) => (Array.isArray(actions[idx]) ? actions[idx] : [])),
     resolved: Boolean(state?.resolved),
+    environmentState: normalizeEnvironmentStateForScenario(
+      state?.environmentState,
+      state?.scenarioType || fallbackType || "general"
+    ),
     createdAt: state?.createdAt || new Date().toISOString()
   };
 }
@@ -292,31 +415,16 @@ function normalizeSimulationCanvasState(state, steps, fallbackType) {
 function getActionsForStep(scenarioType, stepText) {
   const base = SIM_ACTION_LIBRARY[scenarioType] || SIM_ACTION_LIBRARY.general;
   const text = String(stepText || "").toLowerCase();
-
-  const preferred = base.filter((action) => {
-    const label = action.label.toLowerCase();
-    if (text.includes("dns") && label.includes("dns")) {
-      return true;
-    }
-    if (text.includes("printer") && label.includes("printer")) {
-      return true;
-    }
-    if (text.includes("outlook") && label.includes("outlook")) {
-      return true;
-    }
-    if (text.includes("security") && (label.includes("security") || label.includes("isolate"))) {
-      return true;
-    }
-    if ((text.includes("boot") || text.includes("hardware")) && (label.includes("power") || label.includes("diagnostics"))) {
-      return true;
-    }
-    return false;
+  const scored = base.map((action) => {
+    const keywordHits = Array.isArray(action.keywords)
+      ? action.keywords.reduce((acc, keyword) => (text.includes(String(keyword).toLowerCase()) ? acc + 1 : acc), 0)
+      : 0;
+    return { action, score: keywordHits };
   });
-
-  if (preferred.length >= 2) {
-    return preferred.slice(0, 4);
-  }
-  return base.slice(0, 4);
+  const prioritized = scored
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.action);
+  return prioritized.slice(0, 4);
 }
 
 export default function DashboardPage() {
@@ -334,9 +442,6 @@ export default function DashboardPage() {
   const [input, setInput] = useState("");
   const [sessionsHydrated, setSessionsHydrated] = useState(false);
 
-  const [simPanelOpen, setSimPanelOpen] = useState(false);
-  const [currentSimId, setCurrentSimId] = useState(null);
-  const [simStep, setSimStep] = useState(0);
   const [stepModalOpen, setStepModalOpen] = useState(false);
   const [modalSteps, setModalSteps] = useState([]);
   const [modalSourceTitle, setModalSourceTitle] = useState("AI Response");
@@ -361,10 +466,6 @@ export default function DashboardPage() {
   const showWelcome = messages.length === 0;
   const favoriteSessions = useMemo(() => sessions.filter((session) => session.isFavorite), [sessions]);
   const regularSessions = useMemo(() => sessions.filter((session) => !session.isFavorite), [sessions]);
-
-  const currentSim = currentSimId ? simulations[currentSimId] : null;
-  const simTotalSteps = currentSim?.steps?.length || 0;
-  const simProgress = simTotalSteps ? Math.round(((simStep + 1) / simTotalSteps) * 100) : 0;
 
   useEffect(() => {
     const saved = localStorage.getItem(THEME_STORAGE_KEY);
@@ -479,9 +580,11 @@ export default function DashboardPage() {
     );
   };
 
-  const pushAiMessage = (sessionId, text, type = "text") => {
+  const pushAiMessage = (sessionId, text, type = "text", context = {}) => {
     const aiMessageId = `${Date.now()}-ai`;
     const cleanedText = type === "text" ? normalizeAssistantText(text) : String(text || "");
+    const shouldOfferSimulation =
+      type === "text" ? shouldOfferInteractiveSimulation(cleanedText, context) : false;
     appendMessageToSession(sessionId, {
       id: aiMessageId,
       role: "ai",
@@ -494,7 +597,7 @@ export default function DashboardPage() {
         session.id === sessionId
           ? {
               ...session,
-              actionableAiMessageId: type === "text" ? aiMessageId : session.actionableAiMessageId
+              actionableAiMessageId: shouldOfferSimulation ? aiMessageId : null
             }
           : session
       )
@@ -510,6 +613,10 @@ export default function DashboardPage() {
     const targetSession = ensureSession();
     const sessionId = targetSession.id;
     const previousMessages = targetSession.messages;
+    const firstPromptContext = firstUserPrompt([
+      ...previousMessages,
+      { role: "user", type: "text", text }
+    ]);
 
     setSessions((prev) =>
       prev.map((session) =>
@@ -543,17 +650,37 @@ export default function DashboardPage() {
         history
       });
       if (response.data?.policy?.blocked) {
-        pushAiMessage(sessionId, response.data.reply || "Request blocked by policy.", "policy");
+        pushAiMessage(sessionId, response.data.reply || "Request blocked by policy.", "policy", {
+          userPromptText: text,
+          firstPromptText: firstPromptContext
+        });
       } else {
-        pushAiMessage(sessionId, response.data.reply || "No response generated.");
+        pushAiMessage(sessionId, response.data.reply || "No response generated.", "text", {
+          userPromptText: text,
+          firstPromptText: firstPromptContext
+        });
       }
     } catch (error) {
       if (!error.response) {
-        pushAiMessage(sessionId, "Connection error. Please try again.");
+        pushAiMessage(sessionId, "Connection error. Please try again.", "text", {
+          userPromptText: text,
+          firstPromptText: firstPromptContext
+        });
       } else if (error.response.status === 503) {
-        pushAiMessage(sessionId, "AI service is not configured yet. Please set AI_API_KEY on the server.");
+        pushAiMessage(
+          sessionId,
+          "AI service is not configured yet. Please set AI_API_KEY on the server.",
+          "text",
+          {
+            userPromptText: text,
+            firstPromptText: firstPromptContext
+          }
+        );
       } else {
-        pushAiMessage(sessionId, error.response.data?.message || "Unable to get AI response right now.");
+        pushAiMessage(sessionId, error.response.data?.message || "Unable to get AI response right now.", "text", {
+          userPromptText: text,
+          firstPromptText: firstPromptContext
+        });
       }
     } finally {
       setTyping(false);
@@ -575,9 +702,6 @@ export default function DashboardPage() {
       setActiveSessionId(existingEmpty.id);
       setInput("");
       setTyping(false);
-      setCurrentSimId(null);
-      setSimStep(0);
-      setSimPanelOpen(false);
       setStepModalOpen(false);
       setModalMessageId(null);
       setModalCanvasState(null);
@@ -589,9 +713,6 @@ export default function DashboardPage() {
     setActiveSessionId(session.id);
     setInput("");
     setTyping(false);
-    setCurrentSimId(null);
-    setSimStep(0);
-    setSimPanelOpen(false);
     setStepModalOpen(false);
     setModalMessageId(null);
     setModalCanvasState(null);
@@ -654,30 +775,6 @@ export default function DashboardPage() {
     setOpenSessionMenuId(null);
   };
 
-  const openSim = (id) => {
-    if (!simulations[id]) {
-      return;
-    }
-    setCurrentSimId(id);
-    setSimStep(0);
-    setSimPanelOpen(true);
-  };
-
-  const closeSim = () => {
-    setSimPanelOpen(false);
-  };
-
-  const simNav = (direction) => {
-    if (!currentSim) {
-      return;
-    }
-    if (direction === 1 && simStep === currentSim.steps.length - 1) {
-      setSimStep(currentSim.steps.length);
-      return;
-    }
-    setSimStep((prev) => Math.max(0, Math.min(currentSim.steps.length - 1, prev + direction)));
-  };
-
   const extractStepsFromAiText = (text) => {
     const lines = String(text || "")
       .split("\n")
@@ -705,12 +802,18 @@ export default function DashboardPage() {
   const openStepModalFromMessage = (msg) => {
     const existingSteps = currentSession?.simulationStepsByMessage?.[msg.id];
     const steps = existingSteps || extractStepsFromAiText(msg.text);
-    const scenarioType = detectScenarioTypeFromContext({
+    const detectedScenarioType = detectScenarioTypeFromContext({
       steps,
       sourceText: msg.text,
       firstPromptText: firstUserPrompt(currentSession?.messages || [])
     });
     const existingCanvas = currentSession?.simulationCanvasByMessage?.[msg.id];
+    const hasRecordedActions = Array.isArray(existingCanvas?.actionsTakenByStep)
+      ? existingCanvas.actionsTakenByStep.some((bucket) => Array.isArray(bucket) && bucket.length > 0)
+      : false;
+    const scenarioType = hasRecordedActions
+      ? existingCanvas?.scenarioType || detectedScenarioType
+      : detectedScenarioType;
     const canvasState = existingCanvas
       ? normalizeSimulationCanvasState(existingCanvas, steps, scenarioType)
       : createSimulationCanvasState(steps, scenarioType);
@@ -841,6 +944,7 @@ export default function DashboardPage() {
       ];
       return {
         ...prev,
+        environmentState: applyActionToEnvironment(prev.scenarioType, prev.environmentState, action),
         actionsTakenByStep: actionsByStep,
         evidence: [
           ...prev.evidence,
@@ -854,11 +958,34 @@ export default function DashboardPage() {
     });
   };
 
-  const updateModalNotes = (value) => {
-    syncModalCanvasState((prev) => ({
-      ...prev,
-      notes: value
-    }));
+  const handleHardwareSceneControl = (control) => {
+    if (!control || !control.enabled) {
+      return;
+    }
+    syncModalCanvasState((prev) => {
+      const actionsByStep = prev.actionsTakenByStep.map((bucket) => [...bucket]);
+      actionsByStep[modalSafeStep] = [
+        ...(actionsByStep[modalSafeStep] || []),
+        {
+          label: control.label,
+          output: control.output,
+          time: formatTime()
+        }
+      ];
+      return {
+        ...prev,
+        environmentState: applyHardwareControlToEnvironment(prev.environmentState, control.id),
+        actionsTakenByStep: actionsByStep,
+        evidence: [
+          ...prev.evidence,
+          {
+            type: "action",
+            message: `${control.label}: ${control.output}`,
+            time: formatTime()
+          }
+        ]
+      };
+    });
   };
 
   const closeStepModal = () => {
@@ -871,10 +998,18 @@ export default function DashboardPage() {
     modalCanvasState?.scenarioType || "general",
     modalSteps[modalSafeStep] || ""
   );
+  const modalHardwareControls =
+    (modalCanvasState?.scenarioType || "general") === "hardware"
+      ? getHardwareSceneControls(modalSteps[modalSafeStep] || "", modalCanvasState?.environmentState)
+      : [];
   const modalStepActionLog = modalCanvasState?.actionsTakenByStep?.[modalSafeStep] || [];
 
-  const parseProcessResponse = (text) => {
+  const parseProcessResponse = (text, context = {}) => {
     const normalized = normalizeAssistantText(text);
+    const compactText = String(normalized || "").replace(/\s+/g, " ").trim();
+    const userPromptText = String(context?.userPromptText || "");
+    const firstPromptText = String(context?.firstPromptText || "");
+    const contextText = `${compactText} ${userPromptText} ${firstPromptText}`.trim();
     const lines = String(normalized || "")
       .split("\n")
       .map((line) => line.trim())
@@ -893,11 +1028,37 @@ export default function DashboardPage() {
       lines.find((line) => !/^(\d+[\).\:-]|[-*])\s+/.test(line)) ||
       "Please follow the guided steps below.";
 
+    const stepQuestionCount = steps.filter((step) => /\?\s*$/.test(step)).length;
+    const hasOnlyQuestionSteps = steps.length > 0 && stepQuestionCount === steps.length;
+    const isQuestionHeavyStepList = steps.length > 0 && stepQuestionCount / steps.length >= 0.6;
+    const asksForUserInput =
+      /(please confirm|can you confirm|please clarify|can you clarify|let me know|reply with|which one|what is your|do you have|are you using|once you confirm|before i give|to proceed,? please|need (a )?(bit )?more detail|provide more context)/i.test(
+        compactText
+      );
+    const hasTroubleshootingIntent =
+      /(can't|cannot|unable|not working|won't|error|issue|problem|failed|fails|failure|offline|down|broken|slow|malware|virus|bsod|crash|disconnect|no internet|not syncing|black screen|stuck|fix|troubleshoot|diagnose|repair|resolve)/i.test(
+        contextText
+      );
+    const hasSetupGuideIntent =
+      /(install|installation|set up|setup|download|office\.com|sign in|subscription|product key|activate|trial|purchase|buy|tutorial|walkthrough|how do i install|how to install)/i.test(
+        contextText
+      );
+    const isNonTroubleshootingGuide = hasSetupGuideIntent && !hasTroubleshootingIntent;
+
     return {
       intro,
       steps: steps.slice(0, 10),
       troubleHints: troubleHints.slice(0, 4),
       hasCodeBlock: /```[\s\S]*```/.test(String(normalized || "")),
+      isClarificationRequest:
+        /(need (a )?(bit )?more detail|please clarify|could refer to|which .* (do you mean|should)|once you confirm|can you confirm|can you clarify|provide (more )?context)/i.test(
+          compactText
+        ),
+      hasOnlyQuestionSteps,
+      isQuestionHeavyStepList,
+      asksForUserInput,
+      hasTroubleshootingIntent,
+      isNonTroubleshootingGuide,
       hasProcessCue: /(steps?|procedure|troubleshoot|follow|first|next|then|finally|check|verify|run)/i.test(
         String(normalized || "")
       )
@@ -905,6 +1066,15 @@ export default function DashboardPage() {
   };
 
   const shouldRenderProcessCard = (parsed) => {
+    if (parsed.isClarificationRequest) {
+      return false;
+    }
+    if (parsed.hasOnlyQuestionSteps) {
+      return false;
+    }
+    if (parsed.isQuestionHeavyStepList && parsed.asksForUserInput) {
+      return false;
+    }
     if (parsed.hasCodeBlock) {
       return false;
     }
@@ -917,6 +1087,17 @@ export default function DashboardPage() {
     return false;
   };
 
+  const shouldOfferInteractiveSimulation = (text, context = {}) => {
+    const parsed = parseProcessResponse(text, context);
+    if (!shouldRenderProcessCard(parsed)) {
+      return false;
+    }
+    if (parsed.isNonTroubleshootingGuide) {
+      return false;
+    }
+    return true;
+  };
+
   const renderMessageBody = (msg) => {
     if (msg.role === "user") {
       return <div className="user-bubble">{msg.text}</div>;
@@ -925,18 +1106,13 @@ export default function DashboardPage() {
     if (msg.type === "sim-choice") {
       return (
         <div className="msg-bubble">
-          <h3>Choose a Simulation</h3>
+          <h3>Simulation Moved</h3>
           <p style={{ fontSize: "13px", color: "var(--text2)", marginBottom: 12 }}>
-            Select a scenario to run an interactive step-by-step simulation:
+            Simulations are now handled on the dedicated Simulations page.
           </p>
-          <div className="quick-grid">
-            {Object.entries(simulations).map(([id, sim]) => (
-              <button key={id} className="quick-card hd-btn-reset" onClick={() => openSim(id)}>
-                <div className="qc-label">Simulation</div>
-                <div className="qc-title">{sim.title}</div>
-              </button>
-            ))}
-          </div>
+          <Link to="/simulations" className="create-sim-btn" style={{ textDecoration: "none" }}>
+            Open Simulations
+          </Link>
         </div>
       );
     }
@@ -944,10 +1120,10 @@ export default function DashboardPage() {
     if (msg.type === "policy") {
       return (
         <div className="response-card policy-bubble">
-          <div className="response-top">
+          {/* <div className="response-top">
             <div className="issue-tag">Policy Filter</div>
             <div className="status-pill">Notice</div>
-          </div>
+          </div> */}
           <div className="step-header">
             <h2>Request blocked by policy</h2>
             <p>{normalizeAssistantText(msg.text)}</p>
@@ -1029,88 +1205,6 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
-        {msg.role === "ai" &&
-        msg.type === "text" &&
-        currentSession?.actionableAiMessageId === msg.id ? (
-          <div className="main-action">
-            <button className="create-sim-btn hd-btn-reset" onClick={() => openStepModalFromMessage(msg)}>
-              {currentSession?.hasSimulation ? "View Simulation" : "Start Interactive Simulation"}
-            </button>
-          </div>
-        ) : null}
-      </>
-    );
-  };
-
-  const renderSimPanel = () => {
-    if (!currentSim) {
-      return null;
-    }
-
-    const complete = simStep >= currentSim.steps.length;
-    const step = complete ? null : currentSim.steps[simStep];
-    const stepLabel = complete ? "Simulation Complete!" : `Step ${simStep + 1} of ${currentSim.steps.length}`;
-
-    return (
-      <>
-        <div className={`sim-overlay ${simPanelOpen ? "open" : ""}`} onClick={closeSim} />
-        <div className={`sim-panel ${simPanelOpen ? "open" : ""}`}>
-          <div className="sim-header">
-            <div className="sim-icon">SIM</div>
-            <div className="sim-title">{currentSim.title}</div>
-            <div className="sim-label">LIVE SIM</div>
-            <button className="sim-close hd-btn-reset" onClick={closeSim}>
-              X
-            </button>
-          </div>
-          <div className="sim-body">
-            <div className="sim-progress">
-              <div className="sim-progress-bar" style={{ width: `${complete ? 100 : simProgress}%` }} />
-            </div>
-            <div className="sim-step-label">{stepLabel}</div>
-
-            {complete ? (
-              <div className="sim-complete">
-                <div className="check">OK</div>
-                <h3>Simulation Complete!</h3>
-                <p>
-                  You've completed all {currentSim.steps.length} steps of{" "}
-                  <strong style={{ color: "var(--text)" }}>{currentSim.title}</strong>.
-                </p>
-                <button className="sim-restart hd-btn-reset" onClick={() => setSimStep(0)}>
-                  Restart Simulation
-                </button>
-              </div>
-            ) : (
-              <div className="sim-step-card">
-                <div className="sim-step-num">
-                  STEP {simStep + 1} OF {currentSim.steps.length}
-                </div>
-                <div className="sim-step-title">{step.title}</div>
-                <div className="sim-step-desc" dangerouslySetInnerHTML={{ __html: step.desc }} />
-                <div className="sim-screen">
-                  <pre>{step.screen}</pre>
-                </div>
-                <div className="sim-action">
-                  <strong>Action</strong>
-                  {step.action}
-                </div>
-                {step.result ? <div className="sim-result">OK {step.result}</div> : null}
-              </div>
-            )}
-
-            {!complete ? (
-              <div className="sim-nav">
-                <button className="sim-btn prev hd-btn-reset" disabled={simStep === 0} onClick={() => simNav(-1)}>
-                  Previous
-                </button>
-                <button className="sim-btn next hd-btn-reset" onClick={() => simNav(1)}>
-                  {simStep === currentSim.steps.length - 1 ? "Complete" : "Next"}
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </div>
       </>
     );
   };
@@ -1168,7 +1262,6 @@ export default function DashboardPage() {
 
   return (
     <div className={`helpdesk-root ${theme === "light" ? "theme-light" : ""}`}>
-      {renderSimPanel()}
       {stepModalOpen ? (
         <div className="step-modal-overlay" onClick={closeStepModal}>
           <div className="step-modal" onClick={(e) => e.stopPropagation()}>
@@ -1225,22 +1318,21 @@ export default function DashboardPage() {
                 </div>
                 <div className="step-modal-canvas">
                   <div className="step-modal-canvas-header">
-                    <div className="step-modal-canvas-title">Actions</div>
+                    <div className="step-modal-canvas-title">Simulation Environment</div>
                     <button className="step-modal-mark-btn hd-btn-reset" onClick={markCurrentStepComplete}>
                       Mark Step Complete
                     </button>
                   </div>
-                  <div className="step-modal-actions-grid">
-                    {modalStepActions.map((action) => (
-                      <button
-                        key={action.label}
-                        className="step-modal-action-btn hd-btn-reset"
-                        onClick={() => handleModalAction(action)}
-                      >
-                        {action.label}
-                      </button>
-                    ))}
-                  </div>
+                  <SimulationScenarioCanvas
+                    scenarioType={modalCanvasState?.scenarioType || "general"}
+                    currentStepText={modalSteps[modalSafeStep] || ""}
+                    canvasState={modalCanvasState}
+                    stepIndex={modalSafeStep}
+                    actions={modalStepActions}
+                    hardwareControls={modalHardwareControls}
+                    onRunAction={handleModalAction}
+                    onRunHardwareControl={handleHardwareSceneControl}
+                  />
                   <div className="step-modal-action-log">
                     {(modalStepActionLog.length > 0 ? modalStepActionLog : [{ label: "No actions yet", output: "Run an action to generate simulation output.", time: "--:--" }]).map((item, idx) => (
                       <div key={`${item.label}-${idx}`} className="step-modal-log-line">
@@ -1252,32 +1344,23 @@ export default function DashboardPage() {
                     ))}
                   </div>
                 </div>
-                <div className="step-modal-notes-wrap">
-                  <label htmlFor="sim-notes" className="step-modal-notes-label">
-                    Simulation Notes
-                  </label>
-                  <textarea
-                    id="sim-notes"
-                    value={modalCanvasState?.notes || ""}
-                    onChange={(e) => updateModalNotes(e.target.value)}
-                    placeholder="Write findings, observations, and escalation notes here..."
-                  />
-                </div>
-                <div className="step-modal-nav">
-                  <button
-                    className="step-modal-nav-btn hd-btn-reset"
-                    disabled={modalSafeStep <= 0}
-                    onClick={() => moveModalStep(-1)}
-                  >
-                    Previous
-                  </button>
-                  <button
-                    className="step-modal-nav-btn primary hd-btn-reset"
-                    disabled={modalSafeStep >= modalStepCount - 1}
-                    onClick={() => moveModalStep(1)}
-                  >
-                    Next
-                  </button>
+                <div className="step-modal-footer">
+                  <div className="step-modal-nav">
+                    <button
+                      className="step-modal-nav-btn hd-btn-reset"
+                      disabled={modalSafeStep <= 0}
+                      onClick={() => moveModalStep(-1)}
+                    >
+                      Previous
+                    </button>
+                    <button
+                      className="step-modal-nav-btn primary hd-btn-reset"
+                      disabled={modalSafeStep >= modalStepCount - 1}
+                      onClick={() => moveModalStep(1)}
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1301,6 +1384,10 @@ export default function DashboardPage() {
                 <span className="new-chat-icon">+</span>
                 <span className="new-chat-label">New Chat</span>
               </button>
+              <Link to="/simulations" className="new-chat-sidebar-btn sim-sidebar-btn hd-btn-reset">
+                <span className="new-chat-icon">S</span>
+                <span className="new-chat-label">Simulations</span>
+              </Link>
               <div className="hd-sidebar-heading">Your Sessions</div>
             </div>
             {sessions.length === 0 ? (
