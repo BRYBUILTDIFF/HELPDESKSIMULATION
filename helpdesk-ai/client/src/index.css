@@ -98,17 +98,13 @@ select {
 }
 
 .password-wrap {
+  position: relative;
   display: flex;
-  gap: 8px;
+  align-items: center;
 }
 
-.password-wrap button {
-  width: 82px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--bg4);
-  color: var(--text2);
-  cursor: pointer;
+.password-wrap input {
+  padding-right: 42px;
 }
 
 .error {
@@ -320,12 +316,41 @@ select {
 }
 
 .login-toggle-btn {
-  width: 82px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--bg4);
+  border: 0;
+  background: transparent;
   color: var(--text2);
   cursor: pointer;
+}
+
+.login-eye-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+}
+
+.login-eye-btn:hover {
+  color: var(--text);
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.login-eye-btn:focus-visible {
+  outline: 1px solid var(--cyan2);
+}
+
+.login-eye-btn svg {
+  width: 17px;
+  height: 17px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .login-row {

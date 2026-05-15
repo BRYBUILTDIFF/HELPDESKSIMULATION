@@ -1,5 +1,6 @@
 const { getAIProvider, getDefaultModel, getOpenAIClient } = require("../utils/openai");
 const { evaluatePromptPolicy } = require("../policy/promptPolicy");
+const { recordPolicyEvent } = require("../store/policyEventStore");
 
 const SYSTEM_PROMPT = `
 You are HelpDesk AI, an IT support assistant for internal users.
@@ -16,6 +17,15 @@ async function chat(req, res, next) {
 
     const policyResult = evaluatePromptPolicy(message, history);
     if (policyResult.directReply) {
+      recordPolicyEvent({
+        userId: req.user?.id,
+        userEmail: req.user?.email,
+        message,
+        blocked: false,
+        code: policyResult.code,
+        reason: policyResult.reason,
+        hasHistory: history.length > 0
+      });
       return res.status(200).json({
         reply: policyResult.directReply,
         policy: {
@@ -27,6 +37,15 @@ async function chat(req, res, next) {
     }
 
     if (!policyResult.allowed) {
+      recordPolicyEvent({
+        userId: req.user?.id,
+        userEmail: req.user?.email,
+        message,
+        blocked: true,
+        code: policyResult.code,
+        reason: policyResult.reason,
+        hasHistory: history.length > 0
+      });
       return res.status(200).json({
         reply: policyResult.userMessage,
         policy: {
@@ -71,6 +90,16 @@ async function chat(req, res, next) {
     if (!reply) {
       return res.status(500).json({ message: "AI did not return a response." });
     }
+
+    recordPolicyEvent({
+      userId: req.user?.id,
+      userEmail: req.user?.email,
+      message,
+      blocked: false,
+      code: policyResult.code || "ALLOWED",
+      reason: policyResult.reason || "Allowed request.",
+      hasHistory: history.length > 0
+    });
 
     return res.status(200).json({
       reply,

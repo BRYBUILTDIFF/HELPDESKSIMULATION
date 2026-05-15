@@ -30,7 +30,7 @@ export default function LoginPage() {
   const canSubmit = useMemo(() => form.email.trim() && form.password.trim(), [form.email, form.password]);
 
   if (user) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={user.role === "ADMIN" ? "/admin" : "/dashboard"} replace />;
   }
 
   const onChange = (e) => {
@@ -49,8 +49,8 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
     try {
-      await login({ email: form.email.trim(), password: form.password });
-      navigate("/dashboard", { replace: true });
+      const loggedInUser = await login({ email: form.email.trim(), password: form.password });
+      navigate(loggedInUser?.role === "ADMIN" ? "/admin" : "/dashboard", { replace: true });
     } catch (err) {
       setError(parseError(err));
     } finally {
@@ -132,8 +132,26 @@ export default function LoginPage() {
                 value={form.password}
                 onChange={onChange}
               />
-              <button className="login-toggle-btn" type="button" onClick={() => setShowPassword((prev) => !prev)}>
-                {showPassword ? "Hide" : "Show"}
+              <button
+                className="login-toggle-btn login-eye-btn"
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-pressed={showPassword}
+              >
+                {showPassword ? (
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 4.5L20 21.5" />
+                    <path d="M9.7 9.9A3 3 0 0 1 14 14.2" />
+                    <path d="M10.6 5.3A10.9 10.9 0 0 1 12 5.2c5.5 0 9.6 4.2 10.9 6.8a1 1 0 0 1 0 .9 12 12 0 0 1-5.2 5.2" />
+                    <path d="M6.6 7.2A12 12 0 0 0 1.1 12a1 1 0 0 0 0 .9A12 12 0 0 0 12 18.8c1 0 2-.1 2.9-.4" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M1.1 12a1 1 0 0 1 0-.9C2.4 8.4 6.5 4.2 12 4.2s9.6 4.2 10.9 6.8a1 1 0 0 1 0 .9c-1.3 2.7-5.4 6.9-10.9 6.9S2.4 14.6 1.1 12Z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                )}
               </button>
             </div>
           </div>

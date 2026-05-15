@@ -5,6 +5,31 @@ import { kb, modules, simulations } from "./helpdeskData";
 import "./dashboard.css";
 
 const THEME_STORAGE_KEY = "helpdesk_simulation_theme";
+const SESSION_STORAGE_PREFIX = "helpdesk_simulation_sessions_";
+
+function formatDateTime(isoString) {
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function firstUserPrompt(messages = []) {
+  return messages.find((m) => m.role === "user" && m.type === "text")?.text || "";
+}
+
+function sessionPreview(session) {
+  if (!Array.isArray(session?.messages) || session.messages.length === 0) {
+    return "No messages yet";
+  }
+  const firstUser = session.messages.find((m) => m.role === "user" && m.type === "text");
+  if (!firstUser?.text) {
+    return "No user prompt yet";
+  }
+  const cleaned = firstUser.text.trim().replace(/\s+/g, " ");
+  return cleaned.length > 42 ? `${cleaned.slice(0, 42)}...` : cleaned;
+}
 
 function resolveSimulationId(itemId) {
   const kbEntry = kb[itemId];
@@ -24,10 +49,19 @@ export default function SimulationsPage() {
   const [activeSimId, setActiveSimId] = useState(null);
   const [activeSimLabel, setActiveSimLabel] = useState("Simulation");
   const [simStep, setSimStep] = useState(0);
+  const [sessions, setSessions] = useState([]);
+  const [mobileView, setMobileView] = useState(false);
+
+  const storageKey = useMemo(
+    () => (user?.id ? `${SESSION_STORAGE_PREFIX}${user.id}` : null),
+    [user?.id]
+  );
 
   const currentSim = activeSimId ? simulations[activeSimId] : null;
   const simTotalSteps = currentSim?.steps?.length || 0;
   const simProgress = simTotalSteps ? Math.round(((simStep + 1) / simTotalSteps) * 100) : 0;
+  const favoriteSessions = useMemo(() => sessions.filter((session) => session.isFavorite), [sessions]);
+  const regularSessions = useMemo(() => sessions.filter((session) => !session.isFavorite), [sessions]);
 
   const catalog = useMemo(
     () =>
@@ -61,6 +95,43 @@ export default function SimulationsPage() {
   useEffect(() => {
     localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+    const media = window.matchMedia("(max-width: 880px)");
+    const syncLayout = (eventOrMedia) => {
+      const isMobile = Boolean(eventOrMedia.matches);
+      setMobileView(isMobile);
+      setSidebarCollapsed(isMobile);
+    };
+    syncLayout(media);
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", syncLayout);
+      return () => media.removeEventListener("change", syncLayout);
+    }
+    media.addListener(syncLayout);
+    return () => media.removeListener(syncLayout);
+  }, []);
+
+  useEffect(() => {
+    if (!storageKey) {
+      setSessions([]);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(storageKey);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) {
+        setSessions(parsed);
+      } else {
+        setSessions([]);
+      }
+    } catch (_err) {
+      setSessions([]);
+    }
+  }, [storageKey]);
 
   useEffect(() => {
     const onPointerDown = (event) => {
@@ -176,6 +247,13 @@ export default function SimulationsPage() {
       ) : null}
 
       <div id="helpdesk-app" className={sidebarCollapsed ? "sidebar-collapsed" : ""}>
+        {mobileView && !sidebarCollapsed ? (
+          <button
+            className="sidebar-backdrop hd-btn-reset"
+            aria-label="Close sidebar"
+            onClick={() => setSidebarCollapsed(true)}
+          />
+        ) : null}
         <div className={`hd-sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
           <div className="hd-sidebar-header">
             <div className="sidebar-logo">
@@ -187,13 +265,93 @@ export default function SimulationsPage() {
           </div>
           <div className="hd-modules-list">
             <div className="session-tools">
-              <Link to="/dashboard" className="new-chat-sidebar-btn sim-sidebar-btn hd-btn-reset">
-                <span className="new-chat-icon">{"<"}</span>
-                <span className="new-chat-label">Back to Chat</span>
+              <Link
+                to="/dashboard"
+                className="new-chat-sidebar-btn hd-btn-reset"
+                onClick={() => {
+                  if (mobileView) {
+                    setSidebarCollapsed(true);
+                  }
+                }}
+              >
+                <span className="new-chat-icon">+</span>
+                <span className="new-chat-label">New Chat</span>
               </Link>
-              <div className="hd-sidebar-heading">Simulation Library</div>
+              <Link
+                to="/simulations"
+                className="new-chat-sidebar-btn sim-sidebar-btn hd-btn-reset"
+                onClick={() => {
+                  if (mobileView) {
+                    setSidebarCollapsed(true);
+                  }
+                }}
+              >
+                <span className="new-chat-icon">S</span>
+                <span className="new-chat-label">Simulations</span>
+              </Link>
+              <div className="hd-sidebar-heading">Your Sessions</div>
             </div>
-            <p className="session-empty">Browse cases by module and run guided simulations.</p>
+            {sessions.length === 0 ? (
+              <p className="session-empty">No sessions yet.</p>
+            ) : (
+              <>
+                {favoriteSessions.length > 0 ? (
+                  <>
+                    <div className="session-group-heading">Favorite Sessions</div>
+                    {favoriteSessions.map((session) => (
+                      <Link
+                        key={session.id}
+                        to={`/dashboard?session=${session.id}`}
+                        className="session-item hd-btn-reset"
+                        onClick={() => {
+                          if (mobileView) {
+                            setSidebarCollapsed(true);
+                          }
+                        }}
+                      >
+                        <div className="session-icon">
+                          {((firstUserPrompt(session.messages) || session.title || "?").trim().charAt(0) || "?").toUpperCase()}
+                        </div>
+                        <div className="session-body">
+                          <div className="session-head">
+                            <div className="session-title">{session.title || "New Chat"}</div>
+                            <span className="session-fav-dot" title="Favorite">★</span>
+                          </div>
+                          <div className="session-preview">{sessionPreview(session)}</div>
+                          <div className="session-time">{formatDateTime(session.updatedAt)}</div>
+                        </div>
+                      </Link>
+                    ))}
+                  </>
+                ) : null}
+                {regularSessions.length > 0 ? (
+                  <>
+                    {favoriteSessions.length > 0 ? <div className="session-group-heading">All Sessions</div> : null}
+                    {regularSessions.map((session) => (
+                      <Link
+                        key={session.id}
+                        to={`/dashboard?session=${session.id}`}
+                        className="session-item hd-btn-reset"
+                        onClick={() => {
+                          if (mobileView) {
+                            setSidebarCollapsed(true);
+                          }
+                        }}
+                      >
+                        <div className="session-icon">
+                          {((firstUserPrompt(session.messages) || session.title || "?").trim().charAt(0) || "?").toUpperCase()}
+                        </div>
+                        <div className="session-body">
+                          <div className="session-title">{session.title || "New Chat"}</div>
+                          <div className="session-preview">{sessionPreview(session)}</div>
+                          <div className="session-time">{formatDateTime(session.updatedAt)}</div>
+                        </div>
+                      </Link>
+                    ))}
+                  </>
+                ) : null}
+              </>
+            )}
           </div>
           <div className="hd-sidebar-footer" ref={accountMenuRef}>
             <button className="avatar-menu-btn hd-btn-reset" onClick={() => setAccountMenuOpen((prev) => !prev)}>
@@ -207,12 +365,20 @@ export default function SimulationsPage() {
               <div className="avatar-popover">
                 <div className="avatar-popover-name">{user?.firstName || ""} {user?.lastName || ""}</div>
                 <div className="avatar-popover-email">{user?.email || ""}</div>
-                <button
-                  className="avatar-popover-btn hd-btn-reset"
-                  onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
-                >
-                  {theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
-                </button>
+                <div className="avatar-theme-row">
+                  <span className="avatar-theme-label">Light Mode</span>
+                  <button
+                    className={`avatar-theme-switch hd-btn-reset ${theme === "light" ? "is-on" : ""}`}
+                    onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
+                    aria-label="Toggle light mode"
+                    aria-pressed={theme === "light"}
+                  >
+                    <span className="avatar-theme-track">
+                      <span className="avatar-theme-thumb" />
+                    </span>
+                    <span className="avatar-theme-state">{theme === "light" ? "On" : "Off"}</span>
+                  </button>
+                </div>
                 <button className="avatar-popover-btn danger hd-btn-reset" onClick={logout}>
                   Logout
                 </button>

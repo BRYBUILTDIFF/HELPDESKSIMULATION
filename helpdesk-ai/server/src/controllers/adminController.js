@@ -1,4 +1,6 @@
 const prisma = require("../prisma");
+const { listPolicyEvents, getPolicySummary } = require("../store/policyEventStore");
+const { listModules, updateModule } = require("../store/simulationModuleStore");
 
 async function listUsers(req, res, next) {
   try {
@@ -90,8 +92,53 @@ async function softDeleteUser(req, res, next) {
   }
 }
 
+async function getPolicyEvents(req, res, next) {
+  try {
+    const limit = Number(req.query.limit || 100);
+    const events = listPolicyEvents(limit);
+    return res.status(200).json({ events });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function getPolicySummaryAdmin(_req, res, next) {
+  try {
+    const summary = getPolicySummary();
+    return res.status(200).json({ summary });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function getSimulationModules(_req, res, next) {
+  try {
+    const modules = listModules();
+    return res.status(200).json({ modules });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function updateSimulationModule(req, res, next) {
+  try {
+    const id = String(req.params.id || "");
+    const module = updateModule(id, req.body || {});
+    if (!module) {
+      return res.status(404).json({ message: "Simulation module not found" });
+    }
+    return res.status(200).json({ module });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 module.exports = {
   listUsers,
   updateUser,
-  softDeleteUser
+  softDeleteUser,
+  getPolicyEvents,
+  getPolicySummaryAdmin,
+  getSimulationModules,
+  updateSimulationModule
 };

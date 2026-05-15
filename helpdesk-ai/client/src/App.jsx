@@ -5,7 +5,6 @@ import AdminRoute from "./components/AdminRoute";
 import LoginPage from "./pages/users/LoginPage";
 import RegisterPage from "./pages/users/RegisterPage";
 import DashboardPage from "./pages/users/DashboardPage";
-import SimulationsPage from "./pages/users/SimulationsPage";
 import AdminPage from "./pages/admin/AdminPage";
 import NotFoundPage from "./pages/users/NotFoundPage";
 
@@ -14,7 +13,10 @@ function PublicOnly({ children }) {
   if (initializing) {
     return <div className="auth-shell">Loading session...</div>;
   }
-  return user ? <Navigate to="/dashboard" replace /> : children;
+  if (user) {
+    return <Navigate to={user.role === "ADMIN" ? "/admin" : "/dashboard"} replace />;
+  }
+  return children;
 }
 
 export default function App() {
@@ -38,9 +40,11 @@ export default function App() {
       />
 
       <Route element={<PrivateRoute />}>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route
+          path="/"
+          element={<RoleHomeRedirect />}
+        />
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/simulations" element={<SimulationsPage />} />
       </Route>
 
       <Route element={<AdminRoute />}>
@@ -50,4 +54,9 @@ export default function App() {
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
+}
+
+function RoleHomeRedirect() {
+  const { user } = useAuth();
+  return <Navigate to={user?.role === "ADMIN" ? "/admin" : "/dashboard"} replace />;
 }

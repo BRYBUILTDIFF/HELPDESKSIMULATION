@@ -2,30 +2,386 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useAxios } from "../../hooks/useAxios";
-import SimulationScenarioCanvas, {
-  applyActionToEnvironment,
-  applyHardwareControlToEnvironment,
-  createEnvironmentStateForScenario,
-  getHardwareSceneControls,
-  normalizeEnvironmentStateForScenario
-} from "./Modules/SimulationScenarioCanvas";
+import { simulations } from "./helpdeskData";
 import "./dashboard.css";
 
 const QUESTION_BANK = [
-  { label: "Account", title: "Password Reset", question: "How do I reset a forgotten password?" },
-  { label: "Hardware", title: "PC Won't Boot", question: "Computer won't turn on, black screen issue" },
-  { label: "Network", title: "No Internet", question: "No internet connection, how to fix?" },
-  { label: "Peripheral", title: "Printer Offline", question: "Printer is offline and won't print" },
-  { label: "Performance", title: "Slow Computer", question: "Computer is very slow, high CPU usage" },
-  { label: "Critical", title: "BSOD Error", question: "Blue screen of death BSOD error on Windows" },
-  { label: "Email", title: "Outlook Sync", question: "My Outlook is not syncing emails, how can I fix it?" },
-  { label: "Security", title: "Possible Malware", question: "My computer shows suspicious popups. What should I do?" },
-  { label: "Access", title: "VPN Login", question: "I cannot connect to VPN from home." },
-  { label: "Server", title: "Website Down", question: "Our internal website is down. What should I check first?" }
+  {
+    label: "Network",
+    title: "No Internet Connection",
+    question: "No internet connection on this PC. Please walk me through terminal-based troubleshooting."
+  },
+  {
+    label: "Network",
+    title: "DNS Problem",
+    question: "Website names are not resolving. Help me fix DNS issue using terminal commands."
+  },
+  {
+    label: "Performance",
+    title: "Slow Computer / High CPU",
+    question: "Computer is slow and CPU usage is high. Provide terminal-based troubleshooting steps."
+  },
+  {
+    label: "Peripheral",
+    title: "Printer Spooler Issue",
+    question: "Printer spooler is not working and printing is stuck. Help me fix it step by step."
+  },
+  {
+    label: "Files",
+    title: "Recover Hidden USB Files",
+    question: "Files in USB became hidden. Show terminal-based recovery steps."
+  },
+  {
+    label: "Account",
+    title: "User Account Locked",
+    question: "User account is locked. Guide me through safe unlock and reset workflow."
+  },
+  {
+    label: "Server",
+    title: "Website/Server Down",
+    question: "Internal website/server is down. Give me terminal-based incident checks."
+  },
+  {
+    label: "Security",
+    title: "Suspicious Process / Malware Check",
+    question: "Need to investigate suspicious process and possible malware via terminal workflow."
+  },
+  {
+    label: "Performance",
+    title: "Low Disk Space",
+    question: "Drive is running low on disk space. Help me diagnose and clean safely."
+  },
+  {
+    label: "Software",
+    title: "Service Not Running",
+    question: "A required system service is not running. Guide me with terminal/service checks."
+  }
 ];
 
 const SESSION_STORAGE_PREFIX = "helpdesk_simulation_sessions_";
 const THEME_STORAGE_KEY = "helpdesk_simulation_theme";
+const TERMINAL_PROMPT = "PS C:\\\\Helpdesk>";
+const MAX_COMPOSER_HEIGHT = 280;
+
+const SUGGESTED_SIMULATION_MAP = {
+  "No Internet Connection": "no-internet",
+  "DNS Problem": "no-internet",
+  "Slow Computer / High CPU": "slow-pc",
+  "Printer Spooler Issue": "printer",
+  "Recover Hidden USB Files": "file-recovery",
+  "User Account Locked": "password-reset",
+  "Website/Server Down": "server-down",
+  "Suspicious Process / Malware Check": "malware",
+  "Low Disk Space": "slow-pc",
+  "Service Not Running": "printer"
+};
+
+const SIMULATION_PLAYBOOK_BY_TICKET = {
+  "No Internet Connection": [
+    { commands: ["ping 8.8.8.8"], result: "No external replies yet. Internet path is still down." },
+    { commands: ["ipconfig /all"], result: "Adapter details captured. Next focus: DHCP/DNS refresh." },
+    { commands: ["ipconfig /release", "ipconfig /renew"], result: "Lease cycle completed. New network lease received." },
+    { commands: ["ipconfig /flushdns"], result: "DNS resolver cache cleared." },
+    { commands: ["ping google.com", "tracert google.com"], result: "Name resolution and route path verified. Connectivity restored." }
+  ],
+  "DNS Problem": [
+    { commands: ["nslookup google.com"], result: "Initial lookup failed or returned stale entries." },
+    { commands: ["ipconfig /all"], result: "DNS server settings reviewed from adapter configuration." },
+    { commands: ["ipconfig /flushdns"], result: "Stale local resolver entries removed." },
+    { commands: ["nslookup google.com"], result: "DNS lookup now returns valid records." },
+    { commands: ["ping google.com"], result: "Hostname now resolves and responds. DNS incident resolved." }
+  ],
+  "Slow Computer / High CPU": [
+    { commands: ["tasklist /v"], result: "High-CPU process identified for remediation." },
+    { commands: ["wmic startup get caption,command"], result: "Startup load reviewed; non-essential entries identified." },
+    { commands: ["cleanmgr"], result: "Temporary/system junk cleanup executed." },
+    { commands: ["sfc /scannow"], result: "System integrity scan completed." },
+    { commands: ["dism /online /cleanup-image /restorehealth"], result: "Component store repair completed. System performance stabilized." }
+  ],
+  "Printer Spooler Issue": [
+    { commands: ["wmic printer get name,workoffline"], result: "Printer state checked. Queue issue confirmed." },
+    { commands: ["get-service spooler", "sc query spooler"], result: "Spooler service status collected." },
+    { commands: ["net stop spooler"], result: "Spooler stopped. Queue can now be safely purged." },
+    { commands: ["del /q %systemroot%\\system32\\spool\\printers\\*"], result: "Stuck spool files removed." },
+    { commands: ["net start spooler"], result: "Spooler restarted successfully. Printing pipeline restored." }
+  ],
+  "Recover Hidden USB Files": [
+    { commands: ["wmic logicaldisk get name,volumename,description"], result: "Removable drive letter validated." },
+    { commands: ["dir /a"], result: "Hidden/system entries confirmed in the USB directory." },
+    { commands: ["attrib -h -r -s /s /d *.*"], result: "Hidden/read-only/system attributes removed from user files." },
+    { commands: ["dir /a"], result: "Previously hidden files are now visible." },
+    { commands: ["xcopy *.* recovered /e /i /h"], result: "Recovered files copied to safe backup folder." }
+  ],
+  "User Account Locked": [
+    { commands: ["net user jdoe /domain"], result: "Account status fetched from domain." },
+    { commands: ["search-adaccount -lockedout"], result: "Locked account presence confirmed in AD." },
+    { commands: ["unlock-adaccount -identity jdoe"], result: "Domain account unlocked." },
+    { commands: ["set-adaccountpassword -identity jdoe -reset"], result: "Temporary password reset applied." },
+    { commands: ["net user jdoe /domain"], result: "Account is active and ready for user logon." }
+  ],
+  "Website/Server Down": [
+    { commands: ["ping 10.10.1.50", "nslookup intranet.company.local"], result: "Outage scope validated from endpoint checks." },
+    { commands: ["ssh admin@10.10.1.50"], result: "Connected to affected server for service inspection." },
+    { commands: ["systemctl status nginx"], result: "Web service state confirmed as failed." },
+    { commands: ["tail -n 50 /var/log/nginx/error.log", "netstat -tulpn | grep 443"], result: "Root cause identified from logs/port binding." },
+    { commands: ["systemctl restart nginx"], result: "Service restored. Availability checks passing." }
+  ],
+  "Suspicious Process / Malware Check": [
+    { commands: ["tasklist /svc"], result: "Suspicious process list exported for triage." },
+    { commands: ["wmic process get name,processid,parentprocessid"], result: "Process lineage inspected for anomalies." },
+    { commands: ["netstat -ano"], result: "Live network connections linked to suspicious PIDs." },
+    { commands: ["mrt /f:y"], result: "Full malware scan started and completed." },
+    { commands: ["sfc /scannow"], result: "Post-cleanup system file integrity validated." }
+  ],
+  "Low Disk Space": [
+    { commands: ["wmic logicaldisk get caption,freespace,size"], result: "Disk usage baseline captured." },
+    { commands: ["dir c:\\ /a /s"], result: "Large file footprint identified for cleanup." },
+    { commands: ["cleanmgr"], result: "Disk Cleanup removed temporary/update cache data." },
+    { commands: ["dism /online /cleanup-image /startcomponentcleanup"], result: "Component store cleanup completed." },
+    { commands: ["wmic logicaldisk get caption,freespace,size"], result: "Free space increased to acceptable threshold." }
+  ],
+  "Service Not Running": [
+    { commands: ["sc query spooler"], result: "Service state confirmed as stopped/faulted." },
+    { commands: ["sc qc spooler"], result: "Service configuration and dependencies inspected." },
+    { commands: ["net start spooler"], result: "Service start attempted successfully." },
+    { commands: ["sc query spooler"], result: "Service now reported as RUNNING." },
+    { commands: ["eventvwr.msc"], result: "Event logs reviewed for recurrence prevention." }
+  ]
+};
+
+const SIMULATION_PLAYBOOK_BY_MODULE = {
+  "no-internet": SIMULATION_PLAYBOOK_BY_TICKET["No Internet Connection"],
+  "slow-pc": SIMULATION_PLAYBOOK_BY_TICKET["Slow Computer / High CPU"],
+  printer: SIMULATION_PLAYBOOK_BY_TICKET["Printer Spooler Issue"],
+  "file-recovery": SIMULATION_PLAYBOOK_BY_TICKET["Recover Hidden USB Files"],
+  "password-reset": SIMULATION_PLAYBOOK_BY_TICKET["User Account Locked"],
+  "server-down": SIMULATION_PLAYBOOK_BY_TICKET["Website/Server Down"],
+  malware: SIMULATION_PLAYBOOK_BY_TICKET["Suspicious Process / Malware Check"]
+};
+
+function normalizeCommand(input = "") {
+  return String(input).trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function getSimulationPlaybook({ ticketTitle = "", simulationId = "" } = {}) {
+  if (ticketTitle && SIMULATION_PLAYBOOK_BY_TICKET[ticketTitle]) {
+    return SIMULATION_PLAYBOOK_BY_TICKET[ticketTitle];
+  }
+  if (simulationId && SIMULATION_PLAYBOOK_BY_MODULE[simulationId]) {
+    return SIMULATION_PLAYBOOK_BY_MODULE[simulationId];
+  }
+  return null;
+}
+
+function extractExpectedCommands(stepText = "", stepDetail = {}, context = {}) {
+  const playbook = getSimulationPlaybook(context);
+  const playbookStep = Array.isArray(playbook) ? playbook[context?.stepIndex || 0] : null;
+  if (Array.isArray(playbookStep?.commands) && playbookStep.commands.length > 0) {
+    return [...new Set(playbookStep.commands.map((cmd) => normalizeCommand(cmd)).filter(Boolean))];
+  }
+
+  const source = `${stepText}\n${stepDetail?.desc || ""}\n${stepDetail?.action || ""}\n${stepDetail?.screen || ""}`;
+  const commands = [];
+  const explicit = source.match(/`([^`]+)`/g) || [];
+  explicit.forEach((chunk) => commands.push(chunk.replace(/`/g, "").trim()));
+
+  if (/nslookup|dns/i.test(source)) commands.push("nslookup google.com", "ipconfig /flushdns", "ipconfig /all");
+  if (/ipconfig|dhcp|gateway|network|internet|wifi/i.test(source)) commands.push("ipconfig /all", "ipconfig /release", "ipconfig /renew", "ping 8.8.8.8");
+  if (/ping/i.test(source)) commands.push("ping 8.8.8.8", "ping google.com");
+  if (/tracert|traceroute|route/i.test(source)) commands.push("tracert google.com");
+  if (/cpu|slow|performance|task manager|startup/i.test(source)) commands.push("tasklist /v", "wmic startup get caption,command");
+  if (/disk|storage|space|cleanup/i.test(source)) commands.push("wmic logicaldisk get caption,freespace,size", "cleanmgr");
+  if (/spooler|printer|queue|print/i.test(source)) commands.push("sc query spooler", "net stop spooler", "net start spooler");
+  if (/service/i.test(source)) commands.push("sc query spooler", "sc qc spooler");
+  if (/locked|password|account|active directory/i.test(source)) commands.push("net user jdoe /domain", "unlock-adaccount -identity jdoe");
+  if (/malware|suspicious|virus|process/i.test(source)) commands.push("tasklist /svc", "wmic process get name,processid,parentprocessid", "netstat -ano");
+  if (/integrity|repair|system file/i.test(source)) commands.push("sfc /scannow", "dism /online /cleanup-image /restorehealth");
+  if (/event viewer|eventvwr/i.test(source)) commands.push("eventvwr.msc");
+
+  if (commands.length === 0) {
+    commands.push("help");
+  }
+
+  return [...new Set(commands.map((cmd) => normalizeCommand(cmd)).filter(Boolean))];
+}
+
+function simulateTerminalCommand(command, scenarioType) {
+  const cmd = normalizeCommand(command);
+  if (!cmd) {
+    return { output: "No command entered.", kind: "error", known: false };
+  }
+  if (cmd === "help") {
+    return {
+      output:
+        "Supported commands: help, clear, ipconfig /all, ipconfig /release, ipconfig /renew, ipconfig /flushdns, nslookup google.com, ping 8.8.8.8, ping google.com, tracert google.com, tasklist /v, wmic startup get caption,command, wmic logicaldisk get caption,freespace,size, cleanmgr, sfc /scannow, dism /online /cleanup-image /restorehealth, sc query spooler, sc qc spooler, net stop spooler, net start spooler, del /q %systemroot%\\system32\\spool\\printers\\*, attrib -h -r -s /s /d *.*, dir /a, eventvwr.msc, ssh admin@10.10.1.50, systemctl status nginx, systemctl restart nginx, net user jdoe /domain, unlock-adaccount -identity jdoe, set-adaccountpassword -identity jdoe -reset, tasklist /svc, wmic process get name,processid,parentprocessid, netstat -ano",
+      kind: "hint",
+      known: true
+    };
+  }
+  if (cmd === "clear") {
+    return { output: "__CLEAR__", kind: "output", known: true };
+  }
+  if (/^ipconfig( \/all)?$/.test(cmd)) {
+    return {
+      output:
+        "Windows IP Configuration\nEthernet adapter: Connected\nIPv4 Address: 192.168.1.42\nSubnet Mask: 255.255.255.0\nDefault Gateway: 192.168.1.1\nDNS Servers: 8.8.8.8, 1.1.1.1",
+      kind: "output",
+      known: true
+    };
+  }
+  if (cmd === "ipconfig /release") {
+    return { output: "Releasing adapter configuration... done.", kind: "output", known: true };
+  }
+  if (cmd === "ipconfig /renew") {
+    return { output: "Renewing adapter configuration... lease acquired: 192.168.1.42", kind: "success", known: true };
+  }
+  if (cmd === "ipconfig /flushdns") {
+    return { output: "Successfully flushed DNS Resolver Cache.", kind: "success", known: true };
+  }
+  if (cmd === "nslookup google.com") {
+    return {
+      output: "Server: dns.company.local\nAddress: 10.10.10.53\nNon-authoritative answer:\nName: google.com\nAddresses: 142.250.190.14",
+      kind: "output",
+      known: true
+    };
+  }
+  if (cmd === "ping 8.8.8.8") {
+    return { output: "Reply from 8.8.8.8: bytes=32 time=18ms TTL=118", kind: "output", known: true };
+  }
+  if (cmd === "ping google.com") {
+    return { output: "Pinging google.com [142.250.190.14]...\nReply from 142.250.190.14: bytes=32 time=21ms TTL=117", kind: "output", known: true };
+  }
+  if (cmd === "ping 192.168.1.1") {
+    return { output: "Reply from 192.168.1.1: bytes=32 time<1ms TTL=64", kind: "output", known: true };
+  }
+  if (cmd === "tracert google.com") {
+    return { output: "Tracing route to google.com\n1   1 ms  192.168.1.1\n2  12 ms  ISP edge\n3  19 ms  core transit\n4  21 ms  google.com", kind: "output", known: true };
+  }
+  if (cmd === "tasklist /v") {
+    return { output: "Image Name                 PID  CPU Time  Mem Usage  Status\nSearchIndexer.exe         4112  00:08:11   412,344 K  Running\nMsMpEng.exe               2284  00:03:17   276,220 K  Running", kind: "output", known: true };
+  }
+  if (cmd === "wmic startup get caption,command") {
+    return { output: "Caption                    Command\nOneDrive                   C:\\Program Files\\Microsoft OneDrive\\OneDrive.exe /background\nTeams                      C:\\Users\\Public\\Teams\\Update.exe --processStart Teams.exe", kind: "output", known: true };
+  }
+  if (cmd === "wmic logicaldisk get name,volumename,description") {
+    return { output: "Description       Name  VolumeName\nLocal Fixed Disk  C:    OS\nRemovable Disk    E:    USB_RECOVERY", kind: "output", known: true };
+  }
+  if (cmd === "wmic logicaldisk get caption,freespace,size") {
+    return { output: "Caption  FreeSpace      Size\nC:       11824578560    255030124544\nD:       742552641536   1000202039296", kind: "output", known: true };
+  }
+  if (cmd === "cleanmgr") {
+    return { output: "Disk Cleanup launched...\nTemporary files removed: 4.3 GB\nWindows Update cache removed: 1.9 GB", kind: "success", known: true };
+  }
+  if (cmd === "sfc /scannow") {
+    return { output: "Beginning system scan. This process will take some time.\nVerification 100% complete.\nWindows Resource Protection found corrupt files and successfully repaired them.", kind: "success", known: true };
+  }
+  if (cmd === "dism /online /cleanup-image /restorehealth") {
+    return { output: "Deployment Image Servicing and Management tool\n[==========================100.0%==========================]\nThe restore operation completed successfully.", kind: "success", known: true };
+  }
+  if (cmd === "dism /online /cleanup-image /startcomponentcleanup") {
+    return { output: "Component Store cleanup completed.\nReclaimable packages removed.", kind: "success", known: true };
+  }
+  if (cmd === "wmic printer get name,workoffline") {
+    return { output: "Name              WorkOffline\nHP LaserJet Pro   TRUE", kind: "output", known: true };
+  }
+  if (cmd === "get-service spooler" || cmd === "sc query spooler") {
+    return { output: "SERVICE_NAME: spooler\nSTATE              : 1  STOPPED", kind: "output", known: true };
+  }
+  if (cmd === "sc qc spooler") {
+    return { output: "SERVICE_NAME: spooler\nSTART_TYPE         : AUTO_START\nDEPENDENCIES       : RPCSS", kind: "output", known: true };
+  }
+  if (cmd === "net stop spooler") {
+    return { output: "The Print Spooler service was stopped successfully.", kind: "success", known: true };
+  }
+  if (cmd === "net start spooler") {
+    return { output: "The Print Spooler service was started successfully.", kind: "success", known: true };
+  }
+  if (cmd === "del /q %systemroot%\\system32\\spool\\printers\\*") {
+    return { output: "Deleted queued spool files from C:\\Windows\\System32\\spool\\PRINTERS", kind: "success", known: true };
+  }
+  if (cmd === "attrib -h -r -s /s /d *.*") {
+    return { output: "File attributes updated. Hidden/system/read-only flags removed.", kind: "success", known: true };
+  }
+  if (cmd === "dir /a") {
+    return { output: "Directory of E:\\\n05/08/2026  08:42 AM    <DIR>          .\n05/08/2026  08:42 AM    <DIR>          ..\n05/08/2026  08:37 AM           253,944 Q3_Budget_Final.xlsx", kind: "output", known: true };
+  }
+  if (cmd === "xcopy *.* recovered /e /i /h") {
+    return { output: "32 File(s) copied to E:\\recovered", kind: "success", known: true };
+  }
+  if (cmd === "net user jdoe /domain") {
+    return { output: "User name                    jdoe\nAccount active               Yes\nAccount expires              Never\nPassword last set            05/08/2026 08:11", kind: "output", known: true };
+  }
+  if (cmd === "search-adaccount -lockedout") {
+    return { output: "SamAccountName  ObjectClass\njdoe            user", kind: "output", known: true };
+  }
+  if (cmd === "unlock-adaccount -identity jdoe") {
+    return { output: "Account 'jdoe' unlocked successfully.", kind: "success", known: true };
+  }
+  if (cmd === "set-adaccountpassword -identity jdoe -reset") {
+    return { output: "Temporary password reset completed for jdoe.", kind: "success", known: true };
+  }
+  if (cmd === "ssh admin@10.10.1.50") {
+    return { output: "Connected to web-prod-01 (10.10.1.50).", kind: "output", known: true };
+  }
+  if (cmd === "systemctl status nginx") {
+    return { output: "● nginx.service - nginx\n   Loaded: loaded\n   Active: failed (Result: exit-code)\n   Docs: man:nginx(8)", kind: "error", known: true };
+  }
+  if (cmd === "tail -n 50 /var/log/nginx/error.log") {
+    return { output: "[emerg] bind() to 0.0.0.0:443 failed (98: Address already in use)", kind: "error", known: true };
+  }
+  if (cmd === "netstat -tulpn | grep 443") {
+    return { output: "tcp 0 0 0.0.0.0:443 0.0.0.0:* LISTEN 8821/orphan-httpd", kind: "output", known: true };
+  }
+  if (cmd === "systemctl restart nginx") {
+    return { output: "nginx restarted successfully.\nActive: active (running)", kind: "success", known: true };
+  }
+  if (cmd === "tasklist /svc") {
+    return { output: "Image Name                 PID  Services\nsvchost.exe               1120  Dnscache\nexplorer.exe              5584  N/A\nunknownproc.exe           7724  N/A", kind: "output", known: true };
+  }
+  if (cmd === "wmic process get name,processid,parentprocessid") {
+    return { output: "Name               ParentProcessId  ProcessId\nunknownproc.exe     5584             7724\npowershell.exe      3500             9044", kind: "output", known: true };
+  }
+  if (cmd === "netstat -ano") {
+    return { output: "TCP 10.10.10.25:49722 198.51.100.12:443 ESTABLISHED 7724", kind: "output", known: true };
+  }
+  if (cmd === "mrt /f:y") {
+    return { output: "Microsoft Malicious Software Removal Tool\nFull scan completed.\nThreats detected: 0", kind: "success", known: true };
+  }
+  if (cmd === "eventvwr.msc") {
+    return { output: "Event Viewer opened. Review System/Application logs near incident timestamp.", kind: "output", known: true };
+  }
+  if (cmd === "nslookup intranet.company.local") {
+    return { output: "Server: dns.company.local\nAddress: 10.10.10.53\nName: intranet.company.local\nAddress: 10.10.1.50", kind: "output", known: true };
+  }
+  if (cmd === "ping 10.10.1.50") {
+    return { output: "Request timed out.\nRequest timed out.\nPackets: Sent = 4, Received = 0, Lost = 4 (100% loss)", kind: "error", known: true };
+  }
+  return {
+    output: `'${command}' is not recognized in this simulation context. Type 'help' for supported commands.`,
+    kind: "error",
+    known: false
+  };
+}
+
+function classifyTerminalOutput(output = "") {
+  const text = String(output || "").toLowerCase();
+  if (!text) return "output";
+  if (text.includes("not recognized") || text.includes("error") || text.includes("failed")) return "error";
+  if (text.includes("success") || text.includes("completed") || text.includes("repaired") || text.includes("resolved")) return "success";
+  return "output";
+}
+
+function formatTerminalCommandForDisplay(cmd = "") {
+  const text = String(cmd || "").trim();
+  if (!text) {
+    return "";
+  }
+  return text;
+}
+
+function stripHtml(value = "") {
+  return String(value || "").replace(/<[^>]+>/g, "").trim();
+}
 
 const SIM_ACTION_LIBRARY = {
   network: [
@@ -223,6 +579,7 @@ function createSession(title = "New Chat") {
     messages: [],
     actionableAiMessageId: null,
     hasSimulation: false,
+    userEditCount: 0,
     isFavorite: false,
     simulationStepsByMessage: {},
     simulationCanvasByMessage: {},
@@ -250,6 +607,7 @@ function normalizeLoadedSession(session, idx) {
     messages: parsedMessages,
     actionableAiMessageId: session?.actionableAiMessageId || null,
     hasSimulation: Boolean(session?.hasSimulation),
+    userEditCount: Math.max(0, Number(session?.userEditCount || 0)),
     isFavorite: Boolean(session?.isFavorite),
     simulationStepsByMessage:
       session?.simulationStepsByMessage && typeof session.simulationStepsByMessage === "object"
@@ -318,6 +676,12 @@ function SuggestionIcon({ label }) {
     ),
     server: (
       <path d="M4 5h16v4H4zm0 6h16v4H4zm0 6h16v2H4M7 7h2m0 6h2" />
+    ),
+    files: (
+      <path d="M6 3h8l4 4v14H6zM14 3v5h5M8 13h8M8 17h8" />
+    ),
+    software: (
+      <path d="M4 7h16v10H4zM9 7V5h6v2M8 12h8M12 10v4" />
     )
   };
 
@@ -378,16 +742,18 @@ function detectScenarioTypeFromContext({ steps = [], sourceText = "", firstPromp
   return inferScenarioType(`${firstPromptText} ${sourceText} ${joinedSteps}`);
 }
 
-function createSimulationCanvasState(steps, scenarioType) {
+function createSimulationCanvasState(steps, scenarioType, meta = {}) {
   const safeSteps = Array.isArray(steps) ? steps : [];
   return {
     scenarioType: scenarioType || "general",
+    simulationId: meta?.simulationId || "",
+    ticketTitle: meta?.ticketTitle || "",
     currentIndex: 0,
     completed: safeSteps.map(() => false),
     evidence: [],
     actionsTakenByStep: safeSteps.map(() => []),
+    stepOutcomes: safeSteps.map(() => null),
     resolved: false,
-    environmentState: createEnvironmentStateForScenario(scenarioType || "general"),
     createdAt: new Date().toISOString()
   };
 }
@@ -396,18 +762,19 @@ function normalizeSimulationCanvasState(state, steps, fallbackType) {
   const safeSteps = Array.isArray(steps) ? steps : [];
   const completed = Array.isArray(state?.completed) ? state.completed : [];
   const actions = Array.isArray(state?.actionsTakenByStep) ? state.actionsTakenByStep : [];
+  const outcomes = Array.isArray(state?.stepOutcomes) ? state.stepOutcomes : [];
 
   return {
     scenarioType: state?.scenarioType || fallbackType || "general",
+    simulationId: state?.simulationId || "",
+    ticketTitle: state?.ticketTitle || "",
     currentIndex: Number.isInteger(state?.currentIndex) ? Math.max(0, state.currentIndex) : 0,
     completed: safeSteps.map((_, idx) => Boolean(completed[idx])),
     evidence: Array.isArray(state?.evidence) ? state.evidence : [],
     actionsTakenByStep: safeSteps.map((_, idx) => (Array.isArray(actions[idx]) ? actions[idx] : [])),
+    stepOutcomes: safeSteps.map((_, idx) => (outcomes[idx] && typeof outcomes[idx] === "object" ? outcomes[idx] : null)),
     resolved: Boolean(state?.resolved),
-    environmentState: normalizeEnvironmentStateForScenario(
-      state?.environmentState,
-      state?.scenarioType || fallbackType || "general"
-    ),
+    stepDetails: Array.isArray(state?.stepDetails) ? state.stepDetails : [],
     createdAt: state?.createdAt || new Date().toISOString()
   };
 }
@@ -433,7 +800,10 @@ export default function DashboardPage() {
   const location = useLocation();
   const chatWrapRef = useRef(null);
   const textareaRef = useRef(null);
+  const editTextareaRef = useRef(null);
   const accountMenuRef = useRef(null);
+  const terminalBodyRef = useRef(null);
+  const autoAdvanceTimeoutRef = useRef(null);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sessions, setSessions] = useState([]);
@@ -441,18 +811,29 @@ export default function DashboardPage() {
   const [typing, setTyping] = useState(false);
   const [input, setInput] = useState("");
   const [sessionsHydrated, setSessionsHydrated] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editingText, setEditingText] = useState("");
+  const [copiedMessageId, setCopiedMessageId] = useState("");
 
   const [stepModalOpen, setStepModalOpen] = useState(false);
   const [modalSteps, setModalSteps] = useState([]);
+  const [modalStepDetails, setModalStepDetails] = useState([]);
   const [modalSourceTitle, setModalSourceTitle] = useState("AI Response");
   const [modalActiveStep, setModalActiveStep] = useState(0);
   const [modalMessageId, setModalMessageId] = useState(null);
   const [modalCanvasState, setModalCanvasState] = useState(null);
+  const [modalTerminalInput, setModalTerminalInput] = useState("");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [openSessionMenuId, setOpenSessionMenuId] = useState(null);
   const [theme, setTheme] = useState("dark");
+  const [showSimulationCatalog, setShowSimulationCatalog] = useState(false);
+  const [mobileView, setMobileView] = useState(false);
 
   const denied = useMemo(() => new URLSearchParams(location.search).get("denied") === "1", [location.search]);
+  const requestedSessionId = useMemo(
+    () => new URLSearchParams(location.search).get("session") || "",
+    [location.search]
+  );
   const storageKey = useMemo(
     () => (user?.id ? `${SESSION_STORAGE_PREFIX}${user.id}` : null),
     [user?.id]
@@ -477,6 +858,25 @@ export default function DashboardPage() {
   useEffect(() => {
     localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+    const media = window.matchMedia("(max-width: 880px)");
+    const syncLayout = (eventOrMedia) => {
+      const isMobile = Boolean(eventOrMedia.matches);
+      setMobileView(isMobile);
+      setSidebarCollapsed(isMobile);
+    };
+    syncLayout(media);
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", syncLayout);
+      return () => media.removeEventListener("change", syncLayout);
+    }
+    media.addListener(syncLayout);
+    return () => media.removeListener(syncLayout);
+  }, []);
 
   useEffect(() => {
     const onPointerDown = (event) => {
@@ -534,11 +934,21 @@ export default function DashboardPage() {
   }, [sessions, sessionsHydrated, storageKey]);
 
   useEffect(() => {
+    if (!sessionsHydrated || !requestedSessionId) {
+      return;
+    }
+    const exists = sessions.some((session) => session.id === requestedSessionId);
+    if (exists && activeSessionId !== requestedSessionId) {
+      setActiveSessionId(requestedSessionId);
+    }
+  }, [sessionsHydrated, requestedSessionId, sessions, activeSessionId]);
+
+  useEffect(() => {
     if (!chatWrapRef.current) {
       return;
     }
     chatWrapRef.current.scrollTop = chatWrapRef.current.scrollHeight;
-  }, [messages, typing]);
+  }, [messages.length, typing, activeSessionId]);
 
   const ensureSession = () => {
     if (currentSession) {
@@ -556,7 +966,149 @@ export default function DashboardPage() {
       return;
     }
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, MAX_COMPOSER_HEIGHT)}px`;
+  };
+
+  const autoResizeEditTextarea = () => {
+    const el = editTextareaRef.current;
+    if (!el) {
+      return;
+    }
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 360)}px`;
+  };
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) {
+      return;
+    }
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, MAX_COMPOSER_HEIGHT)}px`;
+  }, [input, showWelcome, showSimulationCatalog]);
+
+  useEffect(() => {
+    autoResizeEditTextarea();
+  }, [editingMessageId, editingText]);
+
+  const updateMessageById = (messageId, updater) => {
+    let didUpdate = false;
+    setSessions((prev) =>
+      prev.map((session) => {
+        let touched = false;
+        const nextMessages = session.messages.map((message) => {
+          if (message.id !== messageId) {
+            return message;
+          }
+          touched = true;
+          return updater(message, session);
+        });
+        if (!touched) {
+          return session;
+        }
+        didUpdate = true;
+        return {
+          ...session,
+          updatedAt: new Date().toISOString(),
+          messages: nextMessages
+        };
+      })
+    );
+    return didUpdate;
+  };
+
+  const copyText = async (messageId, text) => {
+    const payload = String(text || "").trim();
+    if (!payload) {
+      return;
+    }
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(payload);
+      } else {
+        const fallback = document.createElement("textarea");
+        fallback.value = payload;
+        fallback.setAttribute("readonly", "");
+        fallback.style.position = "absolute";
+        fallback.style.left = "-9999px";
+        document.body.appendChild(fallback);
+        fallback.select();
+        document.execCommand("copy");
+        document.body.removeChild(fallback);
+      }
+      setCopiedMessageId(messageId);
+      window.setTimeout(() => {
+        setCopiedMessageId((prev) => (prev === messageId ? "" : prev));
+      }, 1400);
+    } catch (_err) {
+      setCopiedMessageId("");
+    }
+  };
+
+  const startEditingUserMessage = (msg) => {
+    const remaining = Math.max(0, 2 - Number(currentSession?.userEditCount || 0));
+    if (remaining <= 0) {
+      return;
+    }
+    setEditingMessageId(msg.id);
+    setEditingText(String(msg.text || ""));
+  };
+
+  const cancelEditingUserMessage = () => {
+    setEditingMessageId(null);
+    setEditingText("");
+  };
+
+  const saveEditedUserMessage = () => {
+    const nextText = editingText.trim();
+    if (!editingMessageId || !nextText) {
+      return;
+    }
+    setSessions((prev) =>
+      prev.map((session) => {
+        const messageExists = session.messages.some((message) => message.id === editingMessageId);
+        if (!messageExists) {
+          return session;
+        }
+        const currentEditCount = Math.max(0, Number(session.userEditCount || 0));
+        if (currentEditCount >= 2) {
+          return session;
+        }
+        return {
+          ...session,
+          updatedAt: new Date().toISOString(),
+          userEditCount: currentEditCount + 1,
+          messages: session.messages.map((message) =>
+            message.id === editingMessageId
+              ? {
+                  ...message,
+                  text: nextText,
+                  time: formatTime()
+                }
+              : message
+          )
+        };
+      })
+    );
+    setEditingMessageId(null);
+    setEditingText("");
+  };
+
+  const toggleStepCompletion = (messageId, stepIndex, stepCount) => {
+    if (!Number.isInteger(stepIndex) || stepIndex < 0 || stepIndex >= stepCount) {
+      return;
+    }
+    updateMessageById(messageId, (message) => {
+      const completion = Array.from(
+        { length: stepCount },
+        (_, idx) => Boolean(Array.isArray(message.stepCompletion) ? message.stepCompletion[idx] : false)
+      );
+      completion[stepIndex] = !completion[stepIndex];
+      return {
+        ...message,
+        stepCompletion: completion
+      };
+    });
   };
 
   const appendMessageToSession = (sessionId, message) => {
@@ -590,7 +1142,9 @@ export default function DashboardPage() {
       role: "ai",
       type,
       text: cleanedText,
-      time: formatTime()
+      time: formatTime(),
+      userPromptText: String(context?.userPromptText || ""),
+      firstPromptText: String(context?.firstPromptText || "")
     });
     setSessions((prev) =>
       prev.map((session) =>
@@ -687,11 +1241,76 @@ export default function DashboardPage() {
     }
   };
 
-  const askQuestion = async (question) => {
-    await sendMessage(question);
+  const startSuggestedSimulation = (suggestion) => {
+    setShowSimulationCatalog(false);
+    const simulationId = SUGGESTED_SIMULATION_MAP[suggestion?.title];
+    if (!simulationId || !simulations[simulationId]) {
+      sendMessage(suggestion?.question || "");
+      return;
+    }
+
+    const targetSession = ensureSession();
+    const sessionId = targetSession.id;
+    const sim = simulations[simulationId];
+    const userMessageId = `${Date.now()}-user-suggested`;
+    const aiMessageId = `${Date.now()}-ai-sim`;
+    const steps = sim.steps.map((step) => step.title);
+    const scenarioType = inferScenarioType(`${suggestion?.question || ""} ${sim.title} ${steps.join(" ")}`);
+    const canvasState = {
+      ...createSimulationCanvasState(steps, scenarioType, {
+        simulationId,
+        ticketTitle: suggestion?.title || ""
+      }),
+      stepDetails: sim.steps
+    };
+
+    appendMessageToSession(sessionId, {
+      id: userMessageId,
+      role: "user",
+      type: "text",
+      text: suggestion.question,
+      time: formatTime()
+    });
+
+    appendMessageToSession(sessionId, {
+      id: aiMessageId,
+      role: "ai",
+      type: "sim-module",
+      text: `Simulation module loaded: ${sim.title}`,
+      time: formatTime()
+    });
+
+    setSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              hasSimulation: true,
+              simulationStepsByMessage: {
+                ...session.simulationStepsByMessage,
+                [aiMessageId]: steps
+              },
+              simulationCanvasByMessage: {
+                ...session.simulationCanvasByMessage,
+                [aiMessageId]: canvasState
+              }
+            }
+          : session
+      )
+    );
+
+    openStepModalWithData({
+      messageId: aiMessageId,
+      sourceTitle: `Terminal Ticketing | ${sim.title}`,
+      steps,
+      scenarioType,
+      canvasState,
+      stepDetails: sim.steps
+    });
   };
 
   const startNewSession = () => {
+    setShowSimulationCatalog(false);
     setOpenSessionMenuId(null);
     if (currentSession && currentSession.messages.length === 0) {
       return;
@@ -799,6 +1418,24 @@ export default function DashboardPage() {
     return sentenceFallback.length > 0 ? sentenceFallback : ["No steps detected from this response."];
   };
 
+  const openStepModalWithData = ({
+    messageId,
+    sourceTitle,
+    steps,
+    scenarioType,
+    canvasState,
+    stepDetails = []
+  }) => {
+    setModalSteps(steps);
+    setModalStepDetails(stepDetails);
+    setModalActiveStep(0);
+    setModalMessageId(messageId);
+    setModalCanvasState(canvasState);
+    setModalSourceTitle(sourceTitle);
+    setModalTerminalInput("");
+    setStepModalOpen(true);
+  };
+
   const openStepModalFromMessage = (msg) => {
     const existingSteps = currentSession?.simulationStepsByMessage?.[msg.id];
     const steps = existingSteps || extractStepsFromAiText(msg.text);
@@ -818,12 +1455,14 @@ export default function DashboardPage() {
       ? normalizeSimulationCanvasState(existingCanvas, steps, scenarioType)
       : createSimulationCanvasState(steps, scenarioType);
 
-    setModalSteps(steps);
-    setModalActiveStep(0);
-    setModalMessageId(msg.id);
-    setModalCanvasState(canvasState);
-    setModalSourceTitle("AI Response Steps");
-    setStepModalOpen(true);
+    openStepModalWithData({
+      messageId: msg.id,
+      sourceTitle: "AI Response Steps",
+      steps,
+      scenarioType,
+      canvasState,
+      stepDetails: existingCanvas?.stepDetails || []
+    });
 
     if (currentSession) {
       setSessions((prev) =>
@@ -852,12 +1491,17 @@ export default function DashboardPage() {
     ? modalCanvasState.currentIndex
     : modalActiveStep;
   const modalSafeStep = modalStepCount > 0 ? Math.min(Math.max(0, modalRuntimeIndex), modalStepCount - 1) : 0;
-  const modalProgress = modalStepCount > 0 ? Math.round(((modalSafeStep + 1) / modalStepCount) * 100) : 0;
   const modalCompletedCount = Array.isArray(modalCanvasState?.completed)
     ? modalCanvasState.completed.filter(Boolean).length
     : 0;
   const modalResolved = Boolean(modalCanvasState?.resolved);
   const modalCompletionPct = modalStepCount > 0 ? Math.round((modalCompletedCount / modalStepCount) * 100) : 0;
+  const modalProgress = modalCompletionPct;
+  const modalNextRequiredStep = Array.isArray(modalCanvasState?.completed)
+    ? modalCanvasState.completed.findIndex((done) => !done)
+    : 0;
+  const modalRequiredStep =
+    modalStepCount > 0 ? (modalNextRequiredStep === -1 ? modalStepCount - 1 : modalNextRequiredStep) : 0;
 
   const syncModalCanvasState = (updater) => {
     setModalCanvasState((prev) => {
@@ -897,128 +1541,291 @@ export default function DashboardPage() {
     }));
   };
 
-  const markCurrentStepComplete = () => {
-    if (modalStepCount <= 0) {
+  const runTerminalCommand = () => {
+    const command = modalTerminalInput.trim();
+    if (!command || modalStepCount <= 0) {
       return;
     }
+
+    const normalizedCommand = normalizeCommand(command);
+    const isUtilityCommand = ["help", "clear"].includes(normalizedCommand);
+    if (!isUtilityCommand && modalSafeStep !== modalRequiredStep) {
+      const requiredStepDetail = modalStepDetails[modalRequiredStep] || {};
+      const requiredCommands = extractExpectedCommands(modalSteps[modalRequiredStep] || "", requiredStepDetail, {
+        stepIndex: modalRequiredStep,
+        simulationId: modalCanvasState?.simulationId || "",
+        ticketTitle: modalCanvasState?.ticketTitle || ""
+      });
+      syncModalCanvasState((prev) => {
+        const actionsByStep = prev.actionsTakenByStep.map((bucket) => [...bucket]);
+        actionsByStep[modalSafeStep] = [
+          ...(actionsByStep[modalSafeStep] || []),
+          {
+            label: `Command: ${command}`,
+            output: "",
+            time: formatTime(),
+            kind: "command"
+          },
+          {
+            label: "Output",
+            output: `Step order enforced. Complete Step ${modalRequiredStep + 1} first.`,
+            time: formatTime(),
+            kind: "error"
+          },
+          {
+            label: "Hint",
+            output: `Use Step ${modalRequiredStep + 1} commands: ${requiredCommands
+              .slice(0, 4)
+              .map(formatTerminalCommandForDisplay)
+              .join(", ")}`,
+            time: formatTime(),
+            kind: "hint"
+          }
+        ];
+        return {
+          ...prev,
+          actionsTakenByStep: actionsByStep
+        };
+      });
+      setModalTerminalInput("");
+      return;
+    }
+
+    const stepDetail = modalStepDetails[modalSafeStep] || {};
+    const expectedCommands = extractExpectedCommands(modalSteps[modalSafeStep] || "", stepDetail, {
+      stepIndex: modalSafeStep,
+      simulationId: modalCanvasState?.simulationId || "",
+      ticketTitle: modalCanvasState?.ticketTitle || ""
+    });
+    const matchesExpected = expectedCommands.some((expected) => normalizedCommand === expected);
+    const stepAlreadyCompleted = Boolean(modalCanvasState?.completed?.[modalSafeStep]);
+    const shouldScheduleAdvance = matchesExpected && !stepAlreadyCompleted;
+    const simulation = simulateTerminalCommand(command, modalCanvasState?.scenarioType || "general");
+    const output = simulation.output;
+
     syncModalCanvasState((prev) => {
+      const actionsByStep = prev.actionsTakenByStep.map((bucket) => [...bucket]);
+      const stepOutcomes = Array.isArray(prev.stepOutcomes)
+        ? prev.stepOutcomes.map((item) => (item ? { ...item } : null))
+        : modalSteps.map(() => null);
+      const nextEntries = [];
+      const playbook = getSimulationPlaybook({
+        ticketTitle: prev?.ticketTitle || "",
+        simulationId: prev?.simulationId || ""
+      });
+      const playbookStep = Array.isArray(playbook) ? playbook[modalSafeStep] : null;
+
+      if (output === "__CLEAR__") {
+        actionsByStep[modalSafeStep] = [];
+      } else {
+        nextEntries.push(
+          {
+            label: `Command: ${command}`,
+            output: "",
+            time: formatTime(),
+            kind: "command"
+          },
+          {
+            label: "Output",
+            output,
+            time: formatTime(),
+            kind: simulation.kind || classifyTerminalOutput(output)
+          }
+        );
+
+        if (matchesExpected && playbookStep?.result) {
+          nextEntries.push({
+            label: "Step Result",
+            output: `Result: ${playbookStep.result}`,
+            time: formatTime(),
+            kind: "success"
+          });
+        }
+
+        if (!matchesExpected && !["help", "clear"].includes(normalizedCommand)) {
+          const guide = expectedCommands.slice(0, 4).map(formatTerminalCommandForDisplay).join(", ");
+          nextEntries.push({
+            label: "Hint",
+            output: simulation.known
+              ? `Command executed, but not for this step. Try: ${guide}`
+              : `Wrong command for this step. Try: ${guide}`,
+            time: formatTime(),
+            kind: "hint"
+          });
+        }
+        actionsByStep[modalSafeStep] = [...(actionsByStep[modalSafeStep] || []), ...nextEntries];
+      }
+
       const completed = [...prev.completed];
-      completed[modalSafeStep] = true;
-      const allDone = completed.every(Boolean);
+      if (matchesExpected) {
+        completed[modalSafeStep] = true;
+        const explanation = stripHtml(
+          playbookStep?.explanation
+          || modalStepDetails[modalSafeStep]?.action
+          || modalStepDetails[modalSafeStep]?.desc
+          || `This command is required to complete Step ${modalSafeStep + 1}.`
+        );
+        stepOutcomes[modalSafeStep] = {
+          command,
+          result: playbookStep?.result || output,
+          explanation,
+          time: formatTime()
+        };
+      }
+
       return {
         ...prev,
         completed,
-        resolved: allDone,
-        evidence: [
-          ...prev.evidence,
-          {
-            type: "status",
-            message: `Marked step ${modalSafeStep + 1} as completed.`,
-            time: formatTime()
-          }
-        ]
-      };
-    });
-  };
-
-  const moveModalStep = (delta) => {
-    if (modalStepCount <= 0) {
-      return;
-    }
-    setModalStepIndex(modalSafeStep + delta);
-  };
-
-  const handleModalAction = (action) => {
-    if (!action) {
-      return;
-    }
-    syncModalCanvasState((prev) => {
-      const actionsByStep = prev.actionsTakenByStep.map((bucket) => [...bucket]);
-      actionsByStep[modalSafeStep] = [
-        ...(actionsByStep[modalSafeStep] || []),
-        {
-          label: action.label,
-          output: action.output,
-          time: formatTime()
-        }
-      ];
-      return {
-        ...prev,
-        environmentState: applyActionToEnvironment(prev.scenarioType, prev.environmentState, action),
+        stepOutcomes,
+        resolved: completed.every(Boolean),
         actionsTakenByStep: actionsByStep,
-        evidence: [
-          ...prev.evidence,
-          {
-            type: "action",
-            message: `${action.label}: ${action.output}`,
-            time: formatTime()
-          }
-        ]
+        evidence: output === "__CLEAR__"
+          ? prev.evidence
+          : [
+              ...prev.evidence,
+              {
+                type: "terminal",
+                message: `${command} -> ${output}`,
+                time: formatTime()
+              }
+            ]
       };
     });
-  };
 
-  const handleHardwareSceneControl = (control) => {
-    if (!control || !control.enabled) {
-      return;
-    }
-    syncModalCanvasState((prev) => {
-      const actionsByStep = prev.actionsTakenByStep.map((bucket) => [...bucket]);
-      actionsByStep[modalSafeStep] = [
-        ...(actionsByStep[modalSafeStep] || []),
-        {
-          label: control.label,
-          output: control.output,
-          time: formatTime()
-        }
-      ];
-      return {
-        ...prev,
-        environmentState: applyHardwareControlToEnvironment(prev.environmentState, control.id),
-        actionsTakenByStep: actionsByStep,
-        evidence: [
-          ...prev.evidence,
-          {
-            type: "action",
-            message: `${control.label}: ${control.output}`,
-            time: formatTime()
+    if (shouldScheduleAdvance) {
+      if (autoAdvanceTimeoutRef.current) {
+        clearTimeout(autoAdvanceTimeoutRef.current);
+      }
+      autoAdvanceTimeoutRef.current = setTimeout(() => {
+        autoAdvanceTimeoutRef.current = null;
+        syncModalCanvasState((prev) => {
+          if (!prev) {
+            return prev;
           }
-        ]
-      };
-    });
+          const nextRequiredStep = Array.isArray(prev.completed)
+            ? prev.completed.findIndex((done) => !done)
+            : -1;
+          if (nextRequiredStep === -1 || nextRequiredStep === prev.currentIndex) {
+            return prev;
+          }
+          return {
+            ...prev,
+            currentIndex: nextRequiredStep
+          };
+        });
+      }, 5000);
+    }
+
+    setModalTerminalInput("");
   };
 
   const closeStepModal = () => {
+    if (autoAdvanceTimeoutRef.current) {
+      clearTimeout(autoAdvanceTimeoutRef.current);
+      autoAdvanceTimeoutRef.current = null;
+    }
     setStepModalOpen(false);
     setModalMessageId(null);
     setModalCanvasState(null);
+    setModalStepDetails([]);
+    setModalTerminalInput("");
   };
-
-  const modalStepActions = getActionsForStep(
-    modalCanvasState?.scenarioType || "general",
-    modalSteps[modalSafeStep] || ""
-  );
-  const modalHardwareControls =
-    (modalCanvasState?.scenarioType || "general") === "hardware"
-      ? getHardwareSceneControls(modalSteps[modalSafeStep] || "", modalCanvasState?.environmentState)
-      : [];
   const modalStepActionLog = modalCanvasState?.actionsTakenByStep?.[modalSafeStep] || [];
+  const modalStepOutcome = modalCanvasState?.stepOutcomes?.[modalSafeStep] || null;
+  const modalExpectedCommands = extractExpectedCommands(
+    modalSteps[modalSafeStep] || "",
+    modalStepDetails[modalSafeStep] || {},
+    {
+      stepIndex: modalSafeStep,
+      simulationId: modalCanvasState?.simulationId || "",
+      ticketTitle: modalCanvasState?.ticketTitle || ""
+    }
+  );
+
+  useEffect(() => {
+    if (!terminalBodyRef.current || !stepModalOpen) {
+      return;
+    }
+    terminalBodyRef.current.scrollTop = terminalBodyRef.current.scrollHeight;
+  }, [modalStepActionLog, modalSafeStep, stepModalOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceTimeoutRef.current) {
+        clearTimeout(autoAdvanceTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const parseProcessResponse = (text, context = {}) => {
     const normalized = normalizeAssistantText(text);
     const compactText = String(normalized || "").replace(/\s+/g, " ").trim();
     const userPromptText = String(context?.userPromptText || "");
     const firstPromptText = String(context?.firstPromptText || "");
+    const userIntentText = `${userPromptText} ${firstPromptText}`.trim();
     const contextText = `${compactText} ${userPromptText} ${firstPromptText}`.trim();
     const lines = String(normalized || "")
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);
 
-    const steps = lines
-      .filter((line) => /^(\d+[\).\:-]|[-*])\s+/.test(line))
-      .map((line) => line.replace(/^(\d+[\).\:-]|[-*])\s+/, "").trim())
-      .filter(Boolean);
+    const isStepLine = (line) =>
+      /^(\d+[\).\:-]|[-*])\s+/.test(line) || /^(#{1,6}\s*)?(step|phase)\s*\d+\s*[:\-]/i.test(line);
+    const cleanStepLine = (line) =>
+      String(line || "")
+        .replace(/^#{1,6}\s*/, "")
+        .replace(/^(\d+[\).\:-]|[-*])\s+/, "")
+        .replace(/^(step|phase)\s*\d+\s*[:\-]\s*/i, "")
+        .trim();
+
+    const parsedStepItems = [];
+    let activeStep = null;
+    for (const rawLine of lines) {
+      const line = String(rawLine || "").trim();
+      if (!line) {
+        continue;
+      }
+
+      if (isStepLine(line)) {
+        if (activeStep) {
+          parsedStepItems.push(activeStep);
+        }
+        const cleaned = cleanStepLine(line);
+        let title = cleaned;
+        let inlineContent = "";
+        const splitByColon = cleaned.split(/:\s+/);
+        if (splitByColon.length > 1) {
+          title = splitByColon.shift()?.trim() || cleaned;
+          inlineContent = splitByColon.join(": ").trim();
+        }
+        activeStep = {
+          title,
+          detailLines: inlineContent ? [inlineContent] : []
+        };
+        continue;
+      }
+
+      if (activeStep) {
+        if (/^[-_]{3,}$/.test(line)) {
+          continue;
+        }
+        activeStep.detailLines.push(line.replace(/^[-*]\s+/, "").trim());
+      }
+    }
+
+    if (activeStep) {
+      parsedStepItems.push(activeStep);
+    }
+
+    const stepItems = parsedStepItems
+      .map((step) => ({
+        title: step.title,
+        content: step.detailLines.filter(Boolean).join("\n").trim()
+      }))
+      .filter((step) => step.title)
+      .slice(0, 10);
+
+    const steps = stepItems.map((step) => step.title);
 
     const troubleHints = lines.filter((line) =>
       /(trouble|if .* issue|if .* fails|if this does not work|cannot|can't|unable)/i.test(line)
@@ -1043,11 +1850,26 @@ export default function DashboardPage() {
       /(install|installation|set up|setup|download|office\.com|sign in|subscription|product key|activate|trial|purchase|buy|tutorial|walkthrough|how do i install|how to install)/i.test(
         contextText
       );
+    const hasDefinitionIntent =
+      /(what is|what are|define|definition|meaning of|explain|overview of|introduction to|difference between)\b/i.test(
+        userIntentText
+      );
+    const hasExplicitStepRequest =
+      /(step by step|steps?|procedure|walk ?through|guide me|how to|troubleshoot|fix|resolve|diagnose|repair)\b/i.test(
+        userIntentText
+      );
     const isNonTroubleshootingGuide = hasSetupGuideIntent && !hasTroubleshootingIntent;
+    const hasActionableStepTone = /(check|verify|run|open|click|type|enter|press|restart|reset|enable|disable|update|flush|ping|tracert|navigate|go to|select|clear|remove|repair|diagnose|test)\b/i.test(
+      `${steps.join(" ")} ${compactText}`
+    );
+    const isDefinitionLike =
+      !hasTroubleshootingIntent &&
+      /(what is|definition|defined as|refers to|means|overview|concept|components?|types?)/i.test(contextText);
 
     return {
       intro,
       steps: steps.slice(0, 10),
+      stepItems,
       troubleHints: troubleHints.slice(0, 4),
       hasCodeBlock: /```[\s\S]*```/.test(String(normalized || "")),
       isClarificationRequest:
@@ -1059,6 +1881,10 @@ export default function DashboardPage() {
       asksForUserInput,
       hasTroubleshootingIntent,
       isNonTroubleshootingGuide,
+      hasDefinitionIntent,
+      hasExplicitStepRequest,
+      hasActionableStepTone,
+      isDefinitionLike,
       hasProcessCue: /(steps?|procedure|troubleshoot|follow|first|next|then|finally|check|verify|run)/i.test(
         String(normalized || "")
       )
@@ -1066,6 +1892,9 @@ export default function DashboardPage() {
   };
 
   const shouldRenderProcessCard = (parsed) => {
+    if (parsed.hasDefinitionIntent && !parsed.hasExplicitStepRequest) {
+      return false;
+    }
     if (parsed.isClarificationRequest) {
       return false;
     }
@@ -1075,13 +1904,13 @@ export default function DashboardPage() {
     if (parsed.isQuestionHeavyStepList && parsed.asksForUserInput) {
       return false;
     }
-    if (parsed.hasCodeBlock) {
+    if (parsed.isDefinitionLike) {
       return false;
     }
-    if (parsed.steps.length >= 2) {
+    if (parsed.steps.length >= 2 && (parsed.hasActionableStepTone || parsed.hasTroubleshootingIntent || parsed.hasProcessCue)) {
       return true;
     }
-    if (parsed.steps.length === 1 && parsed.hasProcessCue) {
+    if (parsed.steps.length === 1 && parsed.hasActionableStepTone && (parsed.hasTroubleshootingIntent || parsed.hasProcessCue)) {
       return true;
     }
     return false;
@@ -1098,21 +1927,115 @@ export default function DashboardPage() {
     return true;
   };
 
-  const renderMessageBody = (msg) => {
+  const renderMessageBody = (msg, msgIndex = -1) => {
     if (msg.role === "user") {
-      return <div className="user-bubble">{msg.text}</div>;
+      const remainingEdits = Math.max(0, 2 - Number(currentSession?.userEditCount || 0));
+      const isEditing = editingMessageId === msg.id;
+
+      if (isEditing) {
+        return (
+          <div className="user-bubble-block is-editing">
+            <div className="user-edit-card">
+              <textarea
+                ref={editTextareaRef}
+                value={editingText}
+                onChange={(event) => {
+                  setEditingText(event.target.value);
+                  autoResizeEditTextarea();
+                }}
+                className="user-edit-textarea"
+                rows={3}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    cancelEditingUserMessage();
+                  }
+                  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                    event.preventDefault();
+                    saveEditedUserMessage();
+                  }
+                }}
+              />
+              <div className="user-edit-actions">
+                <button className="mini-action-btn hd-btn-reset" type="button" onClick={cancelEditingUserMessage}>
+                  Cancel
+                </button>
+                <button
+                  className="mini-action-btn primary hd-btn-reset"
+                  type="button"
+                  onClick={saveEditedUserMessage}
+                  disabled={!editingText.trim()}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="user-bubble-block">
+          <div className="user-bubble">{msg.text}</div>
+          <div className="user-msg-actions">
+            <button
+              className={`mini-action-btn user-icon-btn hd-btn-reset ${copiedMessageId === msg.id ? "is-copied" : ""}`}
+              type="button"
+              onClick={() => copyText(msg.id, msg.text)}
+              aria-label="Copy user prompt"
+              title={copiedMessageId === msg.id ? "Copied" : "Copy prompt"}
+            >
+              {copiedMessageId === msg.id ? (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="9" y="9" width="10" height="10" rx="2" />
+                  <path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
+                </svg>
+              )}
+            </button>
+            <button
+              className="mini-action-btn user-icon-btn hd-btn-reset"
+              type="button"
+              onClick={() => startEditingUserMessage(msg)}
+              disabled={remainingEdits <= 0}
+              aria-label="Edit user prompt"
+              title={remainingEdits > 0 ? `Edit prompt (${remainingEdits} left)` : "Edit limit reached"}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 20h4l10-10-4-4L4 16v4z" />
+                <path d="M13 7l4 4" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      );
     }
 
     if (msg.type === "sim-choice") {
       return (
         <div className="msg-bubble">
-          <h3>Simulation Moved</h3>
+          <h3>Terminal Simulation Ready</h3>
           <p style={{ fontSize: "13px", color: "var(--text2)", marginBottom: 12 }}>
-            Simulations are now handled on the dedicated Simulations page.
+            Choose a suggested ticket and run it in the terminal simulation modal.
           </p>
-          <Link to="/simulations" className="create-sim-btn" style={{ textDecoration: "none" }}>
-            Open Simulations
-          </Link>
+          <span className="input-hint">Use suggested cards above to launch a module.</span>
+        </div>
+      );
+    }
+
+    if (msg.type === "sim-module") {
+      return (
+        <div className="msg-bubble">
+          <h3>Terminal Module Loaded</h3>
+          <p style={{ fontSize: "13px", color: "var(--text2)", marginBottom: 12 }}>
+            {msg.text}
+          </p>
+          <button className="create-sim-btn hd-btn-reset" onClick={() => openStepModalFromMessage(msg)}>
+            Open Simulation
+          </button>
         </div>
       );
     }
@@ -1132,50 +2055,97 @@ export default function DashboardPage() {
       );
     }
 
-    const parsed = parseProcessResponse(msg.text);
+    let fallbackUserPrompt = "";
+    if (msgIndex > 0 && Array.isArray(messages)) {
+      for (let i = msgIndex - 1; i >= 0; i -= 1) {
+        const previous = messages[i];
+        if (previous?.role === "user" && previous?.type === "text") {
+          fallbackUserPrompt = previous.text || "";
+          break;
+        }
+      }
+    }
+    const parsed = parseProcessResponse(msg.text, {
+      userPromptText: msg.userPromptText || fallbackUserPrompt || "",
+      firstPromptText: msg.firstPromptText || firstUserPrompt(messages) || ""
+    });
     const renderAsProcess = shouldRenderProcessCard(parsed);
+    const stepItems = Array.isArray(parsed.stepItems) && parsed.stepItems.length > 0
+      ? parsed.stepItems
+      : parsed.steps.map((step) => ({ title: step, content: "" }));
+    const totalSteps = Math.max(stepItems.length, 1);
+    const completion = Array.from(
+      { length: stepItems.length },
+      (_, idx) => Boolean(Array.isArray(msg.stepCompletion) ? msg.stepCompletion[idx] : false)
+    );
+    const completedCount = completion.filter(Boolean).length;
+    const progressPct = stepItems.length > 0 ? Math.round((completedCount / stepItems.length) * 100) : 0;
+    const activeStepIdx = stepItems.length > 0 ? completion.findIndex((done) => !done) : -1;
+    const activeStepNum = stepItems.length > 0 ? (activeStepIdx === -1 ? stepItems.length : activeStepIdx + 1) : 1;
+    const processCopyText = [
+      parsed.intro,
+      "",
+      ...stepItems.map((step, idx) => `${idx + 1}. ${step.title}${step.content ? `\n${step.content}` : ""}`),
+      ...(parsed.troubleHints.length > 0 ? ["", "Recommended next checks:", ...parsed.troubleHints.map((hint) => `- ${hint}`)] : [])
+    ]
+      .join("\n")
+      .trim();
 
     return (
       <>
         {renderAsProcess ? (
-          <div className="response-card">
-            <div className="response-top">
-              {/* <div className="issue-tag">IT Guided Troubleshooting</div> */}
-              {/* <div className="status-pill">Guided Process</div> */}
-            </div>
-
+          <div className="response-shell">
+            <div className="response-card">
             <div className="step-header">
-              <small>Step 1 of {Math.max(parsed.steps.length, 1)}</small>
-              <h2>{parsed.steps[0]?.split(":")[0] || "Start with these checks"}</h2>
+              <small>Step {activeStepNum} of {totalSteps}</small>
+              <h2>{stepItems[0]?.title || "Start with these checks"}</h2>
               <p>{parsed.intro}</p>
             </div>
 
             <div className="progress-wrap">
               <div className="progress-info">
-                <span>Initial checks</span>
-                <span>{Math.min(100, Math.max(20, Math.round(100 / Math.max(parsed.steps.length, 2))))}%</span>
+                <span>{completedCount === stepItems.length && stepItems.length > 0 ? "Completed" : "In progress"}</span>
+                <span>{progressPct}%</span>
               </div>
               <div className="progress-track">
                 <div
                   className="progress-fill"
                   style={{
-                    width: `${Math.min(100, Math.max(20, Math.round(100 / Math.max(parsed.steps.length, 2))))}%`
+                    width: `${progressPct}%`
                   }}
                 />
               </div>
             </div>
 
             <ul className="check-list">
-              {parsed.steps.map((step, idx) => {
-                const [head, ...tail] = step.split(":");
-                const hasDesc = tail.length > 0;
+              {stepItems.map((step, idx) => {
+                const hasDesc = Boolean(step.content);
+                const isActive = idx === activeStepIdx && !completion[idx];
                 return (
-                  <li key={`${step.slice(0, 24)}-${idx}`} className="check-item">
-                    <div className="check-number">{idx + 1}</div>
-                    <div>
-                      <h3>{hasDesc ? head.trim() : step}</h3>
-                      <p>{hasDesc ? tail.join(":").trim() : "Follow this step and confirm the result."}</p>
+                  <li
+                    key={`${step.title.slice(0, 24)}-${idx}`}
+                    className={`check-item ${completion[idx] ? "is-complete" : ""} ${isActive ? "is-active" : ""}`}
+                  >
+                    <div className="check-item-main">
+                      <div className={`check-number ${completion[idx] ? "is-complete" : ""}`}>{idx + 1}</div>
+                      <div>
+                        <h3>{step.title}</h3>
+                        <p style={{ whiteSpace: "pre-wrap" }}>
+                          {hasDesc ? step.content : "Follow this step and confirm the result."}
+                        </p>
+                      </div>
                     </div>
+                    <button
+                      className={`check-toggle-btn hd-btn-reset ${completion[idx] ? "is-complete" : ""} ${isActive ? "is-active" : ""}`}
+                      type="button"
+                      onClick={() => toggleStepCompletion(msg.id, idx, stepItems.length)}
+                      aria-label={`Mark step ${idx + 1} as ${completion[idx] ? "incomplete" : "complete"}`}
+                      title={completion[idx] ? "Completed" : "Mark complete"}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M5 13l4 4L19 7" />
+                      </svg>
+                    </button>
                   </li>
                 );
               })}
@@ -1193,15 +2163,54 @@ export default function DashboardPage() {
                 </div>
               </div>
             ) : null}
+            </div>
+            <div className="response-actions">
+              <button
+                className={`copy-btn copy-icon-btn hd-btn-reset ${copiedMessageId === msg.id ? "is-copied" : ""}`}
+                type="button"
+                onClick={() => copyText(msg.id, processCopyText)}
+                aria-label="Copy AI response"
+                title={copiedMessageId === msg.id ? "Copied" : "Copy"}
+              >
+                {copiedMessageId === msg.id ? (
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="9" y="9" width="10" height="10" rx="2" />
+                    <path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
         ) : (
-          <div className="response-card">
-            <div className="response-top">
-              {/* <div className="issue-tag">Helpdesk Response</div> */}
-              {/* <div className="status-pill">Answer</div> */}
+          <div className="response-shell">
+            <div className="response-card">
+              <div className="plain-answer" style={{ whiteSpace: "pre-wrap" }}>
+                {normalizeAssistantText(msg.text)}
+              </div>
             </div>
-            <div className="plain-answer" style={{ whiteSpace: "pre-wrap" }}>
-              {normalizeAssistantText(msg.text)}
+            <div className="response-actions">
+              <button
+                className={`copy-btn copy-icon-btn hd-btn-reset ${copiedMessageId === msg.id ? "is-copied" : ""}`}
+                type="button"
+                onClick={() => copyText(msg.id, normalizeAssistantText(msg.text))}
+                aria-label="Copy AI response"
+                title={copiedMessageId === msg.id ? "Copied" : "Copy"}
+              >
+                {copiedMessageId === msg.id ? (
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="9" y="9" width="10" height="10" rx="2" />
+                    <path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
+                  </svg>
+                )}
+              </button>
             </div>
           </div>
         )}
@@ -1212,10 +2221,14 @@ export default function DashboardPage() {
   const renderSessionCard = (session) => (
     <button
       key={session.id}
-      className={`session-item hd-btn-reset ${activeSessionId === session.id ? "active" : ""}`}
+      className={`session-item hd-btn-reset ${activeSessionId === session.id ? "active" : ""} ${openSessionMenuId === session.id ? "menu-open" : ""}`}
       onClick={() => {
+        setShowSimulationCatalog(false);
         setActiveSessionId(session.id);
         setOpenSessionMenuId(null);
+        if (mobileView) {
+          setSidebarCollapsed(true);
+        }
       }}
     >
       <div className="session-icon">
@@ -1287,10 +2300,10 @@ export default function DashboardPage() {
                   {modalSteps.map((step, idx) => (
                     <button
                       key={`${step.slice(0, 20)}-${idx}`}
-                      className={`step-modal-item hd-btn-reset ${idx === modalSafeStep ? "active" : ""}`}
+                      className={`step-modal-item hd-btn-reset ${idx === modalSafeStep ? "active" : ""} ${modalCanvasState?.completed?.[idx] ? "completed" : ""}`}
                       onClick={() => setModalStepIndex(idx)}
                     >
-                      <span className="step-modal-item-num">{idx + 1}</span>
+                      <span className="step-modal-item-num">{modalCanvasState?.completed?.[idx] ? "✓" : idx + 1}</span>
                       <span className="step-modal-item-text">{step}</span>
                     </button>
                   ))}
@@ -1315,51 +2328,97 @@ export default function DashboardPage() {
                     </span>
                   </div>
                   <div className="step-modal-current-text">{modalSteps[modalSafeStep] || "No steps available."}</div>
+                  {modalStepDetails[modalSafeStep]?.desc ? (
+                    <div className="step-modal-current-text step-modal-current-subtext" dangerouslySetInnerHTML={{ __html: modalStepDetails[modalSafeStep].desc }} />
+                  ) : null}
+                  {modalStepOutcome ? (
+                    <div className="step-result-card">
+                      <div className="step-result-title">Step Result</div>
+                      <div className="step-result-row">
+                        <strong>Command:</strong> <code>{modalStepOutcome.command}</code>
+                      </div>
+                      <div className="step-result-row">
+                        <strong>Result:</strong> {modalStepOutcome.result}
+                      </div>
+                      <div className="step-result-row">
+                        <strong>Why this command:</strong> {modalStepOutcome.explanation}
+                      </div>
+                      {modalCanvasState?.completed?.[modalSafeStep] && modalSafeStep !== modalRequiredStep && !modalResolved ? (
+                        <div className="step-result-row">
+                          Proceeding to next required step in 5 seconds...
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <div className="terminal-guide">
+                    <div className="terminal-guide-label">Suggested Commands For This Step</div>
+                    <div className="terminal-guide-list">
+                      {modalExpectedCommands.map((cmd) => (
+                        <button
+                          key={cmd}
+                          className="terminal-guide-chip hd-btn-reset"
+                          onClick={() => setModalTerminalInput(formatTerminalCommandForDisplay(cmd))}
+                          title="Use this command"
+                        >
+                          {formatTerminalCommandForDisplay(cmd)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 <div className="step-modal-canvas">
                   <div className="step-modal-canvas-header">
-                    <div className="step-modal-canvas-title">Simulation Environment</div>
-                    <button className="step-modal-mark-btn hd-btn-reset" onClick={markCurrentStepComplete}>
-                      Mark Step Complete
-                    </button>
+                    <div className="step-modal-canvas-title">Terminal Simulation</div>
                   </div>
-                  <SimulationScenarioCanvas
-                    scenarioType={modalCanvasState?.scenarioType || "general"}
-                    currentStepText={modalSteps[modalSafeStep] || ""}
-                    canvasState={modalCanvasState}
-                    stepIndex={modalSafeStep}
-                    actions={modalStepActions}
-                    hardwareControls={modalHardwareControls}
-                    onRunAction={handleModalAction}
-                    onRunHardwareControl={handleHardwareSceneControl}
-                  />
-                  <div className="step-modal-action-log">
-                    {(modalStepActionLog.length > 0 ? modalStepActionLog : [{ label: "No actions yet", output: "Run an action to generate simulation output.", time: "--:--" }]).map((item, idx) => (
-                      <div key={`${item.label}-${idx}`} className="step-modal-log-line">
-                        <span className="step-modal-log-time">{item.time}</span>
-                        <span className="step-modal-log-text">
-                          <strong>{item.label}</strong> - {item.output}
-                        </span>
+                  <div className="terminal-shell">
+                    <div className="terminal-header">
+                      <div className="terminal-header-left">
+                        <span className="terminal-dot red" />
+                        <span className="terminal-dot yellow" />
+                        <span className="terminal-dot green" />
+                        <span className="terminal-title">Helpdesk Terminal</span>
                       </div>
-                    ))}
+                      <span>{(modalCanvasState?.scenarioType || "general").toUpperCase()} MODE</span>
+                    </div>
+                    <div className="terminal-body" ref={terminalBodyRef}>
+                      <div className="terminal-line muted">
+                        Windows PowerShell simulation. Type <code>help</code> for supported commands.
+                      </div>
+                      {modalStepActionLog.length === 0 ? (
+                        <div className="terminal-line muted">
+                          Awaiting command for current step...
+                        </div>
+                      ) : (
+                        modalStepActionLog.map((item, idx) => (
+                          <div key={`${item.label}-${idx}`} className={`terminal-line ${item.kind === "command" ? "cmd" : item.kind || "output"}`}>
+                            {item.kind === "command" ? `${TERMINAL_PROMPT} ${item.label.replace("Command: ", "")}` : item.output}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div className="terminal-input-row">
+                      <span className="terminal-prompt">{TERMINAL_PROMPT}</span>
+                      <input
+                        className="terminal-input"
+                        value={modalTerminalInput}
+                        onChange={(e) => setModalTerminalInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            runTerminalCommand();
+                          }
+                        }}
+                        placeholder="Type command (e.g., ipconfig /all)"
+                      />
+                      <button className="terminal-run-btn hd-btn-reset" onClick={runTerminalCommand}>
+                        Run
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <div className="step-modal-footer">
-                  <div className="step-modal-nav">
-                    <button
-                      className="step-modal-nav-btn hd-btn-reset"
-                      disabled={modalSafeStep <= 0}
-                      onClick={() => moveModalStep(-1)}
-                    >
-                      Previous
-                    </button>
-                    <button
-                      className="step-modal-nav-btn primary hd-btn-reset"
-                      disabled={modalSafeStep >= modalStepCount - 1}
-                      onClick={() => moveModalStep(1)}
-                    >
-                      Next
-                    </button>
+                  <div className="terminal-line muted">
+                    Step navigation is click-based. Completion is sequential. Required step: {modalRequiredStep + 1} of {modalStepCount}.
                   </div>
                 </div>
               </div>
@@ -1368,6 +2427,13 @@ export default function DashboardPage() {
         </div>
       ) : null}
       <div id="helpdesk-app" className={sidebarCollapsed ? "sidebar-collapsed" : ""}>
+        {mobileView && !sidebarCollapsed ? (
+          <button
+            className="sidebar-backdrop hd-btn-reset"
+            aria-label="Close sidebar"
+            onClick={() => setSidebarCollapsed(true)}
+          />
+        ) : null}
         <div className={`hd-sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
           <div className="hd-sidebar-header">
             <div className="sidebar-logo">
@@ -1380,14 +2446,18 @@ export default function DashboardPage() {
 
           <div className="hd-modules-list">
             <div className="session-tools">
-              <button className="new-chat-sidebar-btn hd-btn-reset" onClick={startNewSession}>
+              <button
+                className="new-chat-sidebar-btn hd-btn-reset"
+                onClick={() => {
+                  startNewSession();
+                  if (mobileView) {
+                    setSidebarCollapsed(true);
+                  }
+                }}
+              >
                 <span className="new-chat-icon">+</span>
                 <span className="new-chat-label">New Chat</span>
               </button>
-              <Link to="/simulations" className="new-chat-sidebar-btn sim-sidebar-btn hd-btn-reset">
-                <span className="new-chat-icon">S</span>
-                <span className="new-chat-label">Simulations</span>
-              </Link>
               <div className="hd-sidebar-heading">Your Sessions</div>
             </div>
             {sessions.length === 0 ? (
@@ -1402,9 +2472,7 @@ export default function DashboardPage() {
                 ) : null}
                 {regularSessions.length > 0 ? (
                   <>
-                    <div className="session-group-heading">
-                      {favoriteSessions.length > 0 ? "All Sessions" : "Sessions"}
-                    </div>
+                    {favoriteSessions.length > 0 ? <div className="session-group-heading">All Sessions</div> : null}
                     {regularSessions.map((session) => renderSessionCard(session))}
                   </>
                 ) : null}
@@ -1424,12 +2492,20 @@ export default function DashboardPage() {
               <div className="avatar-popover">
                 <div className="avatar-popover-name">{user?.firstName || ""} {user?.lastName || ""}</div>
                 <div className="avatar-popover-email">{user?.email || ""}</div>
-                <button
-                  className="avatar-popover-btn hd-btn-reset"
-                  onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
-                >
-                  {theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
-                </button>
+                <div className="avatar-theme-row">
+                  <span className="avatar-theme-label">Light Mode</span>
+                  <button
+                    className={`avatar-theme-switch hd-btn-reset ${theme === "light" ? "is-on" : ""}`}
+                    onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
+                    aria-label="Toggle light mode"
+                    aria-pressed={theme === "light"}
+                  >
+                    <span className="avatar-theme-track">
+                      <span className="avatar-theme-thumb" />
+                    </span>
+                    <span className="avatar-theme-state">{theme === "light" ? "On" : "Off"}</span>
+                  </button>
+                </div>
                 <button className="avatar-popover-btn danger hd-btn-reset" onClick={logout}>
                   Logout
                 </button>
@@ -1451,6 +2527,13 @@ export default function DashboardPage() {
             <div className="topbar-title">
               Helpdesk Simulation <span>{currentSession?.title || "Session Chat and Simulations"}</span>
             </div>
+            <button
+              className={`top-btn hd-btn-reset ${showSimulationCatalog ? "is-active" : ""}`}
+              onClick={() => setShowSimulationCatalog((prev) => !prev)}
+              title="Show related simulation tickets"
+            >
+              Simulations
+            </button>
             <div className="status-dot" />
             <span className="status-text">System Online</span>
             {denied ? <span className="denied-pill">Access denied</span> : null}
@@ -1462,13 +2545,32 @@ export default function DashboardPage() {
           </div>
 
           <div className="chat-wrap" ref={chatWrapRef}>
-            <div className={`messages ${showWelcome ? "messages-welcome" : ""}`}>
-              {showWelcome ? (
+            <div className={`messages ${showWelcome || showSimulationCatalog ? "messages-welcome" : ""}`}>
+              {showSimulationCatalog ? (
+                <div className="welcome">
+                  <h1>Simulation Tickets</h1>
+                  <p>Select a related ticket below to launch guided simulation.</p>
+                  <div className="welcome-related-label">Related Tickets and Common Problems</div>
+                  <div className="quick-grid">
+                    {QUESTION_BANK.map((q) => (
+                      <button key={`sim-${q.title}`} className="quick-card hd-btn-reset" onClick={() => startSuggestedSimulation(q)}>
+                        <div className="quick-card-head">
+                          <SuggestionIcon label={q.label} />
+                          <div className="qc-label">{q.label}</div>
+                        </div>
+                        <div className="qc-title">{q.title}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {!showSimulationCatalog && showWelcome ? (
                 <div className="welcome">
                   <h1>Hello, {user?.firstName || "there"}.</h1>
                   <p>What IT issue can I help you troubleshoot today?</p>
                   <div className="welcome-composer">
-                    <div className="welcome-input-box">
+                    <div className="welcome-input-box composer-shell">
                       <textarea
                         ref={textareaRef}
                         value={input}
@@ -1489,15 +2591,16 @@ export default function DashboardPage() {
                         className="send-btn hd-btn-reset"
                         onClick={() => sendMessage()}
                         disabled={typing || !input.trim()}
+                        aria-label="Send message"
                       >
-                        &gt;
+                        ↑
                       </button>
                     </div>
                   </div>
-                  <div className="welcome-related-label">Related tickets and common problems</div>
+                  <div className="welcome-related-label">Related Tickets and Common Problems</div>
                   <div className="quick-grid">
                     {(currentSession?.suggestedQuestions || pickRandomQuestions()).map((q) => (
-                      <button key={q.title} className="quick-card hd-btn-reset" onClick={() => askQuestion(q.question)}>
+                      <button key={q.title} className="quick-card hd-btn-reset" onClick={() => startSuggestedSimulation(q)}>
                         <div className="quick-card-head">
                           <SuggestionIcon label={q.label} />
                           <div className="qc-label">{q.label}</div>
@@ -1509,16 +2612,16 @@ export default function DashboardPage() {
                 </div>
               ) : null}
 
-              {messages.map((msg) => (
+              {!showSimulationCatalog ? messages.map((msg, idx) => (
                 <div key={msg.id} className={msg.role === "user" ? "message-row user" : "ai-block"}>
                   {msg.role === "user" ? (
                     <>
-                      <div className="user-bubble-wrap">
+                      <div className={`user-bubble-wrap ${editingMessageId === msg.id ? "is-editing" : ""}`}>
                         <div className="message-meta">
                           <span>{msg.time}</span>
                           <span>You</span>
                         </div>
-                        {renderMessageBody(msg)}
+                        {renderMessageBody(msg, idx)}
                       </div>
                       <div className="avatar user-avatar">YOU</div>
                     </>
@@ -1531,15 +2634,15 @@ export default function DashboardPage() {
                           Helpdesk Simulation Response
                         </div>
                         <div className="msg-meta">{msg.time}</div>
-                        {renderMessageBody(msg)}
+                        {renderMessageBody(msg, idx)}
                       </div>
                     </>
                   )}
                 </div>
-              ))}
+              )) : null}
             </div>
 
-            {typing ? (
+            {!showSimulationCatalog && typing ? (
               <div className="typing-wrap ai-block">
                 <div className="avatar ai-avatar">AI</div>
                 <div className="typing-bubble">
@@ -1551,10 +2654,10 @@ export default function DashboardPage() {
             ) : null}
           </div>
 
-          {!showWelcome ? (
+          {!showWelcome && !showSimulationCatalog ? (
             <div className="input-area">
               <div className="input-inner">
-                <div className="input-box">
+                <div className="input-box composer-shell">
                   <textarea
                     ref={textareaRef}
                     value={input}
@@ -1571,8 +2674,13 @@ export default function DashboardPage() {
                     rows={1}
                     placeholder="Describe your IT issue or ask how to fix something..."
                   />
-                  <button className="send-btn hd-btn-reset" onClick={() => sendMessage()} disabled={typing || !input.trim()}>
-                    &gt;
+                  <button
+                    className="send-btn hd-btn-reset"
+                    onClick={() => sendMessage()}
+                    disabled={typing || !input.trim()}
+                    aria-label="Send message"
+                  >
+                    ↑
                   </button>
                 </div>
                 <div className="input-hint">Press Enter to send. Shift+Enter for newline.</div>
