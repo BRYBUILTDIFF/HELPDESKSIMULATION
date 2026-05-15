@@ -2644,7 +2644,7 @@ export default function DashboardPage() {
 
             {!showSimulationCatalog && typing ? (
               <div className="typing-wrap ai-block">
-                <div className="avatar ai-avatar">AI</div>
+                <div className="avatar ai-avatar">HD</div>
                 <div className="typing-bubble">
                   <span />
                   <span />

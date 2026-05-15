@@ -131,3 +131,103 @@ Why this first:
 - **Production feasibility with combined engineering + ops:** Yes
 
 The project is implementable, but successful delivery requires coordinated application engineering, infrastructure engineering, security, and licensing/compliance work.
+
+---
+
+# User Feature Analysis and Use Cases
+
+## Implemented User Features (Current System)
+
+Based on the current `helpdesk-ai` implementation, standard users can:
+
+1. Authenticate and access role-protected pages
+- Register, login, restore session (refresh token), logout.
+- Access `/dashboard` as USER and `/admin` only as ADMIN.
+
+2. Manage chat sessions
+- Start new chat session.
+- Auto-title sessions from first user prompt.
+- Rename, favorite/unfavorite, and delete sessions.
+- Resume old sessions from sidebar.
+- Persist sessions per user in local storage.
+
+3. Send IT support prompts and receive AI responses
+- Enter prompt in auto-expanding textarea.
+- Use Enter/Shift+Enter behavior for submit/newline.
+- Receive either:
+  - Standard definition/explanation response card, or
+  - Step-by-step process card (when troubleshooting intent is detected).
+
+4. Interact with responses
+- Copy user prompt and AI response (icon-based control).
+- Edit user prompt up to two times per session, then resubmit.
+- For process cards: mark step complete/incomplete, view progress percentage.
+
+5. Use guided simulation workflows
+- Open simulation catalog from dashboard or dedicated simulations page.
+- Launch predefined scenario walkthroughs.
+- Use terminal simulation commands with expected-command guidance.
+- Track per-step outcomes, completion, and resolution progress.
+
+6. Personalize UI
+- Toggle light/dark theme (persisted).
+- Use responsive/mobile sidebar and chat layout.
+
+---
+
+## Primary Use Case (End User)
+
+### UC-01: Resolve an IT Issue via AI Guidance
+
+**Primary Actor:** Authenticated User  
+**Goal:** Get actionable help for an IT issue and complete troubleshooting steps.  
+**Scope:** Dashboard chat + optional simulation flow.
+
+**Preconditions**
+1. User account exists and is active.
+2. User is logged in and can access `/dashboard`.
+3. Backend AI endpoint is reachable.
+
+**Trigger**
+1. User enters an IT support question in the chat composer and submits.
+
+**Main Success Flow**
+1. System creates or reuses the active session.
+2. System stores the user prompt and updates session preview/title if needed.
+3. System sends prompt + short prior chat context to `/api/ai/chat`.
+4. AI response is returned.
+5. System classifies response format:
+   - If troubleshooting/procedural intent is detected, render step-by-step process card.
+   - Otherwise, render standard answer card.
+6. User reviews guidance.
+7. If process card is shown, user marks steps complete and tracks progress.
+8. User optionally copies response or edits original prompt (max two edits/session) and resubmits.
+9. Session state is persisted for future continuation.
+
+**Postconditions**
+1. Conversation and actions are saved in session history.
+2. User has either:
+   - Received definition/advice, or
+   - Completed/partially completed guided troubleshooting steps.
+
+**Alternate/Exception Flows**
+1. Policy block: system returns policy-safe response card.
+2. API/network failure: system returns connection/error fallback message.
+3. Edit limit reached: edit action is disabled after two user-prompt edits in the same session.
+4. No step data detected from AI text: fallback text rendering is used.
+
+---
+
+## Supporting Use Cases
+
+### UC-02: Manage Chat Sessions
+- Actor: Authenticated User
+- Outcome: User can create, rename, favorite, switch, and delete sessions for organized troubleshooting history.
+
+### UC-03: Run Guided Simulation
+- Actor: Authenticated User
+- Outcome: User opens a scenario, executes guided steps (and terminal commands in dashboard modal), and tracks completion.
+
+### UC-04: Personalize Workspace
+- Actor: Authenticated User
+- Outcome: User toggles theme and navigates responsive layout across device sizes.
