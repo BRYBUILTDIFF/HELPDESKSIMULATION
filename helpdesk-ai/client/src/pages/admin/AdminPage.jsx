@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../hooks/useAuth";
 import { useAxios } from "../../hooks/useAxios";
 import "./admin.css";
+
+const THEME_STORAGE_KEY = "helpdesk_simulation_theme";
 
 function fmtDateTime(value) {
   try {
@@ -20,8 +21,9 @@ function getErrorMessage(error) {
 }
 
 export default function AdminPage() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const api = useAxios();
+  const accountMenuRef = useRef(null);
 
   const [activeTab, setActiveTab] = useState("overview");
   const [users, setUsers] = useState([]);
@@ -38,6 +40,9 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [pendingId, setPendingId] = useState(null);
+  const [theme, setTheme] = useState("dark");
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const loadUsers = useCallback(async () => {
     const response = await api.get("/api/admin/users");
@@ -73,6 +78,31 @@ export default function AdminPage() {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved === "light" || saved === "dark") {
+      setTheme(saved);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!accountMenuRef.current) {
+        return;
+      }
+      if (!accountMenuRef.current.contains(event.target)) {
+        setAccountMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", handleClickOutside);
+    return () => window.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const userStats = useMemo(() => {
     const total = users.length;
@@ -131,11 +161,11 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="admin-shell">
-      <aside className="admin-sidebar">
+    <div className={`admin-shell ${theme === "light" ? "theme-light" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      <aside className={`admin-sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
         <div className="admin-brand">
           <div className="admin-brand-mark">HS</div>
-          <div>
+          <div className="admin-brand-copy">
             <h1>Admin Console</h1>
             <p>{user?.firstName} {user?.lastName}</p>
           </div>
@@ -143,35 +173,75 @@ export default function AdminPage() {
 
         <nav className="admin-nav">
           <button className={`admin-nav-btn ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>
-            Overview
+            <span className="admin-nav-long">Overview</span>
+            <span className="admin-nav-short">OV</span>
           </button>
           <button className={`admin-nav-btn ${activeTab === "users" ? "active" : ""}`} onClick={() => setActiveTab("users")}>
-            User Management
+            <span className="admin-nav-long">User Management</span>
+            <span className="admin-nav-short">US</span>
           </button>
           <button className={`admin-nav-btn ${activeTab === "policy" ? "active" : ""}`} onClick={() => setActiveTab("policy")}>
-            Policy Monitor
+            <span className="admin-nav-long">Policy Monitor</span>
+            <span className="admin-nav-short">PM</span>
           </button>
           <button className={`admin-nav-btn ${activeTab === "modules" ? "active" : ""}`} onClick={() => setActiveTab("modules")}>
-            Simulation Modules
+            <span className="admin-nav-long">Simulation Modules</span>
+            <span className="admin-nav-short">SM</span>
           </button>
         </nav>
 
-        <div className="admin-sidebar-footer">
-          <button className="admin-mini-btn" onClick={loadAll}>Refresh Data</button>
-          <Link to="/dashboard" className="admin-mini-btn ghost">Go to User Dashboard</Link>
+        <div className="admin-sidebar-footer" ref={accountMenuRef}>
+          <button className="admin-account-btn" onClick={() => setAccountMenuOpen((prev) => !prev)}>
+            <div className="admin-account-avatar">{(user?.firstName || "U").slice(0, 1).toUpperCase()}</div>
+            <div className="admin-account-labels">
+              <div className="admin-account-name">{user?.firstName || "User"} {user?.lastName || ""}</div>
+              <div className="admin-account-sub">Account</div>
+            </div>
+          </button>
+          {accountMenuOpen ? (
+            <div className="admin-account-popover">
+              <div className="admin-account-popover-name">{user?.firstName || ""} {user?.lastName || ""}</div>
+              <div className="admin-account-popover-email">{user?.email || ""}</div>
+              <div className="admin-theme-row">
+                <span className="admin-theme-label">Light Mode</span>
+                <button
+                  className={`admin-theme-switch ${theme === "light" ? "is-on" : ""}`}
+                  onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
+                  aria-label="Toggle light mode"
+                  aria-pressed={theme === "light"}
+                >
+                  <span className="admin-theme-track">
+                    <span className="admin-theme-thumb" />
+                  </span>
+                  <span className="admin-theme-state">{theme === "light" ? "On" : "Off"}</span>
+                </button>
+              </div>
+              <button className="admin-popover-btn danger" onClick={logout}>
+                Logout
+              </button>
+            </div>
+          ) : null}
         </div>
       </aside>
 
       <main className="admin-main">
         <header className="admin-topbar">
-          <div>
-            <h2>
+          <button
+            className={`admin-toggle-sidebar ${sidebarCollapsed ? "is-collapsed" : ""}`}
+            onClick={() => setSidebarCollapsed((prev) => !prev)}
+            aria-label="Toggle sidebar"
+            title="Toggle sidebar"
+          >
+            <span className="admin-toggle-icon">&lt;</span>
+          </button>
+          <div className="admin-topbar-title">
+            Admin Console
+            <span>
               {activeTab === "overview" && "Overview Dashboard"}
               {activeTab === "users" && "User Management"}
               {activeTab === "policy" && "Policy Monitor"}
               {activeTab === "modules" && "Simulation Modules"}
-            </h2>
-            <p>Helpdesk AI administration workspace</p>
+            </span>
           </div>
           <div className="admin-status">
             <span className="dot" />
@@ -375,4 +445,3 @@ export default function AdminPage() {
     </div>
   );
 }
-
