@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
+import { useAxios } from "../../hooks/useAxios";
 import { kb, modules, simulations } from "./helpdeskData";
 import "./dashboard.css";
 
@@ -42,6 +43,7 @@ function resolveSimulationId(itemId) {
 
 export default function SimulationsPage() {
   const { user, logout } = useAuth();
+  const api = useAxios();
   const accountMenuRef = useRef(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -116,22 +118,46 @@ export default function SimulationsPage() {
   }, []);
 
   useEffect(() => {
-    if (!storageKey) {
+    if (!user?.id) {
       setSessions([]);
       return;
     }
-    try {
-      const raw = localStorage.getItem(storageKey);
-      const parsed = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(parsed)) {
-        setSessions(parsed);
-      } else {
-        setSessions([]);
+
+    let cancelled = false;
+
+    const loadSessions = async () => {
+      try {
+        const response = await api.get("/api/sessions");
+        const serverSessions = Array.isArray(response.data?.sessions) ? response.data.sessions : [];
+        if (!cancelled) {
+          setSessions(serverSessions);
+        }
+      } catch (_err) {
+        // fallback to local cache for compatibility
+        if (!storageKey) {
+          if (!cancelled) setSessions([]);
+          return;
+        }
+        try {
+          const raw = localStorage.getItem(storageKey);
+          const parsed = raw ? JSON.parse(raw) : [];
+          if (!cancelled) {
+            setSessions(Array.isArray(parsed) ? parsed : []);
+          }
+        } catch (_parseErr) {
+          if (!cancelled) {
+            setSessions([]);
+          }
+        }
       }
-    } catch (_err) {
-      setSessions([]);
-    }
-  }, [storageKey]);
+    };
+
+    loadSessions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, storageKey, user?.id]);
 
   useEffect(() => {
     const onPointerDown = (event) => {

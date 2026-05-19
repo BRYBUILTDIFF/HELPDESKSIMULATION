@@ -40,6 +40,13 @@ cp .env.example .env
 
 Update `server/.env` with your real PostgreSQL credentials, JWT secrets, and AI provider settings.
 
+For LAN/IP access during development:
+
+- Frontend dev server already binds to `0.0.0.0` and proxies `/api` to `http://localhost:5000`.
+- In development, `http://<LAN-IP>:5173` is accepted automatically.
+- For non-default origins/ports, add your frontend origin to `server/.env` `CLIENT_URLS` (comma-separated).
+- If you do not want to use the dev proxy, set `client/.env` `VITE_API_URL` directly to your backend URL.
+
 ### AI provider setup
 
 Option A: OpenAI
@@ -140,7 +147,7 @@ npm run dev
 ## Security features
 
 - Helmet enabled
-- CORS restricted to `CLIENT_URL` with credentials
+- CORS restricted to `CLIENT_URLS` / `CLIENT_URL` with credentials
 - Auth routes limited to 10 req/min using `express-rate-limit`
 - bcrypt password hashing
 - Server-side validation via `express-validator`

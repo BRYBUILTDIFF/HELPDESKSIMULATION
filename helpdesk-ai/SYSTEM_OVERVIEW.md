@@ -30,6 +30,7 @@ helpdesk-ai/
 Main entry and routing:
 - `src/main.jsx`: wraps app with `BrowserRouter` and `AuthProvider`
 - `src/App.jsx`: route map and access control
+- `vite.config.js`: dev proxy for `/api` -> `http://localhost:5000`
 
 Key pages:
 - `LoginPage`, `RegisterPage`
@@ -47,7 +48,7 @@ Auth/session handling:
 ## 5. Backend Overview (server)
 Core app:
 - `src/server.js`
-  - CORS with credentials
+  - CORS with credentials and allowlist from `CLIENT_URLS` / `CLIENT_URL` (plus dev-only LAN origin fallback on `:5173`)
   - Helmet security headers
   - JSON + cookie parsing
   - Rate limiting
@@ -117,7 +118,7 @@ Server (`server/.env`):
 - DB: `DATABASE_URL`
 - JWT: `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, expiry values
 - AI: `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL`
-- App: `PORT`, `CLIENT_URL`, `NODE_ENV`
+- App: `PORT`, `CLIENT_URL`, `CLIENT_URLS`, `NODE_ENV`
 
 Client (`client/.env`):
 - `VITE_API_URL`

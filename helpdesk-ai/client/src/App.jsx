@@ -3,7 +3,6 @@ import { useAuth } from "./hooks/useAuth";
 import PrivateRoute from "./components/PrivateRoute";
 import AdminRoute from "./components/AdminRoute";
 import LoginPage from "./pages/users/LoginPage";
-import RegisterPage from "./pages/users/RegisterPage";
 import DashboardPage from "./pages/users/DashboardPage";
 import AdminPage from "./pages/admin/AdminPage";
 import NotFoundPage from "./pages/users/NotFoundPage";
@@ -30,14 +29,7 @@ export default function App() {
           </PublicOnly>
         }
       />
-      <Route
-        path="/register"
-        element={
-          <PublicOnly>
-            <RegisterPage />
-          </PublicOnly>
-        }
-      />
+      <Route path="/register" element={<Navigate to="/login" replace />} />
 
       <Route element={<PrivateRoute />}>
         <Route

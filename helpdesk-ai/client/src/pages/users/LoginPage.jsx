@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 
 function parseError(error) {
@@ -166,9 +166,7 @@ export default function LoginPage() {
             {loading ? "Signing in..." : "Login"}
           </button>
 
-          <p className="auth-footer login-footer">
-            No account yet? <Link to="/register">Create one</Link>
-          </p>
+          <p className="auth-footer login-footer">Account creation is managed by administrators.</p>
         </form>
       </div>
     </div>

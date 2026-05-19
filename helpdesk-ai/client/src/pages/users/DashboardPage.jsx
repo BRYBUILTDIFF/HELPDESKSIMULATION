@@ -795,30 +795,25 @@ function SidebarTypeIcon({ type }) {
   );
 }
 
-function EmptySlot({ type, onCreate }) {
+function EmptySlot({ type }) {
   const config = type === "simulation"
     ? {
         title: "No simulations yet",
-        description: "Pick a ticket scenario to practice your skills.",
-        cta: "New simulation"
+        description: "Pick a ticket scenario to practice your skills."
       }
     : {
         title: "No chats yet",
-        description: "Start a conversation to get help with any issue.",
-        cta: "New chat"
+        description: "Start a conversation to get help with any issue."
       };
 
   return (
-    <button className="sidebar-empty-slot hd-btn-reset" onClick={onCreate}>
+    <div className="sidebar-empty-slot" aria-live="polite">
       <div className="sidebar-empty-icon">
         <SidebarTypeIcon type={type} />
       </div>
       <div className="sidebar-empty-title">{config.title}</div>
       <div className="sidebar-empty-desc">{config.description}</div>
-      <div className="sidebar-empty-cta">
-        <span>+</span> {config.cta}
-      </div>
-    </button>
+    </div>
   );
 }
 
@@ -897,6 +892,8 @@ function SidebarGroup({
   onDelete
 }) {
   const noResults = searchActive && items.length === 0;
+  const hasSessionItems = !noResults && hasAnyItems;
+  const showMoreHint = hasSessionItems && items.length > 3;
   const createLabel = type === "simulation" ? "New Simulation" : "New Chat";
   const toggleLabel = sidebarCollapsed ? createLabel : `Toggle ${label}`;
   const handleGroupToggle = sidebarCollapsed ? onAdd : onToggle;
@@ -912,22 +909,31 @@ function SidebarGroup({
       </div>
 
       {!collapsed ? (
-        <div className="sidebar-group-list">
-          {noResults ? (
-            <div className="sidebar-group-no-results">No results in {label}</div>
-          ) : !hasAnyItems ? (
-            <EmptySlot type={type} onCreate={onAdd} />
-          ) : (
-            <>
-              <button
-                className={`sidebar-create-card hd-btn-reset type-${type}`}
-                onClick={onAdd}
-                aria-label={createLabel}
-                title={createLabel}
-              >
-                <span>+</span> {createLabel}
-              </button>
-              {items.map((item) => (
+        <>
+          {!noResults ? (
+            <button
+              className={`sidebar-create-card hd-btn-reset type-${type}`}
+              onClick={onAdd}
+              aria-label={createLabel}
+              title={createLabel}
+            >
+              <span>+</span> {createLabel}
+            </button>
+          ) : null}
+          <div
+            className={[
+              "sidebar-group-list",
+              !noResults && !hasAnyItems ? "is-empty" : "",
+              hasSessionItems ? "has-session-items" : "",
+              showMoreHint ? "show-more-hint" : ""
+            ].filter(Boolean).join(" ")}
+          >
+            {noResults ? (
+              <div className="sidebar-group-no-results">No results in {label}</div>
+            ) : !hasAnyItems ? (
+              <EmptySlot type={type} />
+            ) : (
+              items.map((item) => (
                 <SessionItem
                   key={item.id}
                   item={item}
@@ -943,10 +949,10 @@ function SidebarGroup({
                   onFavorite={() => onFavorite(item.id)}
                   onDelete={() => onDelete(item.id)}
                 />
-              ))}
-            </>
-          )}
-        </div>
+              ))
+            )}
+          </div>
+        </>
       ) : null}
     </section>
   );
@@ -1062,6 +1068,7 @@ export default function DashboardPage() {
   const accountMenuRef = useRef(null);
   const terminalBodyRef = useRef(null);
   const autoAdvanceTimeoutRef = useRef(null);
+  const sessionsSaveTimerRef = useRef(null);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sessions, setSessions] = useState([]);
@@ -1221,43 +1228,93 @@ export default function DashboardPage() {
   }, [sidebarGroupsCollapsed, sidebarPrefsKey]);
 
   useEffect(() => {
-    if (!storageKey) {
+    if (!user?.id) {
+      setSessions([]);
+      setActiveSessionId("");
       setSessionsHydrated(false);
       return;
     }
+
+    let cancelled = false;
     setSessionsHydrated(false);
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (!raw) {
-        setSessions([]);
-        setActiveSessionId("");
-        setSessionsHydrated(true);
-        return;
+
+    const loadSessions = async () => {
+      try {
+        const response = await api.get("/api/sessions");
+        let source = Array.isArray(response.data?.sessions) ? response.data.sessions : [];
+
+        // One-time migration path from legacy local cache.
+        if (source.length === 0 && storageKey) {
+          try {
+            const raw = localStorage.getItem(storageKey);
+            const parsed = raw ? JSON.parse(raw) : [];
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              source = parsed;
+              await api.put("/api/sessions", { sessions: source });
+            }
+          } catch (_migrationErr) {
+            // ignore local cache parse errors
+          }
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        if (source.length > 0) {
+          const normalized = source.map((session, idx) => normalizeLoadedSession(session, idx));
+          setSessions(normalized);
+          setActiveSessionId((prev) => prev || normalized[0].id);
+        } else {
+          setSessions([]);
+          setActiveSessionId("");
+        }
+      } catch (_err) {
+        if (!cancelled) {
+          setSessions([]);
+          setActiveSessionId("");
+        }
+      } finally {
+        if (!cancelled) {
+          setSessionsHydrated(true);
+        }
       }
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        const normalized = parsed.map((session, idx) => normalizeLoadedSession(session, idx));
-        setSessions(normalized);
-        setActiveSessionId(normalized[0].id);
-        setSessionsHydrated(true);
-      } else {
-        setSessions([]);
-        setActiveSessionId("");
-        setSessionsHydrated(true);
-      }
-    } catch (_err) {
-      setSessions([]);
-      setActiveSessionId("");
-      setSessionsHydrated(true);
-    }
-  }, [storageKey]);
+    };
+
+    loadSessions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, storageKey, user?.id]);
 
   useEffect(() => {
-    if (!storageKey || !sessionsHydrated) {
+    if (!user?.id || !sessionsHydrated) {
       return;
     }
-    localStorage.setItem(storageKey, JSON.stringify(sessions));
-  }, [sessions, sessionsHydrated, storageKey]);
+
+    if (sessionsSaveTimerRef.current) {
+      window.clearTimeout(sessionsSaveTimerRef.current);
+    }
+
+    sessionsSaveTimerRef.current = window.setTimeout(async () => {
+      try {
+        await api.put("/api/sessions", { sessions });
+        if (storageKey) {
+          localStorage.setItem(storageKey, JSON.stringify(sessions));
+        }
+      } catch (_err) {
+        // best-effort save
+      }
+    }, 250);
+
+    return () => {
+      if (sessionsSaveTimerRef.current) {
+        window.clearTimeout(sessionsSaveTimerRef.current);
+        sessionsSaveTimerRef.current = null;
+      }
+    };
+  }, [api, sessions, sessionsHydrated, storageKey, user?.id]);
 
   useEffect(() => {
     if (!sessionsHydrated || !requestedSessionId) {
@@ -3251,11 +3308,11 @@ export default function DashboardPage() {
                       <div className={`user-bubble-wrap ${editingMessageId === msg.id ? "is-editing" : ""}`}>
                         <div className="message-meta">
                           <span>{msg.time}</span>
-                          <span>You</span>
+                          <span>{(user?.firstName || user?.email || "U").charAt(0).toUpperCase()}</span>
                         </div>
                         {renderMessageBody(msg, idx)}
                       </div>
-                      <div className="avatar user-avatar">YOU</div>
+                      <div className="avatar user-avatar">{(user?.firstName || user?.email || "U").charAt(0).toUpperCase()}</div>
                     </>
                   ) : (
                     <>

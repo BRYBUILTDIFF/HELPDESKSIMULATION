@@ -2,10 +2,17 @@ const express = require("express");
 const { body, param } = require("express-validator");
 const {
   listUsers,
+  createUser,
   updateUser,
-  softDeleteUser,
+  hardDeleteUser,
   getPolicyEvents,
   getPolicySummaryAdmin,
+  getPolicyConfigAdmin,
+  replacePolicyConfigAdmin,
+  addPolicyListEntryAdmin,
+  updatePolicyListEntryAdmin,
+  deletePolicyListEntryAdmin,
+  resetPolicyConfigAdmin,
   getSimulationModules,
   updateSimulationModule
 } = require("../controllers/adminController");
@@ -17,11 +24,37 @@ const router = express.Router();
 router.use(verifyToken, requireAdmin);
 
 router.get("/users", listUsers);
+router.post(
+  "/users",
+  [
+    body("firstName").trim().notEmpty().withMessage("First name is required"),
+    body("lastName").trim().notEmpty().withMessage("Last name is required"),
+    body("email").trim().isEmail().withMessage("Valid email is required"),
+    body("password")
+      .isString()
+      .withMessage("Password is required")
+      .isLength({ min: 8 })
+      .withMessage("Password must be at least 8 characters"),
+    body("role").optional().isIn(["USER", "ADMIN"]).withMessage("Role must be USER or ADMIN"),
+    body("isActive").optional().isBoolean().withMessage("isActive must be boolean")
+  ],
+  validateRequest,
+  createUser
+);
 
 router.patch(
   "/users/:id",
   [
     param("id").isInt().withMessage("Valid user id is required"),
+    body("firstName").optional().trim().notEmpty().withMessage("First name cannot be empty"),
+    body("lastName").optional().trim().notEmpty().withMessage("Last name cannot be empty"),
+    body("email").optional().trim().isEmail().withMessage("Valid email is required"),
+    body("password")
+      .optional()
+      .isString()
+      .withMessage("Password must be a string")
+      .isLength({ min: 8 })
+      .withMessage("Password must be at least 8 characters"),
     body("role").optional().isIn(["USER", "ADMIN"]).withMessage("Role must be USER or ADMIN"),
     body("isActive").optional().isBoolean().withMessage("isActive must be boolean")
   ],
@@ -33,11 +66,48 @@ router.delete(
   "/users/:id",
   [param("id").isInt().withMessage("Valid user id is required")],
   validateRequest,
-  softDeleteUser
+  hardDeleteUser
 );
 
 router.get("/policy/events", getPolicyEvents);
 router.get("/policy/summary", getPolicySummaryAdmin);
+router.get("/policy/config", getPolicyConfigAdmin);
+router.put("/policy/config", replacePolicyConfigAdmin);
+router.post(
+  "/policy/config/:listName",
+  [
+    param("listName")
+      .isIn(["greetingPatterns", "inScopeKeywords", "outOfScopeKeywords", "inScopeIntentPatterns"])
+      .withMessage("Invalid policy list"),
+    body("value").isString().trim().notEmpty().withMessage("value is required")
+  ],
+  validateRequest,
+  addPolicyListEntryAdmin
+);
+router.patch(
+  "/policy/config/:listName/:index",
+  [
+    param("listName")
+      .isIn(["greetingPatterns", "inScopeKeywords", "outOfScopeKeywords", "inScopeIntentPatterns"])
+      .withMessage("Invalid policy list"),
+    param("index").isInt({ min: 0 }).withMessage("index must be a valid number"),
+    body("value").isString().trim().notEmpty().withMessage("value is required")
+  ],
+  validateRequest,
+  updatePolicyListEntryAdmin
+);
+router.delete(
+  "/policy/config/:listName/:index",
+  [
+    param("listName")
+      .isIn(["greetingPatterns", "inScopeKeywords", "outOfScopeKeywords", "inScopeIntentPatterns"])
+      .withMessage("Invalid policy list"),
+    param("index").isInt({ min: 0 }).withMessage("index must be a valid number")
+  ],
+  validateRequest,
+  deletePolicyListEntryAdmin
+);
+router.post("/policy/config/reset", resetPolicyConfigAdmin);
 router.get("/simulation-modules", getSimulationModules);
 router.patch(
   "/simulation-modules/:id",

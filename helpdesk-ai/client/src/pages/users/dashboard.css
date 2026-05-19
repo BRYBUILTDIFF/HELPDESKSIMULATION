@@ -253,8 +253,9 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   overflow: hidden;
+  padding-right: 0;
 }
 
 .sidebar-groups::-webkit-scrollbar {
@@ -269,11 +270,16 @@
 .sidebar-group {
   display: flex;
   flex-direction: column;
-  flex: 1 1 0;
+  flex: 0 0 auto;
   min-height: 0;
   border-top: 0.5px solid var(--color-border-tertiary);
   padding-top: 8px;
   margin-top: 0;
+}
+
+.sidebar-group:last-child {
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .sidebar-group:first-child {
@@ -392,18 +398,62 @@
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow: visible;
+  position: relative;
 }
 
 .sidebar-group-list::-webkit-scrollbar {
   width: 0;
   height: 0;
   display: none;
+}
+
+.sidebar-group-list.is-empty {
+  overflow: hidden;
+}
+
+.sidebar-group-list.has-session-items {
+  max-height: clamp(172px, 31vh, 320px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 8px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sidebar-group:first-child .sidebar-group-list.has-session-items {
+  max-height: clamp(164px, 34vh, 300px);
+}
+
+.sidebar-group:last-child .sidebar-group-list.has-session-items {
+  max-height: none;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.sidebar-group-list.has-session-items::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.sidebar-group-list.show-more-hint::after {
+  content: "";
+  position: sticky;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: block;
+  height: 44px;
+  margin-top: -44px;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--color-background-secondary) 92%, #000000) 52%,
+    color-mix(in srgb, var(--color-background-secondary) 80%, #000000) 100%
+  );
 }
 
 .sidebar-group-no-results {
@@ -560,16 +610,18 @@
 
 .sidebar-empty-slot {
   width: 100%;
+  flex: 0 0 auto;
+  min-height: 150px;
   border-radius: var(--border-radius-md);
-  border: 0.5px dashed var(--color-border-secondary);
-  background: transparent;
+  border: 0;
+  background: color-mix(in srgb, var(--color-background-primary) 28%, transparent);
   color: inherit;
-  padding: 16px 14px;
+  padding: 18px 14px;
   display: grid;
   place-items: center;
   text-align: center;
-  gap: 8px;
-  cursor: pointer;
+  gap: 10px;
+  cursor: default;
 }
 
 .sidebar-empty-icon {
