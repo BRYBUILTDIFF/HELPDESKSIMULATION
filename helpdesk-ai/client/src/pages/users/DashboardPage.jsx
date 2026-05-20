@@ -214,7 +214,12 @@ const SIMULATION_PLAYBOOK_BY_MODULE = {
 };
 
 function normalizeCommand(input = "") {
-  return String(input).trim().toLowerCase().replace(/\s+/g, " ");
+  return String(input)
+    .trim()
+    .toLowerCase()
+    .replace(/\s*,\s*/g, ",")
+    .replace(/\s*\|\s*/g, " | ")
+    .replace(/\s+/g, " ");
 }
 
 function getSimulationPlaybook({ ticketTitle = "", simulationId = "" } = {}) {

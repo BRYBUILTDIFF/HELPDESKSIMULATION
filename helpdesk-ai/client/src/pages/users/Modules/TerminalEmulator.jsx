@@ -5,7 +5,12 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 
 function normalizeCommand(input = "") {
-  return String(input).trim().toLowerCase().replace(/\s+/g, " ");
+  return String(input)
+    .trim()
+    .toLowerCase()
+    .replace(/\s*,\s*/g, ",")
+    .replace(/\s*\|\s*/g, " | ")
+    .replace(/\s+/g, " ");
 }
 
 function normalizePath(path = "") {
@@ -213,8 +218,15 @@ export default function TerminalEmulator({
           normalized,
           output: [
             "Available commands:",
-            "help, cls, clear, ver, whoami, hostname, ipconfig, ping <host>,",
-            "echo <text>, dir, cd <path>, mkdir <name>, date, time, exit"
+            "help, cls, clear, ver, whoami, hostname, ipconfig, ipconfig /all, ipconfig /release, ipconfig /renew, ipconfig /flushdns,",
+            "nslookup google.com, nslookup intranet.company.local, ping <host>, tracert google.com, tasklist /v, tasklist /svc,",
+            "wmic startup get caption,command, wmic logicaldisk get caption,freespace,size, wmic logicaldisk get name,volumename,description,",
+            "wmic printer get name,workoffline, get-service spooler, sc query spooler, sc qc spooler, net stop spooler, net start spooler,",
+            "del /q %systemroot%\\system32\\spool\\printers\\*, attrib -h -r -s /s /d *.*, dir /a, xcopy *.* recovered /e /i /h,",
+            "cleanmgr, sfc /scannow, dism /online /cleanup-image /restorehealth, dism /online /cleanup-image /startcomponentcleanup,",
+            "net user jdoe /domain, search-adaccount -lockedout, unlock-adaccount -identity jdoe, set-adaccountpassword -identity jdoe -reset,",
+            "ssh admin@10.10.1.50, systemctl status nginx, tail -n 50 /var/log/nginx/error.log, netstat -tulpn | grep 443, systemctl restart nginx,",
+            "wmic process get name,processid,parentprocessid, netstat -ano, mrt /f:y, eventvwr.msc, echo <text>, dir, cd <path>, mkdir <name>, date, time, exit"
           ].join("\n"),
           known: true,
           clear: false,
@@ -250,8 +262,59 @@ export default function TerminalEmulator({
         return { normalized, output: hostname, known: true, clear: false, ended: false };
       }
 
-      if (normalized === "ipconfig") {
+      if (normalized === "ipconfig" || normalized === "ipconfig /all") {
         return { normalized, output: buildIpConfigOutput(hostname), known: true, clear: false, ended: false };
+      }
+
+      if (normalized === "ipconfig /release") {
+        return {
+          normalized,
+          output: "Releasing adapter configuration... done.",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "ipconfig /renew") {
+        return {
+          normalized,
+          output: "Renewing adapter configuration... lease acquired: 192.168.1.42",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "ipconfig /flushdns") {
+        return {
+          normalized,
+          output: "Successfully flushed DNS Resolver Cache.",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "nslookup google.com") {
+        return {
+          normalized,
+          output:
+            "Server: dns.company.local\nAddress: 10.10.10.53\nNon-authoritative answer:\nName: google.com\nAddresses: 142.250.190.14",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "nslookup intranet.company.local") {
+        return {
+          normalized,
+          output: "Server: dns.company.local\nAddress: 10.10.10.53\nName: intranet.company.local\nAddress: 10.10.1.50",
+          known: true,
+          clear: false,
+          ended: false
+        };
       }
 
       if (normalized.startsWith("ping")) {
@@ -265,6 +328,43 @@ export default function TerminalEmulator({
             ended: false
           };
         }
+        if (normalizeCommand(`ping ${host}`) === "ping 10.10.1.50") {
+          return {
+            normalized,
+            output: "Request timed out.\nRequest timed out.\nPackets: Sent = 4, Received = 0, Lost = 4 (100% loss)",
+            known: true,
+            clear: false,
+            ended: false
+          };
+        }
+        if (normalizeCommand(`ping ${host}`) === "ping 8.8.8.8") {
+          return {
+            normalized,
+            output: "Reply from 8.8.8.8: bytes=32 time=18ms TTL=118",
+            known: true,
+            clear: false,
+            ended: false
+          };
+        }
+        if (normalizeCommand(`ping ${host}`) === "ping google.com") {
+          return {
+            normalized,
+            output: "Pinging google.com [142.250.190.14]...\nReply from 142.250.190.14: bytes=32 time=21ms TTL=117",
+            known: true,
+            clear: false,
+            ended: false
+          };
+        }
+        if (normalizeCommand(`ping ${host}`) === "ping 192.168.1.1") {
+          return {
+            normalized,
+            output: "Reply from 192.168.1.1: bytes=32 time<1ms TTL=64",
+            known: true,
+            clear: false,
+            ended: false
+          };
+        }
+
         const latency = randomLatency();
         return {
           normalized,
@@ -276,6 +376,343 @@ export default function TerminalEmulator({
             `Ping statistics for ${host}:`,
             "    Packets: Sent = 2, Received = 2, Lost = 0 (0% loss)"
           ].join("\n"),
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "tracert google.com") {
+        return {
+          normalized,
+          output: "Tracing route to google.com\n1   1 ms  192.168.1.1\n2  12 ms  ISP edge\n3  19 ms  core transit\n4  21 ms  google.com",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "tasklist /v") {
+        return {
+          normalized,
+          output:
+            "Image Name                 PID  CPU Time  Mem Usage  Status\nSearchIndexer.exe         4112  00:08:11   412,344 K  Running\nMsMpEng.exe               2284  00:03:17   276,220 K  Running",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "tasklist /svc") {
+        return {
+          normalized,
+          output:
+            "Image Name                 PID  Services\nsvchost.exe               1120  Dnscache\nexplorer.exe              5584  N/A\nunknownproc.exe           7724  N/A",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "wmic startup get caption,command") {
+        return {
+          normalized,
+          output:
+            "Caption                    Command\nOneDrive                   C:\\Program Files\\Microsoft OneDrive\\OneDrive.exe /background\nTeams                      C:\\Users\\Public\\Teams\\Update.exe --processStart Teams.exe",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "wmic logicaldisk get name,volumename,description") {
+        return {
+          normalized,
+          output: "Description       Name  VolumeName\nLocal Fixed Disk  C:    OS\nRemovable Disk    E:    USB_RECOVERY",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "wmic logicaldisk get caption,freespace,size") {
+        return {
+          normalized,
+          output: "Caption  FreeSpace      Size\nC:       11824578560    255030124544\nD:       742552641536   1000202039296",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "wmic printer get name,workoffline") {
+        return {
+          normalized,
+          output: "Name              WorkOffline\nHP LaserJet Pro   TRUE",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "get-service spooler" || normalized === "sc query spooler") {
+        return {
+          normalized,
+          output: "SERVICE_NAME: spooler\nSTATE              : 1  STOPPED",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "sc qc spooler") {
+        return {
+          normalized,
+          output: "SERVICE_NAME: spooler\nSTART_TYPE         : AUTO_START\nDEPENDENCIES       : RPCSS",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "net stop spooler") {
+        return {
+          normalized,
+          output: "The Print Spooler service was stopped successfully.",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "net start spooler") {
+        return {
+          normalized,
+          output: "The Print Spooler service was started successfully.",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "del /q %systemroot%\\system32\\spool\\printers\\*") {
+        return {
+          normalized,
+          output: "Deleted queued spool files from C:\\Windows\\System32\\spool\\PRINTERS",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "attrib -h -r -s /s /d *.*") {
+        return {
+          normalized,
+          output: "File attributes updated. Hidden/system/read-only flags removed.",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "dir /a") {
+        return {
+          normalized,
+          output:
+            "Directory of E:\\\n05/08/2026  08:42 AM    <DIR>          .\n05/08/2026  08:42 AM    <DIR>          ..\n05/08/2026  08:37 AM           253,944 Q3_Budget_Final.xlsx",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "dir c:\\ /a /s") {
+        return {
+          normalized,
+          output:
+            " Directory of C:\\\n06/15/2026  09:02 AM    <DIR>          Users\n06/15/2026  09:02 AM    <DIR>          Program Files\n06/15/2026  09:02 AM    <DIR>          Windows\n\n Total Files Listed:\n       4,812 File(s)  198,443,522,048 bytes",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "xcopy *.* recovered /e /i /h") {
+        return {
+          normalized,
+          output: "32 File(s) copied to E:\\recovered",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "cleanmgr") {
+        return {
+          normalized,
+          output: "Disk Cleanup launched...\nTemporary files removed: 4.3 GB\nWindows Update cache removed: 1.9 GB",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "sfc /scannow") {
+        return {
+          normalized,
+          output:
+            "Beginning system scan. This process will take some time.\nVerification 100% complete.\nWindows Resource Protection found corrupt files and successfully repaired them.",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "dism /online /cleanup-image /restorehealth") {
+        return {
+          normalized,
+          output:
+            "Deployment Image Servicing and Management tool\n[==========================100.0%==========================]\nThe restore operation completed successfully.",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "dism /online /cleanup-image /startcomponentcleanup") {
+        return {
+          normalized,
+          output: "Component Store cleanup completed.\nReclaimable packages removed.",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "net user jdoe /domain") {
+        return {
+          normalized,
+          output: "User name                    jdoe\nAccount active               Yes\nAccount expires              Never\nPassword last set            05/08/2026 08:11",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "search-adaccount -lockedout") {
+        return {
+          normalized,
+          output: "SamAccountName  ObjectClass\njdoe            user",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "unlock-adaccount -identity jdoe") {
+        return {
+          normalized,
+          output: "Account 'jdoe' unlocked successfully.",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "set-adaccountpassword -identity jdoe -reset") {
+        return {
+          normalized,
+          output: "Temporary password reset completed for jdoe.",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "ssh admin@10.10.1.50") {
+        return {
+          normalized,
+          output: "Connected to web-prod-01 (10.10.1.50).",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "systemctl status nginx") {
+        return {
+          normalized,
+          output: "nginx.service - nginx\nLoaded: loaded\nActive: failed (Result: exit-code)\nDocs: man:nginx(8)",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "tail -n 50 /var/log/nginx/error.log") {
+        return {
+          normalized,
+          output: "[emerg] bind() to 0.0.0.0:443 failed (98: Address already in use)",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "netstat -tulpn | grep 443") {
+        return {
+          normalized,
+          output: "tcp 0 0 0.0.0.0:443 0.0.0.0:* LISTEN 8821/orphan-httpd",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "systemctl restart nginx") {
+        return {
+          normalized,
+          output: "nginx restarted successfully.\nActive: active (running)",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "wmic process get name,processid,parentprocessid") {
+        return {
+          normalized,
+          output: "Name               ParentProcessId  ProcessId\nunknownproc.exe     5584             7724\npowershell.exe      3500             9044",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "netstat -ano") {
+        return {
+          normalized,
+          output: "TCP 10.10.10.25:49722 198.51.100.12:443 ESTABLISHED 7724",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "mrt /f:y") {
+        return {
+          normalized,
+          output: "Microsoft Malicious Software Removal Tool\nFull scan completed.\nThreats detected: 0",
+          known: true,
+          clear: false,
+          ended: false
+        };
+      }
+
+      if (normalized === "eventvwr.msc") {
+        return {
+          normalized,
+          output: "Event Viewer opened. Review System/Application logs near incident timestamp.",
           known: true,
           clear: false,
           ended: false
