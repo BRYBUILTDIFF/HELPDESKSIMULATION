@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useAxios } from "../../hooks/useAxios";
+import TerminalEmulator from "./Modules/TerminalEmulator";
 import { simulations } from "./helpdeskData";
 import "./dashboard.css";
 
@@ -114,7 +115,6 @@ const QUESTION_VARIANTS_BY_TITLE = {
 const SESSION_STORAGE_PREFIX = "helpdesk_simulation_sessions_";
 const THEME_STORAGE_KEY = "helpdesk_simulation_theme";
 const SIDEBAR_GROUP_PREFS_PREFIX = "helpdesk_sidebar_group_prefs_";
-const TERMINAL_PROMPT = "PS C:\\\\Helpdesk>";
 const MAX_COMPOSER_HEIGHT = 280;
 
 const SUGGESTED_SIMULATION_MAP = {
@@ -623,8 +623,37 @@ function formatRelativeTime(isoString) {
 }
 
 function normalizeForHistory(messages) {
+  const blockedPrompts = new Set();
+  messages.forEach((message, index) => {
+    if (message?.role !== "ai" || message?.type !== "policy") {
+      return;
+    }
+
+    const explicitPrompt = String(message?.userPromptText || "").trim().toLowerCase();
+    if (explicitPrompt) {
+      blockedPrompts.add(explicitPrompt);
+    }
+
+    const previous = messages[index - 1];
+    if (previous?.role === "user" && previous?.type === "text") {
+      const previousPrompt = String(previous.text || "").trim().toLowerCase();
+      if (previousPrompt) {
+        blockedPrompts.add(previousPrompt);
+      }
+    }
+  });
+
   return messages
-    .filter((m) => m.type === "text")
+    .filter((m) => {
+      if (m.type !== "text") {
+        return false;
+      }
+      if (m.role !== "user") {
+        return true;
+      }
+      const userPrompt = String(m.text || "").trim().toLowerCase();
+      return userPrompt ? !blockedPrompts.has(userPrompt) : true;
+    })
     .slice(-10)
     .map((m) => ({
       role: m.role === "user" ? "user" : "assistant",
@@ -895,6 +924,7 @@ function SidebarGroup({
   const hasSessionItems = !noResults && hasAnyItems;
   const showMoreHint = hasSessionItems && items.length > 3;
   const createLabel = type === "simulation" ? "New Simulation" : "New Chat";
+  const createIcon = type === "simulation" ? ">" : "+";
   const toggleLabel = sidebarCollapsed ? createLabel : `Toggle ${label}`;
   const handleGroupToggle = sidebarCollapsed ? onAdd : onToggle;
 
@@ -917,7 +947,8 @@ function SidebarGroup({
               aria-label={createLabel}
               title={createLabel}
             >
-              <span>+</span> {createLabel}
+              <span className="sidebar-create-card-icon" aria-hidden="true">{createIcon}</span>
+              <span className="sidebar-create-card-label">{createLabel}</span>
             </button>
           ) : null}
           <div
@@ -1066,7 +1097,6 @@ export default function DashboardPage() {
   const textareaRef = useRef(null);
   const editTextareaRef = useRef(null);
   const accountMenuRef = useRef(null);
-  const terminalBodyRef = useRef(null);
   const autoAdvanceTimeoutRef = useRef(null);
   const sessionsSaveTimerRef = useRef(null);
 
@@ -1087,7 +1117,7 @@ export default function DashboardPage() {
   const [modalActiveStep, setModalActiveStep] = useState(0);
   const [modalMessageId, setModalMessageId] = useState(null);
   const [modalCanvasState, setModalCanvasState] = useState(null);
-  const [modalTerminalInput, setModalTerminalInput] = useState("");
+  const [terminalQueuedCommand, setTerminalQueuedCommand] = useState(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [openSessionMenuId, setOpenSessionMenuId] = useState(null);
   const [theme, setTheme] = useState("dark");
@@ -1756,7 +1786,7 @@ export default function DashboardPage() {
       setModalSteps([]);
       setModalStepDetails([]);
       setModalSourceTitle("Simulation Workspace");
-      setModalTerminalInput("");
+      setTerminalQueuedCommand(null);
       setShowSimulationCatalog(true);
       setStepModalOpen(false);
       return;
@@ -1781,7 +1811,7 @@ export default function DashboardPage() {
     setModalSteps(steps);
     setModalStepDetails(Array.isArray(existingCanvas?.stepDetails) ? existingCanvas.stepDetails : []);
     setModalSourceTitle(`Terminal Ticketing | ${canvasState?.ticketTitle || session?.title || "Simulation"}`);
-    setModalTerminalInput("");
+    setTerminalQueuedCommand(null);
     setModalCanvasState(canvasState);
     setShowSimulationCatalog(false);
     setStepModalOpen(false);
@@ -1883,7 +1913,7 @@ export default function DashboardPage() {
     setModalMessageId(messageId);
     setModalCanvasState(canvasState);
     setModalSourceTitle(sourceTitle);
-    setModalTerminalInput("");
+    setTerminalQueuedCommand(null);
     setStepModalOpen(!isSimulationSession);
   };
 
@@ -1993,14 +2023,17 @@ export default function DashboardPage() {
     }));
   };
 
-  const runTerminalCommand = () => {
-    const command = modalTerminalInput.trim();
+  const handleTerminalCommand = ({ command, normalizedCommand: normalizedFromTerminal, result }) => {
     if (!command || modalStepCount <= 0) {
-      return;
+      return [];
     }
 
-    const normalizedCommand = normalizeCommand(command);
-    const isUtilityCommand = ["help", "clear"].includes(normalizedCommand);
+    const normalizedCommand = normalizedFromTerminal || normalizeCommand(command);
+    const output = result?.clear ? "__CLEAR__" : String(result?.output || "");
+    const isKnownCommand = Boolean(result?.known);
+    const terminalFeedback = [];
+    const isUtilityCommand = ["help", "clear", "cls"].includes(normalizedCommand);
+
     if (!isUtilityCommand && modalSafeStep !== modalRequiredStep) {
       const requiredStepDetail = modalStepDetails[modalRequiredStep] || {};
       const requiredCommands = extractExpectedCommands(modalSteps[modalRequiredStep] || "", requiredStepDetail, {
@@ -2008,6 +2041,12 @@ export default function DashboardPage() {
         simulationId: modalCanvasState?.simulationId || "",
         ticketTitle: modalCanvasState?.ticketTitle || ""
       });
+      const orderMessage = `Step order enforced. Complete Step ${modalRequiredStep + 1} first.`;
+      const hintMessage = `Use Step ${modalRequiredStep + 1} commands: ${requiredCommands
+        .slice(0, 4)
+        .map(formatTerminalCommandForDisplay)
+        .join(", ")}`;
+
       syncModalCanvasState((prev) => {
         const actionsByStep = prev.actionsTakenByStep.map((bucket) => [...bucket]);
         actionsByStep[modalSafeStep] = [
@@ -2020,16 +2059,13 @@ export default function DashboardPage() {
           },
           {
             label: "Output",
-            output: `Step order enforced. Complete Step ${modalRequiredStep + 1} first.`,
+            output: orderMessage,
             time: formatTime(),
             kind: "error"
           },
           {
             label: "Hint",
-            output: `Use Step ${modalRequiredStep + 1} commands: ${requiredCommands
-              .slice(0, 4)
-              .map(formatTerminalCommandForDisplay)
-              .join(", ")}`,
+            output: hintMessage,
             time: formatTime(),
             kind: "hint"
           }
@@ -2039,8 +2075,9 @@ export default function DashboardPage() {
           actionsTakenByStep: actionsByStep
         };
       });
-      setModalTerminalInput("");
-      return;
+
+      terminalFeedback.push(orderMessage, hintMessage);
+      return terminalFeedback;
     }
 
     const stepDetail = modalStepDetails[modalSafeStep] || {};
@@ -2052,8 +2089,6 @@ export default function DashboardPage() {
     const matchesExpected = expectedCommands.some((expected) => normalizedCommand === expected);
     const stepAlreadyCompleted = Boolean(modalCanvasState?.completed?.[modalSafeStep]);
     const shouldScheduleAdvance = matchesExpected && !stepAlreadyCompleted;
-    const simulation = simulateTerminalCommand(command, modalCanvasState?.scenarioType || "general");
-    const output = simulation.output;
 
     syncModalCanvasState((prev) => {
       const actionsByStep = prev.actionsTakenByStep.map((bucket) => [...bucket]);
@@ -2081,7 +2116,7 @@ export default function DashboardPage() {
             label: "Output",
             output,
             time: formatTime(),
-            kind: simulation.kind || classifyTerminalOutput(output)
+            kind: classifyTerminalOutput(output)
           }
         );
 
@@ -2094,16 +2129,18 @@ export default function DashboardPage() {
           });
         }
 
-        if (!matchesExpected && !["help", "clear"].includes(normalizedCommand)) {
+        if (!matchesExpected && !["help", "clear", "cls"].includes(normalizedCommand)) {
           const guide = expectedCommands.slice(0, 4).map(formatTerminalCommandForDisplay).join(", ");
+          const hintMessage = isKnownCommand
+            ? `Command executed, but not for this step. Try: ${guide}`
+            : `Wrong command for this step. Try: ${guide}`;
           nextEntries.push({
             label: "Hint",
-            output: simulation.known
-              ? `Command executed, but not for this step. Try: ${guide}`
-              : `Wrong command for this step. Try: ${guide}`,
+            output: hintMessage,
             time: formatTime(),
             kind: "hint"
           });
+          terminalFeedback.push(hintMessage);
         }
         actionsByStep[modalSafeStep] = [...(actionsByStep[modalSafeStep] || []), ...nextEntries];
       }
@@ -2168,7 +2205,7 @@ export default function DashboardPage() {
       }, 5000);
     }
 
-    setModalTerminalInput("");
+    return terminalFeedback;
   };
 
   const closeStepModal = () => {
@@ -2180,9 +2217,8 @@ export default function DashboardPage() {
     setModalMessageId(null);
     setModalCanvasState(null);
     setModalStepDetails([]);
-    setModalTerminalInput("");
+    setTerminalQueuedCommand(null);
   };
-  const modalStepActionLog = modalCanvasState?.actionsTakenByStep?.[modalSafeStep] || [];
   const modalStepOutcome = modalCanvasState?.stepOutcomes?.[modalSafeStep] || null;
   const modalExpectedCommands = extractExpectedCommands(
     modalSteps[modalSafeStep] || "",
@@ -2193,13 +2229,6 @@ export default function DashboardPage() {
       ticketTitle: modalCanvasState?.ticketTitle || ""
     }
   );
-
-  useEffect(() => {
-    if (!terminalBodyRef.current || !stepModalOpen) {
-      return;
-    }
-    terminalBodyRef.current.scrollTop = terminalBodyRef.current.scrollHeight;
-  }, [modalStepActionLog, modalSafeStep, stepModalOpen]);
 
   useEffect(() => {
     return () => {
@@ -2834,7 +2863,12 @@ export default function DashboardPage() {
                         <button
                           key={cmd}
                           className="terminal-guide-chip hd-btn-reset"
-                          onClick={() => setModalTerminalInput(formatTerminalCommandForDisplay(cmd))}
+                          onClick={() =>
+                            setTerminalQueuedCommand({
+                              id: `${Date.now()}-${Math.random()}`,
+                              command: formatTerminalCommandForDisplay(cmd)
+                            })
+                          }
                           title="Use this command"
                         >
                           {formatTerminalCommandForDisplay(cmd)}
@@ -2857,40 +2891,15 @@ export default function DashboardPage() {
                       </div>
                       <span>{(modalCanvasState?.scenarioType || "general").toUpperCase()} MODE</span>
                     </div>
-                    <div className="terminal-body" ref={terminalBodyRef}>
-                      <div className="terminal-line muted">
-                        Windows PowerShell simulation. Type <code>help</code> for supported commands.
-                      </div>
-                      {modalStepActionLog.length === 0 ? (
-                        <div className="terminal-line muted">
-                          Awaiting command for current step...
-                        </div>
-                      ) : (
-                        modalStepActionLog.map((item, idx) => (
-                          <div key={`${item.label}-${idx}`} className={`terminal-line ${item.kind === "command" ? "cmd" : item.kind || "output"}`}>
-                            {item.kind === "command" ? `${TERMINAL_PROMPT} ${item.label.replace("Command: ", "")}` : item.output}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                    <div className="terminal-input-row">
-                      <span className="terminal-prompt">{TERMINAL_PROMPT}</span>
-                      <input
-                        className="terminal-input"
-                        value={modalTerminalInput}
-                        onChange={(e) => setModalTerminalInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            runTerminalCommand();
-                          }
-                        }}
-                        placeholder="Type command (e.g., ipconfig /all)"
-                      />
-                      <button className="terminal-run-btn hd-btn-reset" onClick={runTerminalCommand}>
-                        Run
-                      </button>
-                    </div>
+                    <TerminalEmulator
+                      className="terminal-body"
+                      initialMessage="Windows Terminal simulation ready. Type 'help' for available commands."
+                      username="student"
+                      hostname="DESKTOP-SIM"
+                      initialPath="C:\\Users\\student"
+                      queuedCommand={terminalQueuedCommand}
+                      onCommand={handleTerminalCommand}
+                    />
                   </div>
                 </div>
                 <div className="step-modal-footer">
@@ -3167,7 +3176,12 @@ export default function DashboardPage() {
                                 <button
                                   key={cmd}
                                   className="terminal-guide-chip hd-btn-reset"
-                                  onClick={() => setModalTerminalInput(formatTerminalCommandForDisplay(cmd))}
+                                  onClick={() =>
+                                    setTerminalQueuedCommand({
+                                      id: `${Date.now()}-${Math.random()}`,
+                                      command: formatTerminalCommandForDisplay(cmd)
+                                    })
+                                  }
                                   title="Use this command"
                                 >
                                   {formatTerminalCommandForDisplay(cmd)}
@@ -3190,40 +3204,15 @@ export default function DashboardPage() {
                               </div>
                               <span>{(modalCanvasState?.scenarioType || "general").toUpperCase()} MODE</span>
                             </div>
-                            <div className="terminal-body" ref={terminalBodyRef}>
-                              <div className="terminal-line muted">
-                                Windows PowerShell simulation. Type <code>help</code> for supported commands.
-                              </div>
-                              {modalStepActionLog.length === 0 ? (
-                                <div className="terminal-line muted">
-                                  Awaiting command for current step...
-                                </div>
-                              ) : (
-                                modalStepActionLog.map((item, idx) => (
-                                  <div key={`${item.label}-${idx}`} className={`terminal-line ${item.kind === "command" ? "cmd" : item.kind || "output"}`}>
-                                    {item.kind === "command" ? `${TERMINAL_PROMPT} ${item.label.replace("Command: ", "")}` : item.output}
-                                  </div>
-                                ))
-                              )}
-                            </div>
-                            <div className="terminal-input-row">
-                              <span className="terminal-prompt">{TERMINAL_PROMPT}</span>
-                              <input
-                                className="terminal-input"
-                                value={modalTerminalInput}
-                                onChange={(e) => setModalTerminalInput(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    e.preventDefault();
-                                    runTerminalCommand();
-                                  }
-                                }}
-                                placeholder="Type command (e.g., ipconfig /all)"
-                              />
-                              <button className="terminal-run-btn hd-btn-reset" onClick={runTerminalCommand}>
-                                Run
-                              </button>
-                            </div>
+                            <TerminalEmulator
+                              className="terminal-body"
+                              initialMessage="Windows Terminal simulation ready. Type 'help' for available commands."
+                              username="student"
+                              hostname="DESKTOP-SIM"
+                              initialPath="C:\\Users\\student"
+                              queuedCommand={terminalQueuedCommand}
+                              onCommand={handleTerminalCommand}
+                            />
                           </div>
                         </div>
                       </div>
