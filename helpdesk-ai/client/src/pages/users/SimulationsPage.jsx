@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useAxios } from "../../hooks/useAxios";
-import { kb, modules, simulations } from "./helpdeskData";
+import { kb, modules as staticModules, simulations } from "./helpdeskData";
 import "./dashboard.css";
 
 const THEME_STORAGE_KEY = "helpdesk_simulation_theme";
@@ -41,6 +41,51 @@ function resolveSimulationId(itemId) {
   return simulations[candidate] ? candidate : null;
 }
 
+function buildFallbackSimulation(module) {
+  const title = String(module?.title || "Simulation Scenario").trim();
+  const category = String(module?.category || "General").trim();
+  return {
+    title,
+    steps: [
+      {
+        title: "Gather Incident Details",
+        desc: `Capture the user issue context for <b>${title}</b> and verify impact scope.`,
+        screen: `> Ticket opened\n> Category: ${category}\n> Scenario: ${title}`,
+        action: "Collect symptoms, affected systems, and timeline.",
+        result: "Incident context documented."
+      },
+      {
+        title: "Run Initial Checks",
+        desc: "Perform safe baseline checks to confirm symptoms and isolate probable cause.",
+        screen: "> Baseline checks running...\n> Connectivity, service state, and logs reviewed",
+        action: "Validate environment and reproduce the issue.",
+        result: "Initial diagnostics completed."
+      },
+      {
+        title: "Apply Corrective Action",
+        desc: "Use approved remediation aligned with support policy.",
+        screen: "> Remediation sequence executed\n> Changes tracked",
+        action: "Apply fix and monitor immediate response.",
+        result: "Issue response improved."
+      },
+      {
+        title: "Validate Recovery",
+        desc: "Confirm service restoration from both system and user perspective.",
+        screen: "> Validation tests passed\n> User confirmation received",
+        action: "Run verification checks and collect proof.",
+        result: "Recovery confirmed."
+      },
+      {
+        title: "Document and Close",
+        desc: "Document root cause and actions for future simulation improvements.",
+        screen: "> Ticket notes updated\n> Simulation learning captured",
+        action: "Record steps, lessons learned, and closure notes.",
+        result: "Scenario completed."
+      }
+    ]
+  };
+}
+
 export default function SimulationsPage() {
   const { user, logout } = useAuth();
   const api = useAxios();
@@ -53,39 +98,101 @@ export default function SimulationsPage() {
   const [simStep, setSimStep] = useState(0);
   const [sessions, setSessions] = useState([]);
   const [mobileView, setMobileView] = useState(false);
+  const [serverModules, setServerModules] = useState([]);
 
   const storageKey = useMemo(
     () => (user?.id ? `${SESSION_STORAGE_PREFIX}${user.id}` : null),
     [user?.id]
   );
 
-  const currentSim = activeSimId ? simulations[activeSimId] : null;
+  const simulationMap = useMemo(() => {
+    const map = { ...simulations };
+    serverModules.forEach((module) => {
+      if (!module?.id) {
+        return;
+      }
+      const moduleSimulation =
+        module?.simulation && Array.isArray(module.simulation.steps) && module.simulation.steps.length > 0
+          ? module.simulation
+          : buildFallbackSimulation(module);
+      map[module.id] = moduleSimulation;
+    });
+    return map;
+  }, [serverModules]);
+
+  const currentSim = activeSimId ? simulationMap[activeSimId] : null;
   const simTotalSteps = currentSim?.steps?.length || 0;
   const simProgress = simTotalSteps ? Math.round(((simStep + 1) / simTotalSteps) * 100) : 0;
   const favoriteSessions = useMemo(() => sessions.filter((session) => session.isFavorite), [sessions]);
   const regularSessions = useMemo(() => sessions.filter((session) => !session.isFavorite), [sessions]);
 
-  const catalog = useMemo(
-    () =>
-      modules.map((group) => ({
+  const catalog = useMemo(() => {
+    if (serverModules.length > 0) {
+      const grouped = new Map();
+      serverModules.forEach((module) => {
+        const cat = module.category || "General";
+        if (!grouped.has(cat)) {
+          grouped.set(cat, { cat, items: [] });
+        }
+        grouped.get(cat).items.push({
+          id: module.id,
+          label: module.title,
+          keys: [module.category].filter(Boolean)
+        });
+      });
+      return Array.from(grouped.values()).map((group) => ({
         ...group,
         cards: group.items.map((item) => {
-          const simId = resolveSimulationId(item.id);
-          const sim = simId ? simulations[simId] : null;
+          const sim = simulationMap[item.id];
           return {
             ...item,
-            simId,
-            available: Boolean(simId),
-            description:
-              sim?.steps?.[0]?.desc ||
-              kb[item.id]?.steps?.[0]?.t ||
-              "Guided simulation module for this support case.",
+            simId: item.id,
+            available: Boolean(sim),
+            description: sim?.steps?.[0]?.desc || "Guided simulation module for this support case.",
             stepCount: sim?.steps?.length || 0
           };
         })
-      })),
-    []
-  );
+      }));
+    }
+
+    return staticModules.map((group) => ({
+      ...group,
+      cards: group.items.map((item) => {
+        const simId = resolveSimulationId(item.id);
+        const sim = simId ? simulationMap[simId] : null;
+        return {
+          ...item,
+          simId,
+          available: Boolean(simId),
+          description:
+            sim?.steps?.[0]?.desc ||
+            kb[item.id]?.steps?.[0]?.t ||
+            "Guided simulation module for this support case.",
+          stepCount: sim?.steps?.length || 0
+        };
+      })
+    }));
+  }, [serverModules, simulationMap]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadModules = async () => {
+      try {
+        const res = await api.get("/api/simulations/modules");
+        if (!cancelled) {
+          setServerModules(Array.isArray(res.data?.modules) ? res.data.modules : []);
+        }
+      } catch (_err) {
+        if (!cancelled) {
+          setServerModules([]);
+        }
+      }
+    };
+    loadModules();
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
 
   useEffect(() => {
     const saved = localStorage.getItem(THEME_STORAGE_KEY);
@@ -170,7 +277,7 @@ export default function SimulationsPage() {
   }, []);
 
   const openSimulation = (card) => {
-    if (!card?.simId || !simulations[card.simId]) {
+    if (!card?.simId || !simulationMap[card.simId]) {
       return;
     }
     setActiveSimId(card.simId);

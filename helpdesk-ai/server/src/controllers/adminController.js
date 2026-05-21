@@ -1,7 +1,8 @@
 const prisma = require("../prisma");
 const { listPolicyEvents, getPolicySummary } = require("../store/policyEventStore");
-const { listModules, updateModule } = require("../store/simulationModuleStore");
+const { listModules, createModule, updateModule, deleteModule } = require("../store/simulationModuleStore");
 const { hashPassword } = require("../utils/password");
+const { getAIProvider, getDefaultModel, getOpenAIClient } = require("../utils/openai");
 const {
   getPolicyConfig,
   replacePolicyConfig,
@@ -12,6 +13,190 @@ const {
 } = require("../store/policyConfigStore");
 
 const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+const DIFFICULTY_LEVELS = ["Easy", "Medium", "Hard"];
+const CATEGORY_KEYWORDS = [
+  { category: "Network", words: ["internet", "wifi", "network", "dns", "vpn", "lan", "ip", "router"] },
+  { category: "Account", words: ["password", "account", "login", "locked", "sign in", "signin"] },
+  { category: "Email", words: ["outlook", "email", "mailbox", "mail"] },
+  { category: "Peripheral", words: ["printer", "scanner", "usb", "mouse", "keyboard", "webcam"] },
+  { category: "Performance", words: ["slow", "lag", "freeze", "cpu", "memory", "disk"] },
+  { category: "Security", words: ["virus", "malware", "phishing", "security", "hack"] },
+  { category: "Software", words: ["app", "software", "install", "update", "crash", "error"] }
+];
+const disregardedPromptInsightKeys = new Set();
+
+function normalizePrompt(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[^\w\s]/g, "")
+    .trim();
+}
+
+function titleFromPrompt(prompt) {
+  const clean = String(prompt || "").replace(/\s+/g, " ").trim();
+  if (!clean) {
+    return "General IT Support Scenario";
+  }
+  const clipped = clean.slice(0, 80);
+  const base = clipped.charAt(0).toUpperCase() + clipped.slice(1);
+  return base.length > 70 ? `${base.slice(0, 67)}...` : base;
+}
+
+function inferCategory(prompt) {
+  const normalized = normalizePrompt(prompt);
+  for (const item of CATEGORY_KEYWORDS) {
+    if (item.words.some((word) => normalized.includes(word))) {
+      return item.category;
+    }
+  }
+  return "General";
+}
+
+function inferDifficulty(prompt, occurrences = 1) {
+  const normalized = normalizePrompt(prompt);
+  if (/(server|dns|vpn|network adapter|profile|registry|policy)/.test(normalized)) {
+    return "Hard";
+  }
+  if (occurrences >= 5 || /(error|cannot|failed|issue|problem|not working)/.test(normalized)) {
+    return "Medium";
+  }
+  return "Easy";
+}
+
+function inferScenarioType(category = "", prompt = "") {
+  const source = `${category} ${prompt}`.toLowerCase();
+  if (/(network|wifi|internet|dns|vpn|router)/.test(source)) return "network";
+  if (/(email|outlook|mailbox|exchange)/.test(source)) return "email";
+  if (/(printer|spooler|print queue)/.test(source)) return "printer";
+  return "general";
+}
+
+function buildFallbackSimulationDefinition({ title, category, prompt }) {
+  const safeTitle = String(title || "Simulation Scenario").trim();
+  const safeCategory = String(category || "General").trim();
+  const scenarioType = inferScenarioType(safeCategory, prompt);
+  const promptContext = String(prompt || safeTitle).trim();
+  return {
+    title: safeTitle,
+    scenarioType,
+    terminalType: "windows-terminal",
+    steps: [
+      {
+        title: "Collect Ticket Context",
+        desc: `Capture user symptoms and impact for <b>${safeTitle}</b>.`,
+        screen: `> Ticket opened\n> Category: ${safeCategory}\n> User prompt: ${promptContext}`,
+        action: "Confirm affected systems, time started, and business impact.",
+        result: "Incident context documented."
+      },
+      {
+        title: "Run Initial Diagnostics",
+        desc: "Perform baseline health checks for the affected area.",
+        screen: "> Running baseline checks...\n> Connectivity / service / logs captured",
+        action: "Use safe read-only checks to isolate probable fault domain.",
+        result: "Initial diagnostics completed."
+      },
+      {
+        title: "Apply Corrective Action",
+        desc: "Execute approved remediation steps aligned with support policy.",
+        screen: "> Remediation commands executed\n> Evidence captured in ticket notes",
+        action: "Apply one change at a time and monitor immediate behavior.",
+        result: "Corrective action applied."
+      },
+      {
+        title: "Validate Recovery",
+        desc: "Verify technical recovery and user-facing service restoration.",
+        screen: "> Validation tests passed\n> User confirmation received",
+        action: "Confirm no regression before closing the incident.",
+        result: "Recovery validated."
+      },
+      {
+        title: "Document and Close",
+        desc: "Record root cause, actions taken, and preventive guidance.",
+        screen: "> Ticket notes updated\n> Resolution and lessons learned saved",
+        action: "Attach proof, summarize resolution, and close the ticket.",
+        result: "Simulation completed."
+      }
+    ]
+  };
+}
+
+function sanitizeSimulationDefinition(definition, fallback) {
+  const source = definition && typeof definition === "object" ? definition : {};
+  const terminalType = String(source.terminalType || fallback.terminalType || "windows-terminal")
+    .trim()
+    .toLowerCase();
+  const safeTerminalType = terminalType === "mac-terminal" ? "mac-terminal" : "windows-terminal";
+  const rawSteps = Array.isArray(source.steps) ? source.steps : [];
+  const steps = rawSteps
+    .map((step, index) => ({
+      title: String(step?.title || `Step ${index + 1}`).trim(),
+      desc: String(step?.desc || "").trim(),
+      screen: String(step?.screen || "").trim(),
+      action: String(step?.action || "").trim(),
+      result: String(step?.result || "").trim()
+    }))
+    .filter((step) => step.title)
+    .slice(0, 12);
+
+  if (steps.length === 0) {
+    return fallback;
+  }
+  return {
+    title: String(source.title || fallback.title).trim() || fallback.title,
+    scenarioType: String(source.scenarioType || fallback.scenarioType || "general").trim().toLowerCase() || "general",
+    terminalType: safeTerminalType,
+    steps
+  };
+}
+
+async function generateSimulationDraftFromPrompt(prompt, occurrences = 1) {
+  const fallback = {
+    title: titleFromPrompt(prompt),
+    category: inferCategory(prompt),
+    difficulty: inferDifficulty(prompt, occurrences)
+  };
+  const fallbackSimulation = buildFallbackSimulationDefinition({
+    title: fallback.title,
+    category: fallback.category,
+    prompt
+  });
+
+  const client = getOpenAIClient();
+  if (!client) {
+    return { ...fallback, simulation: fallbackSimulation };
+  }
+
+  try {
+    const provider = getAIProvider();
+    const completion = await client.chat.completions.create({
+      model: getDefaultModel(provider),
+      temperature: 0.3,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "Create an IT support simulation module from a frequent user prompt. Return JSON only with this schema: {\"title\": string, \"category\": string, \"difficulty\": \"Easy\"|\"Medium\"|\"Hard\", \"simulation\": {\"title\": string, \"scenarioType\": \"general\"|\"network\"|\"email\"|\"printer\", \"terminalType\": \"windows-terminal\"|\"mac-terminal\", \"steps\": [{\"title\": string, \"desc\": string, \"screen\": string, \"action\": string, \"result\": string}]}}. Include 5 to 7 practical steps."
+        },
+        {
+          role: "user",
+          content: `Prompt: ${String(prompt || "").slice(0, 500)}\nFrequency: ${Number(occurrences) || 1}`
+        }
+      ]
+    });
+    const raw = completion.choices?.[0]?.message?.content || "";
+    const parsed = JSON.parse(raw);
+    const title = String(parsed?.title || "").trim() || fallback.title;
+    const category = String(parsed?.category || "").trim() || fallback.category;
+    const difficulty = DIFFICULTY_LEVELS.includes(parsed?.difficulty) ? parsed.difficulty : fallback.difficulty;
+    const fallbackForTitle = buildFallbackSimulationDefinition({ title, category, prompt });
+    const simulation = sanitizeSimulationDefinition(parsed?.simulation, fallbackForTitle);
+    return { title, category, difficulty, simulation };
+  } catch (_err) {
+    return { ...fallback, simulation: fallbackSimulation };
+  }
+}
 
 async function listUsers(req, res, next) {
   try {
@@ -168,7 +353,7 @@ async function hardDeleteUser(req, res, next) {
 async function getPolicyEvents(req, res, next) {
   try {
     const limit = Number(req.query.limit || 100);
-    const events = listPolicyEvents(limit);
+    const events = await listPolicyEvents(limit);
     return res.status(200).json({ events });
   } catch (err) {
     return next(err);
@@ -177,7 +362,7 @@ async function getPolicyEvents(req, res, next) {
 
 async function getPolicySummaryAdmin(_req, res, next) {
   try {
-    const summary = getPolicySummary();
+    const summary = await getPolicySummary();
     return res.status(200).json({ summary });
   } catch (err) {
     return next(err);
@@ -256,8 +441,147 @@ async function resetPolicyConfigAdmin(_req, res, next) {
 
 async function getSimulationModules(_req, res, next) {
   try {
-    const modules = listModules();
+    const modules = await listModules();
     return res.status(200).json({ modules });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function getSimulationPromptInsights(req, res, next) {
+  try {
+    const limit = Math.max(1, Math.min(Number(req.query.limit || 50), 200));
+    const events = (await listPolicyEvents(limit)).filter((event) => !event.blocked && String(event.message || "").trim());
+
+    const grouped = new Map();
+    for (const event of events) {
+      const normalized = normalizePrompt(event.message);
+      if (!normalized || normalized.length < 8) {
+        continue;
+      }
+      if (disregardedPromptInsightKeys.has(normalized)) {
+        continue;
+      }
+      const current = grouped.get(normalized) || {
+        normalized,
+        samplePrompt: String(event.message || "").trim(),
+        occurrences: 0,
+        lastSeen: event.at,
+        uniqueUsers: new Set()
+      };
+      current.occurrences += 1;
+      current.lastSeen = current.lastSeen > event.at ? current.lastSeen : event.at;
+      current.uniqueUsers.add(event.userEmail || "unknown");
+      grouped.set(normalized, current);
+    }
+
+    const insights = Array.from(grouped.values())
+      .map((item) => ({
+        normalized: item.normalized,
+        samplePrompt: item.samplePrompt,
+        occurrences: item.occurrences,
+        uniqueUsers: item.uniqueUsers.size,
+        lastSeen: item.lastSeen,
+        suggestedCategory: inferCategory(item.samplePrompt)
+      }))
+      .sort((a, b) => {
+        if (b.occurrences !== a.occurrences) return b.occurrences - a.occurrences;
+        return new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime();
+      })
+      .slice(0, 20);
+
+    return res.status(200).json({ insights });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function disregardSimulationPromptInsight(req, res, next) {
+  try {
+    const normalized = normalizePrompt(req.body?.sourcePrompt);
+    if (!normalized || normalized.length < 8) {
+      return res.status(400).json({ message: "A valid sourcePrompt is required." });
+    }
+    disregardedPromptInsightKeys.add(normalized);
+    return res.status(200).json({ disregarded: true, normalized });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function generateSimulationModuleDraft(req, res, next) {
+  try {
+    const mode = String(req.body?.mode || "from_prompt");
+    if (mode === "from_prompt") {
+      const sourcePrompt = String(req.body?.sourcePrompt || "").trim();
+      if (!sourcePrompt) {
+        return res.status(400).json({ message: "sourcePrompt is required for mode from_prompt" });
+      }
+      const occurrences = Math.max(1, Number(req.body?.occurrences || 1));
+      const draft = await generateSimulationDraftFromPrompt(sourcePrompt, occurrences);
+      return res.status(200).json({ draft, sourcePrompt, occurrences });
+    }
+
+    const title = String(req.body?.title || "").trim();
+    const category = String(req.body?.category || "").trim();
+    if (!title || !category) {
+      return res.status(400).json({ message: "title and category are required for mode manual" });
+    }
+    const draft = {
+      title,
+      category,
+      difficulty: inferDifficulty(`${title} ${category}`, 1),
+      simulation: buildFallbackSimulationDefinition({ title, category, prompt: title })
+    };
+    return res.status(200).json({ draft });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function createSimulationModule(req, res, next) {
+  try {
+    const mode = String(req.body?.mode || "manual");
+    let payload = {
+      title: req.body?.title,
+      category: req.body?.category,
+      difficulty: req.body?.difficulty,
+      enabled: req.body?.enabled,
+      simulation: req.body?.simulation,
+      sourcePrompt: req.body?.sourcePrompt
+    };
+
+    if (mode === "from_prompt") {
+      const sourcePrompt = String(req.body?.sourcePrompt || "").trim();
+      if (!sourcePrompt) {
+        return res.status(400).json({ message: "sourcePrompt is required for mode from_prompt" });
+      }
+      const occurrences = Math.max(1, Number(req.body?.occurrences || 1));
+      const draft = await generateSimulationDraftFromPrompt(sourcePrompt, occurrences);
+      payload = {
+        ...draft,
+        enabled: true,
+        sourcePrompt,
+        simulation: draft.simulation
+      };
+    }
+
+    if (mode === "manual") {
+      const sourcePrompt = String(req.body?.sourcePrompt || "").trim();
+      if (sourcePrompt && !payload.simulation) {
+        payload.simulation = buildFallbackSimulationDefinition({
+          title: payload.title,
+          category: payload.category,
+          prompt: sourcePrompt
+        });
+      }
+    }
+
+    const created = await createModule(payload);
+    if (!created) {
+      return res.status(400).json({ message: "Invalid module payload" });
+    }
+    return res.status(201).json({ module: created });
   } catch (err) {
     return next(err);
   }
@@ -266,11 +590,24 @@ async function getSimulationModules(_req, res, next) {
 async function updateSimulationModule(req, res, next) {
   try {
     const id = String(req.params.id || "");
-    const module = updateModule(id, req.body || {});
+    const module = await updateModule(id, req.body || {});
     if (!module) {
       return res.status(404).json({ message: "Simulation module not found" });
     }
     return res.status(200).json({ module });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function deleteSimulationModule(req, res, next) {
+  try {
+    const id = String(req.params.id || "");
+    const removed = await deleteModule(id);
+    if (!removed) {
+      return res.status(404).json({ message: "Simulation module not found" });
+    }
+    return res.status(200).json({ module: removed });
   } catch (err) {
     return next(err);
   }
@@ -290,5 +627,10 @@ module.exports = {
   deletePolicyListEntryAdmin,
   resetPolicyConfigAdmin,
   getSimulationModules,
-  updateSimulationModule
+  getSimulationPromptInsights,
+  disregardSimulationPromptInsight,
+  generateSimulationModuleDraft,
+  createSimulationModule,
+  updateSimulationModule,
+  deleteSimulationModule
 };

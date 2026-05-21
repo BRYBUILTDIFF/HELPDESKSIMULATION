@@ -154,7 +154,6 @@
     "sharepoint",
     "google drive",
     "backup",
-    "restore",
     "deleted file",
     "file recovery",
     "shared drive",
@@ -188,19 +187,9 @@
     "incident",
     "ticket"
   ],
-  "inScopeIntentPatterns": [
-    "\\b(not working|won't work|doesn't work|stopped working)\\b",
-    "\\b(can't connect|cannot connect|unable to connect|connection (failed|dropped|lost))\\b",
-    "\\b(error|failed|failure|fault|malfunction|corrupted|crash(ed|ing)?)\\b",
-    "\\b(how (do i|to) (fix|reset|configure|set up|setup|install|uninstall|update|enable|disable|unlock|recover))\\b",
-    "\\b(steps to (fix|resolve|troubleshoot|reset|configure))\\b",
-    "\\b(reset|unlock|recover|configure|setup|set up)\\b.*\\b(password|account|network|device|printer|computer|laptop|email|vpn|wifi)\\b",
-    "\\b(troubleshoot|diagnose|fix|resolve)\\b.*\\b(issue|problem|error|fault)\\b"
-  ],
   "outOfScopeKeywords": [
     "dating",
     "relationship",
-    "boyfriend",
     "girlfriend",
     "marriage",
     "divorce",
@@ -210,7 +199,6 @@
     "romance",
     "hookup",
     "fitness",
-    "workout",
     "exercise",
     "diet",
     "weight loss",
@@ -291,6 +279,15 @@
     "chemistry",
     "biology",
     "literature"
+  ],
+  "inScopeIntentPatterns": [
+    "\\b(not working|won't work|doesn't work|stopped working)\\b",
+    "\\b(can't connect|cannot connect|unable to connect|connection (failed|dropped|lost))\\b",
+    "\\b(error|failed|failure|fault|malfunction|corrupted|crash(ed|ing)?)\\b",
+    "\\b(how (do i|to) (fix|reset|configure|set up|setup|install|uninstall|update|enable|disable|unlock|recover))\\b",
+    "\\b(steps to (fix|resolve|troubleshoot|reset|configure))\\b",
+    "\\b(reset|unlock|recover|configure|setup|set up)\\b.*\\b(password|account|network|device|printer|computer|laptop|email|vpn|wifi)\\b",
+    "\\b(troubleshoot|diagnose|fix|resolve)\\b.*\\b(issue|problem|error|fault)\\b"
   ],
   "messages": {
     "greetingReply": "Hello! I am HelpDesk AI. I can assist with IT issues such as login and account access, password resets, email and Outlook problems, network and VPN connectivity, hardware troubleshooting, software errors, printer issues, and security concerns. What can I help you with today?",

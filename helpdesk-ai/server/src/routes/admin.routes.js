@@ -14,7 +14,12 @@ const {
   deletePolicyListEntryAdmin,
   resetPolicyConfigAdmin,
   getSimulationModules,
-  updateSimulationModule
+  getSimulationPromptInsights,
+  disregardSimulationPromptInsight,
+  generateSimulationModuleDraft,
+  createSimulationModule,
+  updateSimulationModule,
+  deleteSimulationModule
 } = require("../controllers/adminController");
 const { verifyToken, requireAdmin } = require("../middleware/authMiddleware");
 const validateRequest = require("../middleware/validateRequest");
@@ -109,6 +114,39 @@ router.delete(
 );
 router.post("/policy/config/reset", resetPolicyConfigAdmin);
 router.get("/simulation-modules", getSimulationModules);
+router.get("/simulation-modules/prompt-insights", getSimulationPromptInsights);
+router.post(
+  "/simulation-modules/prompt-insights/disregard",
+  [body("sourcePrompt").isString().trim().notEmpty().withMessage("sourcePrompt is required")],
+  validateRequest,
+  disregardSimulationPromptInsight
+);
+router.post(
+  "/simulation-modules/draft",
+  [
+    body("mode").optional().isIn(["manual", "from_prompt"]).withMessage("mode must be manual or from_prompt"),
+    body("title").optional().isString().trim().notEmpty().withMessage("title cannot be empty"),
+    body("category").optional().isString().trim().notEmpty().withMessage("category cannot be empty"),
+    body("sourcePrompt").optional().isString().trim().notEmpty().withMessage("sourcePrompt cannot be empty"),
+    body("occurrences").optional().isInt({ min: 1 }).withMessage("occurrences must be a positive integer")
+  ],
+  validateRequest,
+  generateSimulationModuleDraft
+);
+router.post(
+  "/simulation-modules",
+  [
+    body("mode").optional().isIn(["manual", "from_prompt"]).withMessage("mode must be manual or from_prompt"),
+    body("title").optional().isString().trim().notEmpty().withMessage("title cannot be empty"),
+    body("category").optional().isString().trim().notEmpty().withMessage("category cannot be empty"),
+    body("enabled").optional().isBoolean().withMessage("enabled must be boolean"),
+    body("sourcePrompt").optional().isString().trim().notEmpty().withMessage("sourcePrompt cannot be empty"),
+    body("simulation").optional().isObject().withMessage("simulation must be an object"),
+    body("occurrences").optional().isInt({ min: 1 }).withMessage("occurrences must be a positive integer")
+  ],
+  validateRequest,
+  createSimulationModule
+);
 router.patch(
   "/simulation-modules/:id",
   [
@@ -118,6 +156,12 @@ router.patch(
   ],
   validateRequest,
   updateSimulationModule
+);
+router.delete(
+  "/simulation-modules/:id",
+  [param("id").isString().notEmpty().withMessage("Valid module id is required")],
+  validateRequest,
+  deleteSimulationModule
 );
 
 module.exports = router;

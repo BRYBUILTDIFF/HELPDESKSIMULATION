@@ -17,7 +17,7 @@ async function chat(req, res, next) {
 
     const policyResult = evaluatePromptPolicy(message, history);
     if (policyResult.directReply) {
-      recordPolicyEvent({
+      await recordPolicyEvent({
         userId: req.user?.id,
         userEmail: req.user?.email,
         message,
@@ -37,7 +37,7 @@ async function chat(req, res, next) {
     }
 
     if (!policyResult.allowed) {
-      recordPolicyEvent({
+      await recordPolicyEvent({
         userId: req.user?.id,
         userEmail: req.user?.email,
         message,
@@ -91,7 +91,7 @@ async function chat(req, res, next) {
       return res.status(500).json({ message: "AI did not return a response." });
     }
 
-    recordPolicyEvent({
+    await recordPolicyEvent({
       userId: req.user?.id,
       userEmail: req.user?.email,
       message,

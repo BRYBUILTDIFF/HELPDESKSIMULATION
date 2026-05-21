@@ -5,7 +5,7 @@ import { useAuth } from "./useAuth";
 const API_URL = import.meta.env.VITE_API_URL || "/";
 
 export function useAxios() {
-  const { accessToken, refreshAccessToken, clearAuth } = useAuth();
+  const { accessToken, refreshAccessToken, clearAuth, user } = useAuth();
 
   const instance = useMemo(
     () =>
@@ -46,7 +46,7 @@ export function useAxios() {
         }
 
         if (error.response?.status === 403) {
-          window.location.href = "/dashboard?denied=1";
+          window.location.href = user?.role === "ADMIN" ? "/admin?denied=1" : "/dashboard?denied=1";
         }
 
         return Promise.reject(error);
@@ -57,7 +57,7 @@ export function useAxios() {
       instance.interceptors.request.eject(reqId);
       instance.interceptors.response.eject(resId);
     };
-  }, [accessToken, clearAuth, instance, refreshAccessToken]);
+  }, [accessToken, clearAuth, instance, refreshAccessToken, user?.role]);
 
   return instance;
 }

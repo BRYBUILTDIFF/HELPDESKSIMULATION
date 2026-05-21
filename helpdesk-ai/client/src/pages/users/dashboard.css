@@ -571,7 +571,7 @@
   position: absolute;
   right: 6px;
   top: 50%;
-  transform: translateY(-50%);
+  margin-top: -11px;
   z-index: 4;
 }
 
@@ -580,18 +580,31 @@
 }
 
 .sidebar-session-menu-wrap .session-menu-popover {
-  right: 0;
-  top: calc(100% + 8px);
+  position: fixed;
+  right: auto;
+  top: auto;
   transform: none;
+  min-width: 146px;
+  max-width: 220px;
   max-height: 240px;
   overflow-y: auto;
-  z-index: 360;
+  z-index: 10050;
 }
 
 .sidebar-session-row .session-menu-btn {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.14s ease;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.sidebar-session-row .session-menu-btn:hover,
+.sidebar-session-row .session-menu-btn:focus-visible,
+.sidebar-session-row.menu-open .session-menu-btn {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--cyan-dim) 20%, transparent);
 }
 
 .sidebar-session-row:hover .session-menu-btn,

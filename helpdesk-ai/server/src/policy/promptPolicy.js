@@ -20,6 +20,28 @@ function isShortFollowUp(text) {
   return /^(yes|no|yep|nope|ok|okay|sure|continue|go ahead|proceed|please continue|correct|right)\b[.!?]*$/i.test(text);
 }
 
+function isContextualFollowUp(text) {
+  const compact = String(text || "").trim();
+  if (!compact) {
+    return false;
+  }
+
+  const tokenCount = compact.split(/\s+/).length;
+  if (tokenCount > 18) {
+    return false;
+  }
+
+  const startsWithFollowUpQuestion =
+    /^(what|how|why|where|when|which|can|could|would|should|do|does|did)\b/.test(compact);
+  const hasReference =
+    /\b(it|that|this|those|these|same|above|previous|earlier|last one|that one)\b/.test(compact) ||
+    /\bfor (it|that|this)\b/.test(compact);
+  const hasFollowUpPhrase =
+    /\b(what are the steps|next steps|steps for|explain (it|that|this)|more details|elaborate|break it down|how about)\b/.test(compact);
+
+  return startsWithFollowUpQuestion && (hasReference || hasFollowUpPhrase);
+}
+
 function buildHistoryContext(history) {
   if (!Array.isArray(history)) return "";
   return history
@@ -77,6 +99,7 @@ function evaluatePromptPolicy(message, history = []) {
   const historyHasInScopeIntent = historyContext
     ? matchesAnyPattern(historyContext, policy.inScopeIntentRegex)
     : false;
+  const hasInScopeHistoryContext = historyInScopeScore > 0 || historyHasInScopeIntent;
 
   if (outScopeScore > 0 && inScopeScore === 0 && !hasInScopeIntent) {
     return {
@@ -97,7 +120,7 @@ function evaluatePromptPolicy(message, history = []) {
   }
 
   if (isShortFollowUp(normalized)) {
-    if (historyInScopeScore > 0 || historyHasInScopeIntent) {
+    if (hasInScopeHistoryContext) {
       return {
         allowed: true,
         code: "ALLOWED_CONTEXT_FOLLOW_UP",
@@ -109,6 +132,20 @@ function evaluatePromptPolicy(message, history = []) {
       code: "OUT_OF_SCOPE",
       reason: "Short follow-up with no prior in-scope conversation context.",
       userMessage: policy.messages.followUpNoContextMessage
+    };
+  }
+
+  if (
+    inScopeScore === 0 &&
+    !hasInScopeIntent &&
+    outScopeScore === 0 &&
+    hasInScopeHistoryContext &&
+    isContextualFollowUp(normalized)
+  ) {
+    return {
+      allowed: true,
+      code: "ALLOWED_CONTEXT_FOLLOW_UP",
+      reason: "Contextual follow-up allowed using recent in-scope conversation context."
     };
   }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useAxios } from "../../hooks/useAxios";
@@ -129,6 +129,58 @@ const SUGGESTED_SIMULATION_MAP = {
   "Low Disk Space": "slow-pc",
   "Service Not Running": "printer"
 };
+
+function buildQuestionFromModule(module) {
+  const title = String(module?.title || "IT support issue").trim();
+  const category = String(module?.category || "General").trim();
+  return `Please guide me through a ${category.toLowerCase()} troubleshooting simulation for "${title}" using clear step-by-step terminal checks.`;
+}
+
+function buildFallbackSimulationDefinition(module) {
+  const title = String(module?.title || "Simulation Scenario").trim();
+  const category = String(module?.category || "General").trim();
+  return {
+    title,
+    terminalType: "windows-terminal",
+    steps: [
+      {
+        title: "Capture Incident Details",
+        desc: `Collect user symptoms and business impact for <b>${title}</b>.`,
+        screen: `> Ticket opened\n> Category: ${category}\n> Scenario: ${title}`,
+        action: "Confirm scope, urgency, and reproducibility.",
+        result: "Incident baseline documented."
+      },
+      {
+        title: "Run Baseline Diagnostics",
+        desc: "Check service status, connectivity, and environment health.",
+        screen: "> Baseline diagnostics executing...\n> Service and endpoint checks in progress",
+        action: "Identify likely fault domain before making changes.",
+        result: "Probable cause narrowed."
+      },
+      {
+        title: "Apply Targeted Fix",
+        desc: "Execute the safest corrective action based on diagnostics.",
+        screen: "> Remediation command set executed\n> Output captured",
+        action: "Apply one change at a time and monitor outputs.",
+        result: "Corrective action applied."
+      },
+      {
+        title: "Validate Recovery",
+        desc: "Confirm restoration with technical checks and user confirmation.",
+        screen: "> Validation tests passed\n> User validation received",
+        action: "Verify no regression and document final state.",
+        result: "Service restored and stable."
+      },
+      {
+        title: "Document Closure",
+        desc: "Record root cause, fix, and prevention notes.",
+        screen: "> Ticket notes updated\n> Resolution summary saved",
+        action: "Close incident with complete troubleshooting record.",
+        result: "Simulation completed."
+      }
+    ]
+  };
+}
 
 const SIMULATION_PLAYBOOK_BY_TICKET = {
   "No Internet Connection": [
@@ -862,6 +914,47 @@ function SessionItem({
   onFavorite,
   onDelete
 }) {
+  const menuButtonRef = useRef(null);
+  const menuPopoverRef = useRef(null);
+  const [menuStyle, setMenuStyle] = useState(null);
+
+  useLayoutEffect(() => {
+    if (!menuOpen) {
+      setMenuStyle(null);
+      return undefined;
+    }
+
+    const updatePosition = () => {
+      const button = menuButtonRef.current;
+      if (!button) {
+        return;
+      }
+
+      const rect = button.getBoundingClientRect();
+      const popover = menuPopoverRef.current;
+      const measuredWidth = popover?.offsetWidth || 170;
+      const measuredHeight = popover?.offsetHeight || 150;
+      const menuWidth = Math.max(146, measuredWidth);
+      const viewportPad = 8;
+      const rawTop = rect.bottom + 8;
+      const left = Math.max(viewportPad, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - viewportPad));
+      const top = Math.max(viewportPad, Math.min(rawTop, window.innerHeight - measuredHeight - viewportPad));
+
+      setMenuStyle({
+        left: `${left}px`,
+        top: `${top}px`
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [menuOpen]);
+
   return (
     <div className={`sidebar-session-row ${isActive ? "active" : ""} ${menuOpen ? "menu-open" : ""}`}>
       <button className="sidebar-session-btn hd-btn-reset" onClick={onSelect}>
@@ -879,6 +972,7 @@ function SessionItem({
 
       <div className="sidebar-session-menu-wrap">
         <button
+          ref={menuButtonRef}
           className="session-menu-btn hd-btn-reset"
           title="Session actions"
           aria-label="Session actions"
@@ -889,7 +983,12 @@ function SessionItem({
           <span />
         </button>
         {menuOpen ? (
-          <div className="session-menu-popover" onClick={(e) => e.stopPropagation()}>
+          <div
+            ref={menuPopoverRef}
+            className="session-menu-popover"
+            style={menuStyle || undefined}
+            onClick={(e) => e.stopPropagation()}
+          >
             <button className="session-menu-item hd-btn-reset" onClick={onRename}>
               Rename
             </button>
@@ -1042,10 +1141,35 @@ function detectScenarioTypeFromContext({ steps = [], sourceText = "", firstPromp
   return inferScenarioType(`${firstPromptText} ${sourceText} ${joinedSteps}`);
 }
 
+function normalizeTerminalType(value = "") {
+  return String(value || "").toLowerCase() === "mac-terminal" ? "mac-terminal" : "windows-terminal";
+}
+
+function getTerminalProfile(terminalType = "windows-terminal") {
+  const isMac = normalizeTerminalType(terminalType) === "mac-terminal";
+  if (isMac) {
+    return {
+      title: "Mac Terminal",
+      initialMessage: "Mac Terminal simulation ready. Type 'help' for available commands.",
+      username: "student",
+      hostname: "MACBOOK-SIM",
+      initialPath: "/Users/student"
+    };
+  }
+  return {
+    title: "Windows Terminal",
+    initialMessage: "Windows Terminal simulation ready. Type 'help' for available commands.",
+    username: "student",
+    hostname: "DESKTOP-SIM",
+    initialPath: "C:\\Users\\student"
+  };
+}
+
 function createSimulationCanvasState(steps, scenarioType, meta = {}) {
   const safeSteps = Array.isArray(steps) ? steps : [];
   return {
     scenarioType: scenarioType || "general",
+    terminalType: normalizeTerminalType(meta?.terminalType),
     simulationId: meta?.simulationId || "",
     ticketTitle: meta?.ticketTitle || "",
     currentIndex: 0,
@@ -1066,6 +1190,7 @@ function normalizeSimulationCanvasState(state, steps, fallbackType) {
 
   return {
     scenarioType: state?.scenarioType || fallbackType || "general",
+    terminalType: normalizeTerminalType(state?.terminalType),
     simulationId: state?.simulationId || "",
     ticketTitle: state?.ticketTitle || "",
     currentIndex: Number.isInteger(state?.currentIndex) ? Math.max(0, state.currentIndex) : 0,
@@ -1131,6 +1256,7 @@ export default function DashboardPage() {
   const [mobileView, setMobileView] = useState(false);
   const [sidebarSearchInput, setSidebarSearchInput] = useState("");
   const [sidebarSearch, setSidebarSearch] = useState("");
+  const [simulationModules, setSimulationModules] = useState([]);
   const [sidebarGroupsCollapsed, setSidebarGroupsCollapsed] = useState({
     chats: false,
     simulations: false
@@ -1161,6 +1287,32 @@ export default function DashboardPage() {
   const chatSessions = useMemo(() => sessions.filter((session) => !session.isSimulationSession), [sessions]);
   const simulationSessions = useMemo(() => sessions.filter((session) => session.isSimulationSession), [sessions]);
   const searchActive = sidebarSearch.trim().length > 0;
+  const simulationDefinitions = useMemo(() => {
+    const map = { ...simulations };
+    simulationModules.forEach((module) => {
+      if (!module?.id) {
+        return;
+      }
+      const moduleSimulation =
+        module?.simulation && Array.isArray(module.simulation.steps) && module.simulation.steps.length > 0
+          ? module.simulation
+          : buildFallbackSimulationDefinition(module);
+      map[module.id] = moduleSimulation;
+    });
+    return map;
+  }, [simulationModules]);
+
+  const simulationSuggestions = useMemo(() => {
+    if (!Array.isArray(simulationModules) || simulationModules.length === 0) {
+      return QUESTION_BANK;
+    }
+    return simulationModules.map((module) => ({
+      label: module.category || "General",
+      title: module.title,
+      question: buildQuestionFromModule(module),
+      simulationId: module.id
+    }));
+  }, [simulationModules]);
 
   const filteredChatSessions = useMemo(() => {
     const term = sidebarSearch.trim().toLowerCase();
@@ -1228,6 +1380,26 @@ export default function DashboardPage() {
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadSimulationModules = async () => {
+      try {
+        const response = await api.get("/api/simulations/modules");
+        if (!cancelled) {
+          setSimulationModules(Array.isArray(response.data?.modules) ? response.data.modules : []);
+        }
+      } catch (_err) {
+        if (!cancelled) {
+          setSimulationModules([]);
+        }
+      }
+    };
+    loadSimulationModules();
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -1489,39 +1661,109 @@ export default function DashboardPage() {
     setEditingText("");
   };
 
-  const saveEditedUserMessage = () => {
+  const saveEditedUserMessage = async () => {
     const nextText = editingText.trim();
-    if (!editingMessageId || !nextText) {
+    if (!editingMessageId || !nextText || typing || !currentSession?.id) {
       return;
     }
+    const sessionId = currentSession.id;
+    const targetMessageId = editingMessageId;
+    let didUpdate = false;
+    let historyBeforeEdited = [];
+    let firstPromptContext = "";
+
     setSessions((prev) =>
       prev.map((session) => {
+        if (session.id !== sessionId) {
+          return session;
+        }
         const messageExists = session.messages.some((message) => message.id === editingMessageId);
         if (!messageExists) {
+          return session;
+        }
+        const editedIndex = session.messages.findIndex((message) => message.id === targetMessageId);
+        if (editedIndex < 0) {
           return session;
         }
         const currentEditCount = Math.max(0, Number(session.userEditCount || 0));
         if (currentEditCount >= 2) {
           return session;
         }
-        return {
-          ...session,
-          updatedAt: new Date().toISOString(),
-          userEditCount: currentEditCount + 1,
-          messages: session.messages.map((message) =>
-            message.id === editingMessageId
+
+        const trimmedMessages = session.messages
+          .slice(0, editedIndex + 1)
+          .map((message) =>
+            message.id === targetMessageId
               ? {
                   ...message,
                   text: nextText,
                   time: formatTime()
                 }
               : message
-          )
+          );
+        historyBeforeEdited = normalizeForHistory(trimmedMessages.slice(0, -1));
+        firstPromptContext = firstUserPrompt(trimmedMessages);
+        didUpdate = true;
+
+        return {
+          ...session,
+          updatedAt: new Date().toISOString(),
+          userEditCount: currentEditCount + 1,
+          actionableAiMessageId: null,
+          messages: trimmedMessages
         };
       })
     );
+
+    if (!didUpdate) {
+      return;
+    }
+
     setEditingMessageId(null);
     setEditingText("");
+    setTyping(true);
+
+    try {
+      const response = await api.post("/api/ai/chat", {
+        message: nextText,
+        history: historyBeforeEdited
+      });
+      if (response.data?.policy?.blocked) {
+        pushAiMessage(sessionId, response.data.reply || "Request blocked by policy.", "policy", {
+          userPromptText: nextText,
+          firstPromptText: firstPromptContext
+        });
+      } else {
+        pushAiMessage(sessionId, response.data.reply || "No response generated.", "text", {
+          userPromptText: nextText,
+          firstPromptText: firstPromptContext
+        });
+      }
+    } catch (error) {
+      if (!error.response) {
+        pushAiMessage(sessionId, "Connection error. Please try again.", "text", {
+          userPromptText: nextText,
+          firstPromptText: firstPromptContext
+        });
+      } else if (error.response.status === 503) {
+        pushAiMessage(
+          sessionId,
+          "AI service is not configured yet. Please set AI_API_KEY on the server.",
+          "text",
+          {
+            userPromptText: nextText,
+            firstPromptText: firstPromptContext
+          }
+        );
+      } else {
+        pushAiMessage(sessionId, error.response.data?.message || "Unable to get AI response right now.", "text", {
+          userPromptText: nextText,
+          firstPromptText: firstPromptContext
+        });
+      }
+    } finally {
+      setTyping(false);
+    }
   };
 
   const toggleStepCompletion = (messageId, stepIndex, stepCount) => {
@@ -1673,9 +1915,10 @@ export default function DashboardPage() {
 
   const startSuggestedSimulation = (suggestion) => {
     setShowSimulationCatalog(false);
-    const questionText = pickSuggestionQuestion(suggestion);
-    const simulationId = SUGGESTED_SIMULATION_MAP[suggestion?.title];
-    if (!simulationId || !simulations[simulationId]) {
+    const questionText = suggestion?.simulationId ? String(suggestion.question || "").trim() : pickSuggestionQuestion(suggestion);
+    const simulationId = suggestion?.simulationId || SUGGESTED_SIMULATION_MAP[suggestion?.title];
+    const sim = simulationId ? simulationDefinitions[simulationId] : null;
+    if (!simulationId || !sim) {
       sendMessage(questionText);
       setPendingSimulationCreation(false);
       return;
@@ -1692,7 +1935,6 @@ export default function DashboardPage() {
       setActiveSessionId(targetSession.id);
     }
     setPendingSimulationCreation(false);
-    const sim = simulations[simulationId];
     const userMessageId = `${Date.now()}-user-suggested`;
     const aiMessageId = `${Date.now()}-ai-sim`;
     const steps = sim.steps.map((step) => step.title);
@@ -1700,7 +1942,8 @@ export default function DashboardPage() {
     const canvasState = {
       ...createSimulationCanvasState(steps, scenarioType, {
         simulationId,
-        ticketTitle: suggestion?.title || ""
+        ticketTitle: suggestion?.title || "",
+        terminalType: sim?.terminalType
       }),
       stepDetails: sim.steps
     };
@@ -1978,6 +2221,7 @@ export default function DashboardPage() {
     ? modalCanvasState.currentIndex
     : modalActiveStep;
   const modalSafeStep = modalStepCount > 0 ? Math.min(Math.max(0, modalRuntimeIndex), modalStepCount - 1) : 0;
+  const modalTerminalProfile = getTerminalProfile(modalCanvasState?.terminalType);
   const modalCompletedCount = Array.isArray(modalCanvasState?.completed)
     ? modalCanvasState.completed.filter(Boolean).length
     : 0;
@@ -2892,16 +3136,16 @@ export default function DashboardPage() {
                         <span className="terminal-dot red" />
                         <span className="terminal-dot yellow" />
                         <span className="terminal-dot green" />
-                        <span className="terminal-title">Helpdesk Terminal</span>
+                        <span className="terminal-title">{modalTerminalProfile.title}</span>
                       </div>
                       <span>{(modalCanvasState?.scenarioType || "general").toUpperCase()} MODE</span>
                     </div>
                     <TerminalEmulator
                       className="terminal-body"
-                      initialMessage="Windows Terminal simulation ready. Type 'help' for available commands."
-                      username="student"
-                      hostname="DESKTOP-SIM"
-                      initialPath="C:\\Users\\student"
+                      initialMessage={modalTerminalProfile.initialMessage}
+                      username={modalTerminalProfile.username}
+                      hostname={modalTerminalProfile.hostname}
+                      initialPath={modalTerminalProfile.initialPath}
                       queuedCommand={terminalQueuedCommand}
                       onCommand={handleTerminalCommand}
                     />
@@ -3205,16 +3449,16 @@ export default function DashboardPage() {
                                 <span className="terminal-dot red" />
                                 <span className="terminal-dot yellow" />
                                 <span className="terminal-dot green" />
-                                <span className="terminal-title">Helpdesk Terminal</span>
+                                <span className="terminal-title">{modalTerminalProfile.title}</span>
                               </div>
                               <span>{(modalCanvasState?.scenarioType || "general").toUpperCase()} MODE</span>
                             </div>
                             <TerminalEmulator
                               className="terminal-body"
-                              initialMessage="Windows Terminal simulation ready. Type 'help' for available commands."
-                              username="student"
-                              hostname="DESKTOP-SIM"
-                              initialPath="C:\\Users\\student"
+                              initialMessage={modalTerminalProfile.initialMessage}
+                              username={modalTerminalProfile.username}
+                              hostname={modalTerminalProfile.hostname}
+                              initialPath={modalTerminalProfile.initialPath}
                               queuedCommand={terminalQueuedCommand}
                               onCommand={handleTerminalCommand}
                             />
@@ -3235,8 +3479,8 @@ export default function DashboardPage() {
                   <p>Select a related ticket below to launch guided simulation.</p>
                   <div className="welcome-related-label">Related Tickets and Common Problems</div>
                   <div className="quick-grid">
-                    {QUESTION_BANK.map((q) => (
-                      <button key={`sim-${q.title}`} className="quick-card hd-btn-reset" onClick={() => startSuggestedSimulation(q)}>
+                    {simulationSuggestions.map((q) => (
+                      <button key={`sim-${q.simulationId || q.title}`} className="quick-card hd-btn-reset" onClick={() => startSuggestedSimulation(q)}>
                         <div className="quick-card-head">
                           <SuggestionIcon label={q.label} />
                           <div className="qc-label">{q.label}</div>

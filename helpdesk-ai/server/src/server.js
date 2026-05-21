@@ -11,6 +11,7 @@ const authRoutes = require("./routes/auth.routes");
 const adminRoutes = require("./routes/admin.routes");
 const aiRoutes = require("./routes/ai.routes");
 const sessionRoutes = require("./routes/session.routes");
+const simulationRoutes = require("./routes/simulation.routes");
 
 const app = express();
 const allowedOrigins = [
@@ -92,6 +93,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/ai", aiLimiter, aiRoutes);
 app.use("/api/sessions", sessionRoutes);
+app.use("/api/simulations", simulationRoutes);
 
 app.get("/api/health", (_req, res) => {
   res.status(200).json({ ok: true });
