@@ -1024,13 +1024,49 @@ function SidebarGroup({
   onFavorite,
   onDelete
 }) {
+  const listRef = useRef(null);
   const noResults = searchActive && items.length === 0;
   const hasSessionItems = !noResults && hasAnyItems;
-  const showMoreHint = hasSessionItems && items.length > 3;
+  const [showMoreHint, setShowMoreHint] = useState(false);
   const createLabel = type === "simulation" ? "New Simulation" : "New Chat";
   const createIcon = type === "simulation" ? ">" : "+";
   const toggleLabel = sidebarCollapsed ? createLabel : `Toggle ${label}`;
   const handleGroupToggle = sidebarCollapsed ? onAdd : onToggle;
+
+  useLayoutEffect(() => {
+    if (!hasSessionItems || collapsed || items.length < 5) {
+      setShowMoreHint(false);
+      return undefined;
+    }
+
+    const list = listRef.current;
+    if (!list) {
+      setShowMoreHint(false);
+      return undefined;
+    }
+
+    const updateScrollHint = () => {
+      const hasOverflow = list.scrollHeight - list.clientHeight > 2;
+      const canScrollFurther = list.scrollTop + list.clientHeight < list.scrollHeight - 2;
+      setShowMoreHint(hasOverflow && canScrollFurther);
+    };
+
+    updateScrollHint();
+    list.addEventListener("scroll", updateScrollHint, { passive: true });
+    window.addEventListener("resize", updateScrollHint);
+
+    let observer;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(updateScrollHint);
+      observer.observe(list);
+    }
+
+    return () => {
+      list.removeEventListener("scroll", updateScrollHint);
+      window.removeEventListener("resize", updateScrollHint);
+      observer?.disconnect();
+    };
+  }, [hasSessionItems, collapsed, items, label]);
 
   return (
     <section className="sidebar-group">
@@ -1056,6 +1092,7 @@ function SidebarGroup({
             </button>
           ) : null}
           <div
+            ref={listRef}
             className={[
               "sidebar-group-list",
               !noResults && !hasAnyItems ? "is-empty" : "",

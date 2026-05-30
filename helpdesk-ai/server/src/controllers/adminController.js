@@ -13,6 +13,7 @@ const {
 } = require("../store/policyConfigStore");
 
 const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+const DEFAULT_USER_PASSWORD = "password123";
 const DIFFICULTY_LEVELS = ["Easy", "Medium", "Hard"];
 const CATEGORY_KEYWORDS = [
   { category: "Network", words: ["internet", "wifi", "network", "dns", "vpn", "lan", "ip", "router"] },
@@ -24,6 +25,11 @@ const CATEGORY_KEYWORDS = [
   { category: "Software", words: ["app", "software", "install", "update", "crash", "error"] }
 ];
 const disregardedPromptInsightKeys = new Set();
+
+function isAllowedAdminUserPassword(password) {
+  const candidate = String(password || "");
+  return candidate === DEFAULT_USER_PASSWORD || PASSWORD_REGEX.test(candidate);
+}
 
 function normalizePrompt(text) {
   return String(text || "")
@@ -223,9 +229,10 @@ async function createUser(req, res, next) {
   try {
     const { firstName, lastName, email, password, role, isActive } = req.body;
 
-    if (!PASSWORD_REGEX.test(String(password || ""))) {
+    if (!isAllowedAdminUserPassword(password)) {
       return res.status(400).json({
-        message: "Password must be at least 8 characters and include uppercase, number, and special character."
+        message:
+          "Password must be at least 8 characters and include uppercase, number, and special character, or be password123."
       });
     }
 
@@ -282,9 +289,10 @@ async function updateUser(req, res, next) {
       return res.status(400).json({ message: "Admin cannot demote their own account" });
     }
 
-    if (password && !PASSWORD_REGEX.test(String(password))) {
+    if (password && !isAllowedAdminUserPassword(password)) {
       return res.status(400).json({
-        message: "Password must be at least 8 characters and include uppercase, number, and special character."
+        message:
+          "Password must be at least 8 characters and include uppercase, number, and special character, or be password123."
       });
     }
 

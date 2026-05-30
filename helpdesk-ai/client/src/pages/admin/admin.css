@@ -1459,6 +1459,18 @@
   color: var(--color-text-primary);
 }
 
+.sim-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.sim-modules-panel {
+  display: grid;
+  gap: 10px;
+}
+
 .sim-create-panel {
   margin-bottom: 12px;
 }
@@ -1470,7 +1482,7 @@
 }
 
 .sim-prompt-monitor {
-  margin-bottom: 12px;
+  margin-bottom: 0;
 }
 
 .sim-prompt-toolbar {
@@ -1528,7 +1540,7 @@
 
 .sim-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 10px;
 }
 
@@ -2508,6 +2520,269 @@
   color: var(--color-text-primary);
 }
 
+.admin-modal.account-modal {
+  width: min(640px, 100%);
+  padding: 0;
+  overflow: hidden;
+  background: var(--color-background-primary);
+  border-color: var(--color-border-secondary);
+}
+
+.account-modal-head {
+  padding: 16px 18px 14px;
+  border-bottom: 0.5px solid var(--color-border-tertiary);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.account-modal-head-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.account-modal-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--color-background-info);
+  color: var(--color-text-info);
+  border: 0.5px solid var(--color-border-info);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.account-modal-icon svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.account-modal-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.account-modal-head p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.account-modal-close {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.account-modal-close:hover {
+  background: var(--color-background-secondary);
+}
+
+.account-modal-body {
+  padding: 14px 18px 16px;
+}
+
+.account-modal-grid {
+  gap: 12px;
+}
+
+.account-modal-grid .full {
+  grid-column: 1 / -1;
+}
+
+.account-field span {
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-weight: 500;
+}
+
+.account-field input,
+.account-field select {
+  font-size: 13px;
+  padding: 8px 10px;
+  background: var(--color-background-secondary);
+}
+
+.account-input-icon-wrap {
+  position: relative;
+}
+
+.account-input-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-tertiary);
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.account-input-icon svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.account-input-with-icon {
+  padding-left: 34px !important;
+}
+
+.account-input-action {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+}
+
+.account-input-action:hover {
+  background: var(--color-background-primary);
+  color: var(--color-text-secondary);
+}
+
+.account-input-action svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.account-password-section {
+  display: grid;
+  gap: 6px;
+}
+
+.account-password-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.account-password-section.is-disabled {
+  opacity: 0.55;
+}
+
+.account-password-match {
+  font-size: 12px;
+  min-height: 16px;
+}
+
+.account-password-match.ok {
+  color: var(--color-text-success);
+}
+
+.account-password-match.bad {
+  color: var(--color-text-danger);
+}
+
+.admin-inline-checkbox.account-default-row {
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 2px;
+  padding: 10px 12px;
+  background: var(--color-background-secondary);
+}
+
+.account-default-row span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.account-default-row strong {
+  font-size: 13px;
+  color: var(--color-text-primary);
+}
+
+.account-default-row em {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--color-text-tertiary);
+  font-style: normal;
+}
+
+.account-default-row code {
+  font-size: 11px;
+  color: var(--color-text-primary);
+}
+
+.account-modal-footer {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 0.5px solid var(--color-border-tertiary);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.account-preview-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 0.5px solid var(--color-border-secondary);
+  background: var(--color-background-secondary);
+  color: var(--color-text-secondary);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.account-preview-avatar.has-name {
+  background: var(--color-background-info);
+  color: var(--color-text-info);
+  border-color: var(--color-border-info);
+}
+
+.account-preview-name {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-preview-name.has-name {
+  color: var(--color-text-primary);
+}
+
 .admin-modal-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2543,6 +2818,24 @@
   border-color: var(--color-border-info);
 }
 
+.admin-inline-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: var(--border-radius-md);
+  background: var(--color-background-primary);
+  padding: 8px 10px;
+}
+
+.admin-inline-checkbox input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
 .admin-field.full {
   grid-column: 1 / -1;
 }
@@ -2560,7 +2853,8 @@
   }
 
   .two-col,
-  .sim-grid {
+  .sim-grid,
+  .sim-layout {
     grid-template-columns: 1fr;
   }
 
@@ -2767,5 +3061,25 @@
 
   .admin-modal-grid {
     grid-template-columns: 1fr;
+  }
+
+  .account-password-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .account-modal-footer {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .account-modal-footer .btn-sm {
+    justify-self: end;
+  }
+
+  .account-modal-body {
+    padding: 12px;
+  }
+
+  .account-modal-head {
+    padding: 14px 12px;
   }
 }

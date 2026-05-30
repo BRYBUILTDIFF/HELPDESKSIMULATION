@@ -25,6 +25,7 @@ const PAGE_META = {
 };
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+const DEFAULT_USER_PASSWORD = "password123";
 const POLICY_LIST_META = {
   greetingPatterns: "Greeting Patterns",
   inScopeKeywords: "In-Scope Keywords",
@@ -151,14 +152,20 @@ function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
-function validateUserForm(mode, form) {
+function validateUserForm(mode, form, options = {}) {
+  const allowDefaultPassword = Boolean(options.allowDefaultPassword);
+
   if (!form.firstName.trim()) return "First name is required.";
   if (!form.lastName.trim()) return "Last name is required.";
   if (!EMAIL_REGEX.test(form.email.trim())) return "Enter a valid email address.";
 
   if (mode === "create") {
-    if (!PASSWORD_REGEX.test(form.password)) {
+    const isDefaultPassword = form.password === DEFAULT_USER_PASSWORD;
+    if (!isDefaultPassword && !PASSWORD_REGEX.test(form.password)) {
       return "Password must be at least 8 chars and include uppercase, number, and special character.";
+    }
+    if (isDefaultPassword && !allowDefaultPassword) {
+      return "Default password is not allowed in this flow.";
     }
     if (form.password !== form.confirmPassword) {
       return "Passwords do not match.";
@@ -166,8 +173,12 @@ function validateUserForm(mode, form) {
   }
 
   if (mode === "edit" && form.password) {
-    if (!PASSWORD_REGEX.test(form.password)) {
+    const isDefaultPassword = form.password === DEFAULT_USER_PASSWORD;
+    if (!isDefaultPassword && !PASSWORD_REGEX.test(form.password)) {
       return "Password must be at least 8 chars and include uppercase, number, and special character.";
+    }
+    if (isDefaultPassword && !allowDefaultPassword) {
+      return "Default password is not allowed in this flow.";
     }
     if (form.password !== form.confirmPassword) {
       return "Passwords do not match.";
@@ -312,11 +323,6 @@ export default function AdminPage() {
   const [promptInsightsLoading, setPromptInsightsLoading] = useState(false);
   const [promptInsightsError, setPromptInsightsError] = useState("");
   const [promptInsightQuery, setPromptInsightQuery] = useState("");
-  const [newModuleForm, setNewModuleForm] = useState({
-    title: "",
-    category: ""
-  });
-  const [newModuleError, setNewModuleError] = useState("");
   const [modulePreview, setModulePreview] = useState(null);
   const [modulePreviewStep, setModulePreviewStep] = useState(0);
   const [modulePreviewSurface, setModulePreviewSurface] = useState("windows-terminal");
@@ -326,6 +332,9 @@ export default function AdminPage() {
   const [userModalMode, setUserModalMode] = useState("create");
   const [editingUserId, setEditingUserId] = useState(null);
   const [userForm, setUserForm] = useState(buildDefaultUserForm());
+  const [useDefaultPassword, setUseDefaultPassword] = useState(false);
+  const [showCreatePassword, setShowCreatePassword] = useState(false);
+  const [showCreateConfirmPassword, setShowCreateConfirmPassword] = useState(false);
   const [userFormError, setUserFormError] = useState("");
 
   const loadUsers = useCallback(async () => {
@@ -679,6 +688,9 @@ export default function AdminPage() {
     setUserModalMode("create");
     setEditingUserId(null);
     setUserForm(buildDefaultUserForm());
+    setUseDefaultPassword(false);
+    setShowCreatePassword(false);
+    setShowCreateConfirmPassword(false);
     setUserFormError("");
     setUserModalOpen(true);
   };
@@ -695,6 +707,9 @@ export default function AdminPage() {
       role: targetUser.role || "USER",
       isActive: Boolean(targetUser.isActive)
     });
+    setUseDefaultPassword(false);
+    setShowCreatePassword(false);
+    setShowCreateConfirmPassword(false);
     setUserFormError("");
     setUserModalOpen(true);
   };
@@ -703,11 +718,25 @@ export default function AdminPage() {
     setUserModalOpen(false);
     setUserFormError("");
     setEditingUserId(null);
+    setUseDefaultPassword(false);
+    setShowCreatePassword(false);
+    setShowCreateConfirmPassword(false);
     setUserForm(buildDefaultUserForm());
   };
 
   const saveUserModal = async () => {
-    const validationMessage = validateUserForm(userModalMode, userForm);
+    const resolvedPassword =
+      userModalMode === "create" && useDefaultPassword ? DEFAULT_USER_PASSWORD : userForm.password;
+    const resolvedConfirmPassword =
+      userModalMode === "create" && useDefaultPassword ? DEFAULT_USER_PASSWORD : userForm.confirmPassword;
+    const formToValidate = {
+      ...userForm,
+      password: resolvedPassword,
+      confirmPassword: resolvedConfirmPassword
+    };
+    const validationMessage = validateUserForm(userModalMode, formToValidate, {
+      allowDefaultPassword: userModalMode === "create" && useDefaultPassword
+    });
     if (validationMessage) {
       setUserFormError(validationMessage);
       return;
@@ -724,7 +753,9 @@ export default function AdminPage() {
       isActive: Boolean(userForm.isActive)
     };
 
-    if (userForm.password.trim()) {
+    if (userModalMode === "create" && useDefaultPassword) {
+      payload.password = DEFAULT_USER_PASSWORD;
+    } else if (userForm.password.trim()) {
       payload.password = userForm.password;
     }
 
@@ -963,31 +994,6 @@ export default function AdminPage() {
     }
   };
 
-  const createManualModule = async () => {
-    const title = String(newModuleForm.title || "").trim();
-    const category = String(newModuleForm.category || "").trim();
-    if (!title || !category) {
-      setNewModuleError("Title and category are required.");
-      return;
-    }
-    setNewModuleError("");
-    setPendingKey("module-create-manual");
-    try {
-      await api.post("/api/admin/simulation-modules", {
-        mode: "manual",
-        title,
-        category,
-        enabled: true
-      });
-      setNewModuleForm({ title: "", category: "" });
-      await loadModules();
-    } catch (err) {
-      setNewModuleError(safeError(err));
-    } finally {
-      setPendingKey("");
-    }
-  };
-
   const saveModuleDraft = async () => {
     if (!moduleDraftMeta || !modulePreview) {
       return;
@@ -1085,6 +1091,12 @@ export default function AdminPage() {
   ];
   const isDraftPreview = Boolean(moduleDraftMeta);
   const previewRuntimeHint = stripHtml(previewCurrentStep.action || previewCurrentStep.desc || "");
+  const previewFullName = [userForm.firstName.trim(), userForm.lastName.trim()].filter(Boolean).join(" ");
+  const previewInitials =
+    `${userForm.firstName.trim().charAt(0)}${userForm.lastName.trim().charAt(0)}`.trim().toUpperCase() || "—";
+  const showPasswordMatch =
+    userModalMode === "create" && !useDefaultPassword && userForm.confirmPassword.trim().length > 0;
+  const passwordMatch = userForm.password === userForm.confirmPassword;
 
   const handleAdminRuntimeTerminalCommand = useCallback(
     ({ normalizedCommand, result }) => {
@@ -1642,160 +1654,140 @@ export default function AdminPage() {
                 <div className="sim-toolbar">
                   <div className="sim-toolbar-title">{moduleStats.total} modules · {moduleStats.enabled} enabled</div>
                 </div>
-
-
-                <div className="panel sim-create-panel">
-                  <div className="panel-title">Create Simulation Module <span>manual</span></div>
-                  {newModuleError ? <div className="admin-alert error">{newModuleError}</div> : null}
-                  <div className="sim-create-grid">
-                    <input
-                      className="policy-search-input"
-                      value={newModuleForm.title}
-                      onChange={(event) => setNewModuleForm((prev) => ({ ...prev, title: event.target.value }))}
-                      placeholder="Module title"
-                    />
-                    <input
-                      className="policy-search-input"
-                      value={newModuleForm.category}
-                      onChange={(event) => setNewModuleForm((prev) => ({ ...prev, category: event.target.value }))}
-                      placeholder="Category (e.g. Network, Email, Security)"
-                    />
-                    <button
-                      type="button"
-                      className="btn-sm create-user-btn"
-                      disabled={pendingKey === "module-create-manual"}
-                      onClick={createManualModule}
-                    >
-                      {pendingKey === "module-create-manual" ? "Creating..." : "Create Module"}
-                    </button>
-                  </div>
-                </div>
-                <div className="panel sim-prompt-monitor">
-                  <div className="panel-title">
-                    Prompt Monitoring · AI Module Suggestions
-                    <span>{filteredPromptInsights.length} patterns</span>
-                  </div>
-                  <div className="sim-prompt-toolbar">
-                    <input
-                      className="policy-search-input"
-                      value={promptInsightQuery}
-                      onChange={(event) => setPromptInsightQuery(event.target.value)}
-                      placeholder="Search prompt patterns"
-                    />
-                    <button
-                      type="button"
-                      className="btn-sm"
-                      disabled={promptInsightsLoading}
-                      onClick={loadPromptInsights}
-                    >
-                      {promptInsightsLoading ? "Refreshing..." : "Refresh"}
-                    </button>
-                  </div>
-                  {promptInsightsError ? <div className="admin-alert error">{promptInsightsError}</div> : null}
-                  <div className="sim-prompt-grid">
-                    {filteredPromptInsights.length === 0 ? (
-                      <div className="muted-cell">No repeated prompt patterns yet.</div>
-                    ) : (
-                      filteredPromptInsights.map((insight) => {
-                        const createKey = `module-draft-from-prompt-${insight.normalized || insight.samplePrompt}`;
-                        const disregardKey = `module-disregard-prompt-${insight.normalized || insight.samplePrompt}`;
-                        const creating = pendingKey === createKey;
-                        const disregarding = pendingKey === disregardKey;
-                        return (
-                          <div className="sim-prompt-card" key={insight.normalized || insight.samplePrompt}>
-                            <div className="sim-prompt-text">{insight.samplePrompt}</div>
-                            <div className="sim-prompt-meta">
-                              <span>{insight.occurrences} occurrences</span>
-                              <span>{insight.uniqueUsers} users</span>
-                              <span>{insight.suggestedCategory}</span>
-                              <span>Last {formatRelative(insight.lastSeen)}</span>
+                <div className="sim-layout">
+                  <div className="panel sim-prompt-monitor">
+                    <div className="panel-title">
+                      Prompt Monitoring · AI Module Suggestions
+                      <span>{filteredPromptInsights.length} patterns</span>
+                    </div>
+                    <div className="sim-prompt-toolbar">
+                      <input
+                        className="policy-search-input"
+                        value={promptInsightQuery}
+                        onChange={(event) => setPromptInsightQuery(event.target.value)}
+                        placeholder="Search prompt patterns"
+                      />
+                      <button
+                        type="button"
+                        className="btn-sm"
+                        disabled={promptInsightsLoading}
+                        onClick={loadPromptInsights}
+                      >
+                        {promptInsightsLoading ? "Refreshing..." : "Refresh"}
+                      </button>
+                    </div>
+                    {promptInsightsError ? <div className="admin-alert error">{promptInsightsError}</div> : null}
+                    <div className="sim-prompt-grid">
+                      {filteredPromptInsights.length === 0 ? (
+                        <div className="muted-cell">No repeated prompt patterns yet.</div>
+                      ) : (
+                        filteredPromptInsights.map((insight) => {
+                          const createKey = `module-draft-from-prompt-${insight.normalized || insight.samplePrompt}`;
+                          const disregardKey = `module-disregard-prompt-${insight.normalized || insight.samplePrompt}`;
+                          const creating = pendingKey === createKey;
+                          const disregarding = pendingKey === disregardKey;
+                          return (
+                            <div className="sim-prompt-card" key={insight.normalized || insight.samplePrompt}>
+                              <div className="sim-prompt-text">{insight.samplePrompt}</div>
+                              <div className="sim-prompt-meta">
+                                <span>{insight.occurrences} occurrences</span>
+                                <span>{insight.uniqueUsers} users</span>
+                                <span>{insight.suggestedCategory}</span>
+                                <span>Last {formatRelative(insight.lastSeen)}</span>
+                              </div>
+                              <div className="sim-prompt-actions">
+                                <button
+                                  type="button"
+                                  className="btn-sm create-user-btn"
+                                  disabled={creating || disregarding}
+                                  onClick={() => createModuleFromPromptInsight(insight)}
+                                >
+                                  {creating ? "Generating..." : "Generate AI Draft"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-sm btn-danger"
+                                  disabled={creating || disregarding}
+                                  onClick={() => disregardPromptInsight(insight)}
+                                >
+                                  {disregarding ? "Disregarding..." : "Disregard"}
+                                </button>
+                              </div>
                             </div>
-                            <div className="sim-prompt-actions">
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="panel sim-modules-panel">
+                    <div className="panel-title">
+                      Modules
+                      <span>{moduleStats.total} total</span>
+                    </div>
+                    <div className="sim-grid">
+                      {modules.map((module) => {
+                        const completions = Number(module.completions || 0);
+                        const progressWidth = Math.round((completions / maxCompletions) * 100);
+                        const pending = pendingKey === `module-${module.id}`;
+                        const deleting = pendingKey === `module-delete-${module.id}`;
+
+                        return (
+                          <div className="sim-card" key={module.id}>
+                            <div className="sim-card-header">
+                              <div>
+                                <div className="sim-title">{module.title}</div>
+                                <div className="sim-cat">{module.category}</div>
+                              </div>
+                              <div className="sim-controls">
+                                <span className={`badge ${module.enabled ? "badge-active" : "badge-inactive"}`}>
+                                  {module.enabled ? "Enabled" : "Disabled"}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="progress-bar"><div className="progress-fill" style={{ width: `${progressWidth}%` }} /></div>
+
+                            <div className="sim-stats">
+                              <div className="sim-stat"><strong>{completions}</strong> completions</div>
+                              <div className="sim-stat"><strong>{Number(module.passRate || 0)}%</strong> pass rate</div>
+                              <div className="sim-stat"><strong>{Number(module.avgSteps || 0).toFixed(1)}</strong> avg steps</div>
+                            </div>
+
+                            <div className="sim-actions">
                               <button
                                 type="button"
-                                className="btn-sm create-user-btn"
-                                disabled={creating || disregarding}
-                                onClick={() => createModuleFromPromptInsight(insight)}
+                                className="btn-sm"
+                                onClick={() =>
+                                  openModulePreview(getModuleSimulationDefinition(module), {
+                                    surface: module?.simulation?.terminalType
+                                  })
+                                }
                               >
-                                {creating ? "Generating..." : "Generate AI Draft"}
+                                View Simulation
+                              </button>
+                              <button
+                                type="button"
+                                className={`btn-sm ${module.enabled ? "btn-danger" : ""}`}
+                                disabled={pending}
+                                onClick={() => updateModule(module.id, { enabled: !module.enabled })}
+                              >
+                                {module.enabled ? "Disable" : "Enable"}
                               </button>
                               <button
                                 type="button"
                                 className="btn-sm btn-danger"
-                                disabled={creating || disregarding}
-                                onClick={() => disregardPromptInsight(insight)}
+                                disabled={deleting}
+                                onClick={() => deleteSimulationModule(module)}
                               >
-                                {disregarding ? "Disregarding..." : "Disregard"}
+                                {deleting ? "Deleting..." : "Delete"}
                               </button>
                             </div>
                           </div>
                         );
-                      })
-                    )}
+                      })}
+                    </div>
                   </div>
-                </div>
-
-                <div className="sim-grid">
-                  {modules.map((module) => {
-                    const completions = Number(module.completions || 0);
-                    const progressWidth = Math.round((completions / maxCompletions) * 100);
-                    const pending = pendingKey === `module-${module.id}`;
-                    const deleting = pendingKey === `module-delete-${module.id}`;
-
-                    return (
-                      <div className="sim-card" key={module.id}>
-                        <div className="sim-card-header">
-                          <div>
-                            <div className="sim-title">{module.title}</div>
-                            <div className="sim-cat">{module.category}</div>
-                          </div>
-                          <div className="sim-controls">
-                            <span className={`badge ${module.enabled ? "badge-active" : "badge-inactive"}`}>
-                              {module.enabled ? "Enabled" : "Disabled"}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="progress-bar"><div className="progress-fill" style={{ width: `${progressWidth}%` }} /></div>
-
-                        <div className="sim-stats">
-                          <div className="sim-stat"><strong>{completions}</strong> completions</div>
-                          <div className="sim-stat"><strong>{Number(module.passRate || 0)}%</strong> pass rate</div>
-                          <div className="sim-stat"><strong>{Number(module.avgSteps || 0).toFixed(1)}</strong> avg steps</div>
-                        </div>
-
-                        <div className="sim-actions">
-                          <button
-                            type="button"
-                            className="btn-sm"
-                            onClick={() =>
-                              openModulePreview(getModuleSimulationDefinition(module), {
-                                surface: module?.simulation?.terminalType
-                              })
-                            }
-                          >
-                            View Simulation
-                          </button>
-                          <button
-                            type="button"
-                            className={`btn-sm ${module.enabled ? "btn-danger" : ""}`}
-                            disabled={pending}
-                            onClick={() => updateModule(module.id, { enabled: !module.enabled })}
-                          >
-                            {module.enabled ? "Disable" : "Enable"}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-sm btn-danger"
-                            disabled={deleting}
-                            onClick={() => deleteSimulationModule(module)}
-                          >
-                            {deleting ? "Deleting..." : "Delete"}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
                 </div>
               </div>
             ) : null}
@@ -2027,40 +2019,71 @@ MacBook-Pro:~ student$ _`}
 
       {userModalOpen ? (
         <div className="admin-modal-overlay" onClick={closeUserModal}>
-          <div className="admin-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="admin-modal-head">
-              <h3>{userModalMode === "create" ? "Create User Account" : "Edit User Account"}</h3>
-              <button type="button" className="btn-sm" onClick={closeUserModal}>X</button>
+          <div className="admin-modal account-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="account-modal-head">
+              <div className="account-modal-head-left">
+                <div className="account-modal-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M12 5a4 4 0 1 1 0 8 4 4 0 0 1 0-8z" />
+                    <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+                    <path d="M18.5 4.5v5M16 7h5" />
+                  </svg>
+                </div>
+                <div>
+                  <h3>{userModalMode === "create" ? "Create user account" : "Edit user account"}</h3>
+                  <p>
+                    {userModalMode === "create"
+                      ? "Fill in the details below to add a new user"
+                      : "Update user details and access settings"}
+                  </p>
+                </div>
+              </div>
+              <button type="button" className="account-modal-close" onClick={closeUserModal} aria-label="Close">
+                x
+              </button>
             </div>
 
             {userFormError ? <div className="admin-alert error">{userFormError}</div> : null}
 
-            <div className="admin-modal-grid">
-              <label className="admin-field">
+            <div className="account-modal-body">
+              <div className="admin-modal-grid account-modal-grid">
+                <label className="admin-field account-field">
                 <span>First Name</span>
                 <input
                   type="text"
+                  placeholder="e.g. Alex"
                   value={userForm.firstName}
                   onChange={(event) => setUserForm((prev) => ({ ...prev, firstName: event.target.value }))}
                 />
               </label>
-              <label className="admin-field">
+                <label className="admin-field account-field">
                 <span>Last Name</span>
                 <input
                   type="text"
+                  placeholder="e.g. Rivera"
                   value={userForm.lastName}
                   onChange={(event) => setUserForm((prev) => ({ ...prev, lastName: event.target.value }))}
                 />
               </label>
-              <label className="admin-field full">
-                <span>Email</span>
-                <input
-                  type="email"
-                  value={userForm.email}
-                  onChange={(event) => setUserForm((prev) => ({ ...prev, email: event.target.value }))}
-                />
-              </label>
-              <label className="admin-field">
+                <label className="admin-field account-field full">
+                  <span>Email Address</span>
+                  <div className="account-input-icon-wrap">
+                    <span className="account-input-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24">
+                        <path d="M3 6h18v12H3z" />
+                        <path d="m4 7 8 6 8-6" />
+                      </svg>
+                    </span>
+                    <input
+                      type="email"
+                      placeholder="alex@company.com"
+                      className="account-input-with-icon"
+                      value={userForm.email}
+                      onChange={(event) => setUserForm((prev) => ({ ...prev, email: event.target.value }))}
+                    />
+                  </div>
+                </label>
+                <label className="admin-field account-field">
                 <span>Role</span>
                 <select
                   value={userForm.role}
@@ -2070,7 +2093,7 @@ MacBook-Pro:~ student$ _`}
                   <option value="ADMIN">ADMIN</option>
                 </select>
               </label>
-              <label className="admin-field">
+                <label className="admin-field account-field">
                 <span>Status</span>
                 <select
                   value={userForm.isActive ? "ACTIVE" : "INACTIVE"}
@@ -2080,34 +2103,122 @@ MacBook-Pro:~ student$ _`}
                   <option value="INACTIVE">INACTIVE</option>
                 </select>
               </label>
-              <label className="admin-field">
-                <span>{userModalMode === "create" ? "Password" : "New Password (optional)"}</span>
-                <input
-                  type="password"
-                  value={userForm.password}
-                  onChange={(event) => setUserForm((prev) => ({ ...prev, password: event.target.value }))}
-                />
-              </label>
-              <label className="admin-field">
-                <span>{userModalMode === "create" ? "Confirm Password" : "Confirm New Password"}</span>
-                <input
-                  type="password"
-                  value={userForm.confirmPassword}
-                  onChange={(event) => setUserForm((prev) => ({ ...prev, confirmPassword: event.target.value }))}
-                />
-              </label>
-            </div>
+                <div className={`account-password-section full ${userModalMode === "create" && useDefaultPassword ? "is-disabled" : ""}`}>
+                  <div className="account-password-grid">
+                    <label className="admin-field account-field">
+                      <span>{userModalMode === "create" ? "Password" : "New Password (optional)"}</span>
+                      <div className="account-input-icon-wrap">
+                        <input
+                          type={showCreatePassword ? "text" : "password"}
+                          placeholder={userModalMode === "create" ? "Min. 8 characters" : "Leave blank to keep current"}
+                          value={userForm.password}
+                          disabled={userModalMode === "create" && useDefaultPassword}
+                          onChange={(event) => setUserForm((prev) => ({ ...prev, password: event.target.value }))}
+                        />
+                        <button
+                          type="button"
+                          className="account-input-action"
+                          onClick={() => setShowCreatePassword((prev) => !prev)}
+                          aria-label={showCreatePassword ? "Hide password" : "Show password"}
+                        >
+                          {showCreatePassword ? (
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M3 3l18 18" />
+                              <path d="M10.8 10.8a2.2 2.2 0 0 0 3.1 3.1" />
+                              <path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c4.9 0 8.8 3 10 7-0.4 1.4-1.2 2.7-2.3 3.8" />
+                              <path d="M6.2 6.2C4.6 7.4 3.4 9.1 2 12c1.2 4 5.1 7 10 7 1.1 0 2.1-0.1 3.1-0.4" />
+                            </svg>
+                          ) : (
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7S2 12 2 12z" />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    </label>
+                    <label className="admin-field account-field">
+                      <span>{userModalMode === "create" ? "Confirm Password" : "Confirm New Password"}</span>
+                      <div className="account-input-icon-wrap">
+                        <input
+                          type={showCreateConfirmPassword ? "text" : "password"}
+                          placeholder={userModalMode === "create" ? "Repeat password" : "Confirm new password"}
+                          value={userForm.confirmPassword}
+                          disabled={userModalMode === "create" && useDefaultPassword}
+                          onChange={(event) => setUserForm((prev) => ({ ...prev, confirmPassword: event.target.value }))}
+                        />
+                        <button
+                          type="button"
+                          className="account-input-action"
+                          onClick={() => setShowCreateConfirmPassword((prev) => !prev)}
+                          aria-label={showCreateConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                        >
+                          {showCreateConfirmPassword ? (
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M3 3l18 18" />
+                              <path d="M10.8 10.8a2.2 2.2 0 0 0 3.1 3.1" />
+                              <path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c4.9 0 8.8 3 10 7-0.4 1.4-1.2 2.7-2.3 3.8" />
+                              <path d="M6.2 6.2C4.6 7.4 3.4 9.1 2 12c1.2 4 5.1 7 10 7 1.1 0 2.1-0.1 3.1-0.4" />
+                            </svg>
+                          ) : (
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7S2 12 2 12z" />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    </label>
+                  </div>
+                  {showPasswordMatch ? (
+                    <div className={`account-password-match ${passwordMatch ? "ok" : "bad"}`}>
+                      {passwordMatch ? "Passwords match" : "Passwords do not match"}
+                    </div>
+                  ) : null}
+                </div>
+                {userModalMode === "create" ? (
+                  <label className="admin-inline-checkbox account-default-row full">
+                    <input
+                      type="checkbox"
+                      checked={useDefaultPassword}
+                      onChange={(event) => {
+                        const checked = event.target.checked;
+                        setUseDefaultPassword(checked);
+                        setUserFormError("");
+                        setShowCreatePassword(false);
+                        setShowCreateConfirmPassword(false);
+                        setUserForm((prev) => ({
+                          ...prev,
+                          password: checked ? DEFAULT_USER_PASSWORD : "",
+                          confirmPassword: checked ? DEFAULT_USER_PASSWORD : ""
+                        }));
+                      }}
+                    />
+                    <span>
+                      <strong>Use default password</strong>
+                      <em>
+                        Account will be created with <code>{DEFAULT_USER_PASSWORD}</code> and should be changed on first login
+                      </em>
+                    </span>
+                  </label>
+                ) : null}
+              </div>
 
-            <div className="admin-modal-actions">
-              <button type="button" className="btn-sm" onClick={closeUserModal}>Cancel</button>
-              <button
-                type="button"
-                className="btn-sm create-user-btn"
-                disabled={pendingKey === "user-modal-save"}
-                onClick={saveUserModal}
-              >
-                {pendingKey === "user-modal-save" ? "Saving..." : userModalMode === "create" ? "Create User" : "Save Changes"}
-              </button>
+              <div className="account-modal-footer">
+                <div className={`account-preview-avatar ${previewFullName ? "has-name" : ""}`}>{previewInitials}</div>
+                <div className={`account-preview-name ${previewFullName ? "has-name" : ""}`}>
+                  {previewFullName || "Enter a name to preview"}
+                </div>
+                <button type="button" className="btn-sm" onClick={closeUserModal}>Cancel</button>
+                <button
+                  type="button"
+                  className="btn-sm create-user-btn"
+                  disabled={pendingKey === "user-modal-save"}
+                  onClick={saveUserModal}
+                >
+                  {pendingKey === "user-modal-save" ? "Saving..." : userModalMode === "create" ? "Create User" : "Save Changes"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

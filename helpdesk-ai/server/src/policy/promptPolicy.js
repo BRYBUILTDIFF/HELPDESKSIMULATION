@@ -1,49 +1,34 @@
 const { getPolicyRuntimeConfig } = require("../store/policyConfigStore");
 
-function normalize(text) {
-  return String(text || "").toLowerCase().replace(/\s+/g, " ").trim();
+const DEEPSEEK_URL = "http://localhost:11434/api/chat";
+const DEEPSEEK_MODEL = "deepseek-r1:7b";
+const CLASSIFIER_TIMEOUT_MS = 8000;
+const CLARIFY_MESSAGE_FALLBACK =
+  "Could you clarify if this is an IT-related issue? I'm here to help with IT support topics.";
+
+let cachedFetchImpl = typeof globalThis.fetch === "function" ? globalThis.fetch.bind(globalThis) : null;
+
+function getClassifierSystemPrompt() {
+  return [
+    "You are an IT helpdesk policy classifier.",
+    "Classify the user's latest message into exactly one label: in_scope, out_of_scope, or greeting.",
+    "Return ONLY raw JSON with exact shape:",
+    "{\"classification\":\"in_scope|out_of_scope|greeting\",\"confidence\":0.0,\"reason\":\"short sentence\"}",
+    "No markdown, no code fences, no additional keys, no explanation.",
+    "IN-SCOPE includes: hardware, software, operating systems, network, VPN, email, account access, passwords, printers, security, remote access, active directory, IT ticketing.",
+    "OUT-OF-SCOPE includes: health, finance, relationships, food, travel, entertainment, academics, politics, and anything unrelated to IT support.",
+    "If ambiguous but possibly IT-related, classify as in_scope.",
+    "If short follow-up continues an IT support conversation, classify as in_scope.",
+    "If greeting only and no IT question, classify as greeting.",
+    "Handle multilingual input correctly, including Filipino/Tagalog."
+  ].join(" ");
 }
 
-function countKeywordMatches(text, keywords) {
-  return keywords.reduce((count, keyword) => (text.includes(keyword) ? count + 1 : count), 0);
-}
-
-function matchesAnyPattern(text, patterns) {
-  return patterns.some((pattern) => pattern.test(text));
-}
-
-function isGreetingOnly(text, greetingPatterns) {
-  return matchesAnyPattern(text, greetingPatterns) && text.split(" ").length <= 6;
-}
-
-function isShortFollowUp(text) {
-  return /^(yes|no|yep|nope|ok|okay|sure|continue|go ahead|proceed|please continue|correct|right)\b[.!?]*$/i.test(text);
-}
-
-function isContextualFollowUp(text) {
-  const compact = String(text || "").trim();
-  if (!compact) {
-    return false;
+function sanitizeHistory(history = []) {
+  if (!Array.isArray(history)) {
+    return [];
   }
 
-  const tokenCount = compact.split(/\s+/).length;
-  if (tokenCount > 18) {
-    return false;
-  }
-
-  const startsWithFollowUpQuestion =
-    /^(what|how|why|where|when|which|can|could|would|should|do|does|did)\b/.test(compact);
-  const hasReference =
-    /\b(it|that|this|those|these|same|above|previous|earlier|last one|that one)\b/.test(compact) ||
-    /\bfor (it|that|this)\b/.test(compact);
-  const hasFollowUpPhrase =
-    /\b(what are the steps|next steps|steps for|explain (it|that|this)|more details|elaborate|break it down|how about)\b/.test(compact);
-
-  return startsWithFollowUpQuestion && (hasReference || hasFollowUpPhrase);
-}
-
-function buildHistoryContext(history) {
-  if (!Array.isArray(history)) return "";
   return history
     .filter(
       (entry) =>
@@ -53,16 +38,118 @@ function buildHistoryContext(history) {
         entry.content.trim()
     )
     .slice(-8)
-    .map((entry) => entry.content.trim())
-    .join(" ");
+    .map((entry) => ({
+      role: entry.role,
+      content: entry.content.trim().slice(0, 4000)
+    }));
 }
 
-function evaluatePromptPolicy(message, history = []) {
-  const policy = getPolicyRuntimeConfig();
-  const normalized = normalize(message);
-  const historyContext = normalize(buildHistoryContext(history));
+async function getFetchImpl() {
+  if (cachedFetchImpl) {
+    return cachedFetchImpl;
+  }
 
-  if (!normalized) {
+  try {
+    const nodeFetchModule = await import("node-fetch");
+    cachedFetchImpl = nodeFetchModule.default;
+    return cachedFetchImpl;
+  } catch (_err) {
+    throw new Error("No fetch implementation available.");
+  }
+}
+
+/**
+ * Classifies a prompt using a local DeepSeek model through an Ollama-compatible chat endpoint.
+ * @param {string} message
+ * @param {Array<{role: string, content: string}>} history
+ * @returns {Promise<{classification: "in_scope" | "out_of_scope" | "greeting", confidence: number, reason: string}>}
+ */
+async function classifyWithDeepSeek(message, history) {
+  const fetchImpl = await getFetchImpl();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), CLASSIFIER_TIMEOUT_MS);
+  const safeMessage = String(message || "").trim();
+  const safeHistory = sanitizeHistory(history);
+
+  try {
+    const response = await fetchImpl(DEEPSEEK_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: DEEPSEEK_MODEL,
+        stream: false,
+        messages: [
+          { role: "system", content: getClassifierSystemPrompt() },
+          ...safeHistory,
+          { role: "user", content: safeMessage }
+        ]
+      })
+    });
+
+    const rawResponse = await response.text();
+    if (!response.ok) {
+      throw new Error(`Classifier request failed (${response.status}).`);
+    }
+
+    let envelope;
+    try {
+      envelope = JSON.parse(rawResponse);
+    } catch (_err) {
+      console.error("[PolicyClassifier] Malformed JSON envelope from classifier:", rawResponse);
+      throw new Error("Malformed classifier response.");
+    }
+
+    const rawModelContent = String(envelope?.message?.content || "").trim();
+    if (!rawModelContent) {
+      console.error("[PolicyClassifier] Empty classifier output:", rawResponse);
+      throw new Error("Classifier returned empty output.");
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(rawModelContent);
+    } catch (_err) {
+      console.error("[PolicyClassifier] Non-JSON classifier content:", rawModelContent);
+      throw new Error("Classifier returned non-JSON content.");
+    }
+
+    const classification = String(parsed?.classification || "").trim();
+    if (!["in_scope", "out_of_scope", "greeting"].includes(classification)) {
+      console.error("[PolicyClassifier] Invalid classification payload:", rawModelContent);
+      throw new Error("Classifier returned unsupported classification.");
+    }
+
+    const numericConfidence = Number(parsed?.confidence);
+    const confidence = Number.isFinite(numericConfidence)
+      ? Math.max(0, Math.min(1, numericConfidence))
+      : 0;
+    const reason = String(parsed?.reason || "").trim() || "Classifier decision.";
+
+    return { classification, confidence, reason };
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      throw new Error("Classifier timeout after 8 seconds.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Evaluates a prompt against IT helpdesk scope policy.
+ * @param {string} message
+ * @param {Array<{role: string, content: string}>} history
+ * @returns {Promise<{allowed: boolean, code: string, reason: string, userMessage?: string, directReply?: string}>}
+ */
+async function evaluatePromptPolicy(message, history = []) {
+  const policy = getPolicyRuntimeConfig();
+  const input = String(message || "").trim();
+
+  if (!input) {
     return {
       allowed: false,
       code: "EMPTY_PROMPT",
@@ -71,7 +158,7 @@ function evaluatePromptPolicy(message, history = []) {
     };
   }
 
-  if (normalized.length > 4000) {
+  if (input.length > 4000) {
     return {
       allowed: false,
       code: "PROMPT_TOO_LONG",
@@ -80,89 +167,49 @@ function evaluatePromptPolicy(message, history = []) {
     };
   }
 
-  if (isGreetingOnly(normalized, policy.greetingPatternRegex)) {
-    return {
-      allowed: true,
-      code: "GREETING",
-      reason: "Greeting detected.",
-      directReply: policy.messages.greetingReply
-    };
-  }
+  try {
+    const classificationResult = await classifyWithDeepSeek(input, history);
 
-  const inScopeScore = countKeywordMatches(normalized, policy.inScopeKeywords);
-  const outScopeScore = countKeywordMatches(normalized, policy.outOfScopeKeywords);
-  const hasInScopeIntent = matchesAnyPattern(normalized, policy.inScopeIntentRegex);
-
-  const historyInScopeScore = historyContext
-    ? countKeywordMatches(historyContext, policy.inScopeKeywords)
-    : 0;
-  const historyHasInScopeIntent = historyContext
-    ? matchesAnyPattern(historyContext, policy.inScopeIntentRegex)
-    : false;
-  const hasInScopeHistoryContext = historyInScopeScore > 0 || historyHasInScopeIntent;
-
-  if (outScopeScore > 0 && inScopeScore === 0 && !hasInScopeIntent) {
-    return {
-      allowed: false,
-      code: "OUT_OF_SCOPE",
-      reason: "Prompt matches an out-of-scope topic with no IT helpdesk signals.",
-      userMessage: policy.messages.outOfScopeMessage
-    };
-  }
-
-  if (outScopeScore > 0 && outScopeScore >= inScopeScore && !hasInScopeIntent) {
-    return {
-      allowed: false,
-      code: "OUT_OF_SCOPE",
-      reason: "Out-of-scope content outweighs in-scope IT signals.",
-      userMessage: policy.messages.mixedScopeMessage
-    };
-  }
-
-  if (isShortFollowUp(normalized)) {
-    if (hasInScopeHistoryContext) {
+    if (classificationResult.classification === "greeting") {
       return {
         allowed: true,
-        code: "ALLOWED_CONTEXT_FOLLOW_UP",
-        reason: "Short follow-up allowed using recent in-scope context."
+        code: "GREETING",
+        reason: classificationResult.reason,
+        directReply: policy.messages.greetingReply
       };
     }
+
+    if (classificationResult.classification === "in_scope") {
+      return {
+        allowed: true,
+        code: "ALLOWED",
+        reason: classificationResult.reason
+      };
+    }
+
+    if (classificationResult.confidence < 0.75) {
+      return {
+        allowed: false,
+        code: "CLARIFY",
+        reason: classificationResult.reason,
+        userMessage: policy.messages.clarifyMessage || CLARIFY_MESSAGE_FALLBACK
+      };
+    }
+
     return {
       allowed: false,
       code: "OUT_OF_SCOPE",
-      reason: "Short follow-up with no prior in-scope conversation context.",
-      userMessage: policy.messages.followUpNoContextMessage
+      reason: classificationResult.reason,
+      userMessage: policy.messages.outOfScopeMessage
     };
-  }
-
-  if (
-    inScopeScore === 0 &&
-    !hasInScopeIntent &&
-    outScopeScore === 0 &&
-    hasInScopeHistoryContext &&
-    isContextualFollowUp(normalized)
-  ) {
+  } catch (err) {
+    console.error("[PolicyClassifier]", err);
     return {
       allowed: true,
-      code: "ALLOWED_CONTEXT_FOLLOW_UP",
-      reason: "Contextual follow-up allowed using recent in-scope conversation context."
+      code: "CLASSIFIER_ERROR",
+      reason: err?.message || "Classifier error."
     };
   }
-
-  if (inScopeScore > 0 || hasInScopeIntent) {
-    return {
-      allowed: true,
-      code: "ALLOWED",
-      reason: "Prompt matches in-scope IT helpdesk policy."
-    };
-  }
-
-  return {
-    allowed: false,
-    code: "OUT_OF_SCOPE",
-    reason: "Prompt does not match supported IT helpdesk scope.",
-    userMessage: policy.messages.defaultOutOfScopeMessage
-  };
 }
 
 module.exports = { evaluatePromptPolicy };
