@@ -24,6 +24,14 @@ const CATEGORY_KEYWORDS = [
   { category: "Security", words: ["virus", "malware", "phishing", "security", "hack"] },
   { category: "Software", words: ["app", "software", "install", "update", "crash", "error"] }
 ];
+const UNSUPPORTED_PLATFORM_PATTERN = /\b(android|ios|iphone|ipad|linux|ubuntu|debian|fedora|redhat|centos|chromebook)\b/;
+const PHYSICAL_DAMAGE_PATTERN =
+  /\b(broken|cracked|shattered|physically damaged|physical damage|water damage|spilled|burnt|burned|replace|replacement|dead pixel|flicker|flickering|no display|black screen)\b/;
+const PHYSICAL_DEVICE_PATTERN = /\b(monitor|screen|display|hinge|lcd|panel|keyboard|touchpad|chassis|power button|charger|battery|port)\b/;
+const SIMULATION_INTENT_PATTERN =
+  /\b(reset|unlock|troubleshoot|diagnose|fix|resolve|recover|restore|configure|setup|install|update|investigate|check|verify|repair|guide|step by step|walk me through|how to)\b/;
+const SIMULATION_DOMAIN_PATTERN =
+  /\b(password|account|admin|login|signin|sign in|active directory|ad user|dns|vpn|network|internet|ip|gateway|service|process|event log|error|not working|failed|cannot|outlook|email|mailbox|printer|spooler|cpu|memory|disk|storage|malware|virus|permissions?)\b/;
 const disregardedPromptInsightKeys = new Set();
 
 function isAllowedAdminUserPassword(password) {
@@ -78,7 +86,80 @@ function inferScenarioType(category = "", prompt = "") {
   return "general";
 }
 
-function buildFallbackSimulationDefinition({ title, category, prompt }) {
+function mapSurfaceToTerminalType(surface = "") {
+  const normalized = String(surface || "").trim().toLowerCase();
+  return normalized === "mac-terminal" || normalized === "mac-os" ? "mac-terminal" : "windows-terminal";
+}
+
+function toSimulationSurfaceLabel(surface = "") {
+  const normalized = String(surface || "").trim().toLowerCase();
+  if (normalized === "mac-terminal") return "Mac Terminal";
+  if (normalized === "windows-os") return "Windows OS";
+  if (normalized === "mac-os") return "Mac OS";
+  return "Windows Terminal";
+}
+
+function inferPromptSimulationSurface(prompt = "") {
+  const source = String(prompt || "").toLowerCase();
+  const mentionsWindows = /\bwindows\b|\bwin(?:10|11)?\b|powershell|command prompt|\bcmd\b/.test(source);
+  const mentionsMac = /\bmac\s?os\b|\bmacbook\b|\bmac\b|\bos x\b|finder|keychain/.test(source);
+  const terminalHint = /\bterminal\b|powershell|command prompt|\bcmd\b|\bbash\b|\bzsh\b|\bshell\b|\bsudo\b/.test(source);
+  const guiHint = /\bsettings\b|\bcontrol panel\b|\bsystem settings\b|\bdevice manager\b|\bfinder\b|\bclick\b/.test(source);
+
+  if (mentionsWindows && !mentionsMac) {
+    if (terminalHint) return "windows-terminal";
+    if (guiHint) return "windows-os";
+    return "windows-terminal";
+  }
+
+  if (mentionsMac && !mentionsWindows) {
+    if (terminalHint) return "mac-terminal";
+    if (guiHint) return "mac-os";
+    return "mac-terminal";
+  }
+
+  if (terminalHint) {
+    if (/\bbash\b|\bzsh\b|\bbrew\b/.test(source)) return "mac-terminal";
+    return "windows-terminal";
+  }
+
+  if (guiHint) {
+    return "windows-os";
+  }
+
+  return null;
+}
+
+function evaluateSimulationPromptAlignment(prompt = "") {
+  const raw = String(prompt || "").trim();
+  const normalized = normalizePrompt(raw);
+  if (!normalized || normalized.length < 8) {
+    return { allowed: false, reason: "Prompt is too short for simulation alignment." };
+  }
+
+  if (UNSUPPORTED_PLATFORM_PATTERN.test(normalized)) {
+    return { allowed: false, reason: "Prompt targets an unsupported platform." };
+  }
+
+  if (PHYSICAL_DAMAGE_PATTERN.test(normalized) && PHYSICAL_DEVICE_PATTERN.test(normalized)) {
+    return { allowed: false, reason: "Prompt describes physical hardware repair outside simulation surfaces." };
+  }
+
+  const hasIntent = SIMULATION_INTENT_PATTERN.test(normalized);
+  const hasDomain = SIMULATION_DOMAIN_PATTERN.test(normalized);
+  if (!hasIntent && !hasDomain) {
+    return { allowed: false, reason: "Prompt does not map to a troubleshooting simulation workflow." };
+  }
+
+  const inferredSurface = inferPromptSimulationSurface(raw) || "windows-terminal";
+  return {
+    allowed: true,
+    surface: inferredSurface,
+    surfaceLabel: toSimulationSurfaceLabel(inferredSurface)
+  };
+}
+
+function buildFallbackSimulationDefinition({ title, category, prompt, surface }) {
   const safeTitle = String(title || "Simulation Scenario").trim();
   const safeCategory = String(category || "General").trim();
   const scenarioType = inferScenarioType(safeCategory, prompt);
@@ -86,7 +167,7 @@ function buildFallbackSimulationDefinition({ title, category, prompt }) {
   return {
     title: safeTitle,
     scenarioType,
-    terminalType: "windows-terminal",
+    terminalType: mapSurfaceToTerminalType(surface),
     steps: [
       {
         title: "Collect Ticket Context",
@@ -156,7 +237,15 @@ function sanitizeSimulationDefinition(definition, fallback) {
   };
 }
 
-async function generateSimulationDraftFromPrompt(prompt, occurrences = 1) {
+async function generateSimulationDraftFromPrompt(prompt, occurrences = 1, options = {}) {
+  const alignment =
+    options?.alignment && options.alignment.allowed
+      ? options.alignment
+      : evaluateSimulationPromptAlignment(prompt);
+  if (!alignment.allowed) {
+    return null;
+  }
+
   const fallback = {
     title: titleFromPrompt(prompt),
     category: inferCategory(prompt),
@@ -165,16 +254,23 @@ async function generateSimulationDraftFromPrompt(prompt, occurrences = 1) {
   const fallbackSimulation = buildFallbackSimulationDefinition({
     title: fallback.title,
     category: fallback.category,
-    prompt
+    prompt,
+    surface: alignment.surface
   });
 
   const client = getOpenAIClient();
   if (!client) {
-    return { ...fallback, simulation: fallbackSimulation };
+    return {
+      ...fallback,
+      simulation: fallbackSimulation,
+      recommendedSurface: alignment.surface,
+      recommendedSurfaceLabel: alignment.surfaceLabel
+    };
   }
 
   try {
     const provider = getAIProvider();
+    const preferredTerminalType = mapSurfaceToTerminalType(alignment.surface);
     const completion = await client.chat.completions.create({
       model: getDefaultModel(provider),
       temperature: 0.3,
@@ -183,7 +279,7 @@ async function generateSimulationDraftFromPrompt(prompt, occurrences = 1) {
         {
           role: "system",
           content:
-            "Create an IT support simulation module from a frequent user prompt. Return JSON only with this schema: {\"title\": string, \"category\": string, \"difficulty\": \"Easy\"|\"Medium\"|\"Hard\", \"simulation\": {\"title\": string, \"scenarioType\": \"general\"|\"network\"|\"email\"|\"printer\", \"terminalType\": \"windows-terminal\"|\"mac-terminal\", \"steps\": [{\"title\": string, \"desc\": string, \"screen\": string, \"action\": string, \"result\": string}]}}. Include 5 to 7 practical steps."
+            `Create an IT support simulation module from a frequent user prompt. The recommended simulation surface is ${alignment.surfaceLabel} and terminalType must be "${preferredTerminalType}". Return JSON only with this schema: {"title": string, "category": string, "difficulty": "Easy"|"Medium"|"Hard", "simulation": {"title": string, "scenarioType": "general"|"network"|"email"|"printer", "terminalType": "windows-terminal"|"mac-terminal", "steps": [{"title": string, "desc": string, "screen": string, "action": string, "result": string}]}}. Include 5 to 7 practical steps.`
         },
         {
           role: "user",
@@ -196,11 +292,24 @@ async function generateSimulationDraftFromPrompt(prompt, occurrences = 1) {
     const title = String(parsed?.title || "").trim() || fallback.title;
     const category = String(parsed?.category || "").trim() || fallback.category;
     const difficulty = DIFFICULTY_LEVELS.includes(parsed?.difficulty) ? parsed.difficulty : fallback.difficulty;
-    const fallbackForTitle = buildFallbackSimulationDefinition({ title, category, prompt });
+    const fallbackForTitle = buildFallbackSimulationDefinition({ title, category, prompt, surface: alignment.surface });
     const simulation = sanitizeSimulationDefinition(parsed?.simulation, fallbackForTitle);
-    return { title, category, difficulty, simulation };
+    simulation.terminalType = preferredTerminalType;
+    return {
+      title,
+      category,
+      difficulty,
+      simulation,
+      recommendedSurface: alignment.surface,
+      recommendedSurfaceLabel: alignment.surfaceLabel
+    };
   } catch (_err) {
-    return { ...fallback, simulation: fallbackSimulation };
+    return {
+      ...fallback,
+      simulation: fallbackSimulation,
+      recommendedSurface: alignment.surface,
+      recommendedSurfaceLabel: alignment.surfaceLabel
+    };
   }
 }
 
@@ -470,12 +579,18 @@ async function getSimulationPromptInsights(req, res, next) {
       if (disregardedPromptInsightKeys.has(normalized)) {
         continue;
       }
+      const alignment = evaluateSimulationPromptAlignment(event.message);
+      if (!alignment.allowed) {
+        continue;
+      }
       const current = grouped.get(normalized) || {
         normalized,
         samplePrompt: String(event.message || "").trim(),
         occurrences: 0,
         lastSeen: event.at,
-        uniqueUsers: new Set()
+        uniqueUsers: new Set(),
+        recommendedSurface: alignment.surface,
+        recommendedSurfaceLabel: alignment.surfaceLabel
       };
       current.occurrences += 1;
       current.lastSeen = current.lastSeen > event.at ? current.lastSeen : event.at;
@@ -490,7 +605,9 @@ async function getSimulationPromptInsights(req, res, next) {
         occurrences: item.occurrences,
         uniqueUsers: item.uniqueUsers.size,
         lastSeen: item.lastSeen,
-        suggestedCategory: inferCategory(item.samplePrompt)
+        suggestedCategory: inferCategory(item.samplePrompt),
+        recommendedSurface: item.recommendedSurface || "windows-terminal",
+        recommendedSurfaceLabel: item.recommendedSurfaceLabel || "Windows Terminal"
       }))
       .sort((a, b) => {
         if (b.occurrences !== a.occurrences) return b.occurrences - a.occurrences;
@@ -525,9 +642,22 @@ async function generateSimulationModuleDraft(req, res, next) {
       if (!sourcePrompt) {
         return res.status(400).json({ message: "sourcePrompt is required for mode from_prompt" });
       }
+      const alignment = evaluateSimulationPromptAlignment(sourcePrompt);
+      if (!alignment.allowed) {
+        return res.status(400).json({
+          message:
+            "Prompt is outside supported simulation surfaces (Windows Terminal, Mac Terminal, Windows OS, Mac OS)."
+        });
+      }
       const occurrences = Math.max(1, Number(req.body?.occurrences || 1));
-      const draft = await generateSimulationDraftFromPrompt(sourcePrompt, occurrences);
-      return res.status(200).json({ draft, sourcePrompt, occurrences });
+      const draft = await generateSimulationDraftFromPrompt(sourcePrompt, occurrences, { alignment });
+      if (!draft) {
+        return res.status(400).json({
+          message:
+            "Prompt is outside supported simulation surfaces (Windows Terminal, Mac Terminal, Windows OS, Mac OS)."
+        });
+      }
+      return res.status(200).json({ draft, sourcePrompt, occurrences, recommendedSurface: alignment.surface });
     }
 
     const title = String(req.body?.title || "").trim();
@@ -564,8 +694,21 @@ async function createSimulationModule(req, res, next) {
       if (!sourcePrompt) {
         return res.status(400).json({ message: "sourcePrompt is required for mode from_prompt" });
       }
+      const alignment = evaluateSimulationPromptAlignment(sourcePrompt);
+      if (!alignment.allowed) {
+        return res.status(400).json({
+          message:
+            "Prompt is outside supported simulation surfaces (Windows Terminal, Mac Terminal, Windows OS, Mac OS)."
+        });
+      }
       const occurrences = Math.max(1, Number(req.body?.occurrences || 1));
-      const draft = await generateSimulationDraftFromPrompt(sourcePrompt, occurrences);
+      const draft = await generateSimulationDraftFromPrompt(sourcePrompt, occurrences, { alignment });
+      if (!draft) {
+        return res.status(400).json({
+          message:
+            "Prompt is outside supported simulation surfaces (Windows Terminal, Mac Terminal, Windows OS, Mac OS)."
+        });
+      }
       payload = {
         ...draft,
         enabled: true,

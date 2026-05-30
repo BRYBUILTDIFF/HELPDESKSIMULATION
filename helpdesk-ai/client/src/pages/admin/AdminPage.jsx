@@ -127,6 +127,14 @@ function mapTerminalTypeToSurface(terminalType = "") {
   return String(terminalType || "").toLowerCase() === "mac-terminal" ? "mac-terminal" : "windows-terminal";
 }
 
+function formatSurfaceLabel(surface = "") {
+  const value = String(surface || "").toLowerCase();
+  if (value === "mac-terminal") return "Mac Terminal";
+  if (value === "windows-os") return "Windows OS";
+  if (value === "mac-os") return "Mac OS";
+  return "Windows Terminal";
+}
+
 function toCsv(rows) {
   return rows
     .map((row) =>
@@ -951,13 +959,15 @@ export default function AdminPage() {
       const res = await api.post("/api/admin/simulation-modules/draft", {
         mode: "from_prompt",
         sourcePrompt: insight.samplePrompt,
-        occurrences: Number(insight.occurrences || 1)
+        occurrences: Number(insight.occurrences || 1),
+        preferredSurface: insight.recommendedSurface
       });
       const draft = res.data?.draft;
       if (!draft) {
         throw new Error("Unable to generate simulation draft.");
       }
       openModulePreview(getModuleSimulationDefinition(draft), {
+        surface: draft.recommendedSurface || insight.recommendedSurface || draft?.simulation?.terminalType,
         draftMeta: {
           mode: "from_prompt",
           sourcePrompt: insight.samplePrompt,
@@ -1071,7 +1081,8 @@ export default function AdminPage() {
     return promptInsights.filter((item) => {
       return (
         String(item.samplePrompt || "").toLowerCase().includes(query) ||
-        String(item.suggestedCategory || "").toLowerCase().includes(query)
+        String(item.suggestedCategory || "").toLowerCase().includes(query) ||
+        String(item.recommendedSurfaceLabel || item.recommendedSurface || "").toLowerCase().includes(query)
       );
     });
   }, [promptInsightQuery, promptInsights]);
@@ -1693,6 +1704,7 @@ export default function AdminPage() {
                                 <span>{insight.occurrences} occurrences</span>
                                 <span>{insight.uniqueUsers} users</span>
                                 <span>{insight.suggestedCategory}</span>
+                                <span>{insight.recommendedSurfaceLabel || formatSurfaceLabel(insight.recommendedSurface)}</span>
                                 <span>Last {formatRelative(insight.lastSeen)}</span>
                               </div>
                               <div className="sim-prompt-actions">

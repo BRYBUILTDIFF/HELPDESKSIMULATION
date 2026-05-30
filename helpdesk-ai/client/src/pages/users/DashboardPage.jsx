@@ -112,7 +112,6 @@ const QUESTION_VARIANTS_BY_TITLE = {
   ]
 };
 
-const SESSION_STORAGE_PREFIX = "helpdesk_simulation_sessions_";
 const THEME_STORAGE_KEY = "helpdesk_simulation_theme";
 const SIDEBAR_GROUP_PREFS_PREFIX = "helpdesk_sidebar_group_prefs_";
 const MAX_COMPOSER_HEIGHT = 280;
@@ -182,89 +181,6 @@ function buildFallbackSimulationDefinition(module) {
   };
 }
 
-const SIMULATION_PLAYBOOK_BY_TICKET = {
-  "No Internet Connection": [
-    { commands: ["ping 8.8.8.8"], result: "No external replies yet. Internet path is still down." },
-    { commands: ["ipconfig /all"], result: "Adapter details captured. Next focus: DHCP/DNS refresh." },
-    { commands: ["ipconfig /release", "ipconfig /renew"], result: "Lease cycle completed. New network lease received." },
-    { commands: ["ipconfig /flushdns"], result: "DNS resolver cache cleared." },
-    { commands: ["ping google.com", "tracert google.com"], result: "Name resolution and route path verified. Connectivity restored." }
-  ],
-  "DNS Problem": [
-    { commands: ["nslookup google.com"], result: "Initial lookup failed or returned stale entries." },
-    { commands: ["ipconfig /all"], result: "DNS server settings reviewed from adapter configuration." },
-    { commands: ["ipconfig /flushdns"], result: "Stale local resolver entries removed." },
-    { commands: ["nslookup google.com"], result: "DNS lookup now returns valid records." },
-    { commands: ["ping google.com"], result: "Hostname now resolves and responds. DNS incident resolved." }
-  ],
-  "Slow Computer / High CPU": [
-    { commands: ["tasklist /v"], result: "High-CPU process identified for remediation." },
-    { commands: ["wmic startup get caption,command"], result: "Startup load reviewed; non-essential entries identified." },
-    { commands: ["cleanmgr"], result: "Temporary/system junk cleanup executed." },
-    { commands: ["sfc /scannow"], result: "System integrity scan completed." },
-    { commands: ["dism /online /cleanup-image /restorehealth"], result: "Component store repair completed. System performance stabilized." }
-  ],
-  "Printer Spooler Issue": [
-    { commands: ["wmic printer get name,workoffline"], result: "Printer state checked. Queue issue confirmed." },
-    { commands: ["get-service spooler", "sc query spooler"], result: "Spooler service status collected." },
-    { commands: ["net stop spooler"], result: "Spooler stopped. Queue can now be safely purged." },
-    { commands: ["del /q %systemroot%\\system32\\spool\\printers\\*"], result: "Stuck spool files removed." },
-    { commands: ["net start spooler"], result: "Spooler restarted successfully. Printing pipeline restored." }
-  ],
-  "Recover Hidden USB Files": [
-    { commands: ["wmic logicaldisk get name,volumename,description"], result: "Removable drive letter validated." },
-    { commands: ["dir /a"], result: "Hidden/system entries confirmed in the USB directory." },
-    { commands: ["attrib -h -r -s /s /d *.*"], result: "Hidden/read-only/system attributes removed from user files." },
-    { commands: ["dir /a"], result: "Previously hidden files are now visible." },
-    { commands: ["xcopy *.* recovered /e /i /h"], result: "Recovered files copied to safe backup folder." }
-  ],
-  "User Account Locked": [
-    { commands: ["net user jdoe /domain"], result: "Account status fetched from domain." },
-    { commands: ["search-adaccount -lockedout"], result: "Locked account presence confirmed in AD." },
-    { commands: ["unlock-adaccount -identity jdoe"], result: "Domain account unlocked." },
-    { commands: ["set-adaccountpassword -identity jdoe -reset"], result: "Temporary password reset applied." },
-    { commands: ["net user jdoe /domain"], result: "Account is active and ready for user logon." }
-  ],
-  "Website/Server Down": [
-    { commands: ["ping 10.10.1.50", "nslookup intranet.company.local"], result: "Outage scope validated from endpoint checks." },
-    { commands: ["ssh admin@10.10.1.50"], result: "Connected to affected server for service inspection." },
-    { commands: ["systemctl status nginx"], result: "Web service state confirmed as failed." },
-    { commands: ["tail -n 50 /var/log/nginx/error.log", "netstat -tulpn | grep 443"], result: "Root cause identified from logs/port binding." },
-    { commands: ["systemctl restart nginx"], result: "Service restored. Availability checks passing." }
-  ],
-  "Suspicious Process / Malware Check": [
-    { commands: ["tasklist /svc"], result: "Suspicious process list exported for triage." },
-    { commands: ["wmic process get name,processid,parentprocessid"], result: "Process lineage inspected for anomalies." },
-    { commands: ["netstat -ano"], result: "Live network connections linked to suspicious PIDs." },
-    { commands: ["mrt /f:y"], result: "Full malware scan started and completed." },
-    { commands: ["sfc /scannow"], result: "Post-cleanup system file integrity validated." }
-  ],
-  "Low Disk Space": [
-    { commands: ["wmic logicaldisk get caption,freespace,size"], result: "Disk usage baseline captured." },
-    { commands: ["dir c:\\ /a /s"], result: "Large file footprint identified for cleanup." },
-    { commands: ["cleanmgr"], result: "Disk Cleanup removed temporary/update cache data." },
-    { commands: ["dism /online /cleanup-image /startcomponentcleanup"], result: "Component store cleanup completed." },
-    { commands: ["wmic logicaldisk get caption,freespace,size"], result: "Free space increased to acceptable threshold." }
-  ],
-  "Service Not Running": [
-    { commands: ["sc query spooler"], result: "Service state confirmed as stopped/faulted." },
-    { commands: ["sc qc spooler"], result: "Service configuration and dependencies inspected." },
-    { commands: ["net start spooler"], result: "Service start attempted successfully." },
-    { commands: ["sc query spooler"], result: "Service now reported as RUNNING." },
-    { commands: ["eventvwr.msc"], result: "Event logs reviewed for recurrence prevention." }
-  ]
-};
-
-const SIMULATION_PLAYBOOK_BY_MODULE = {
-  "no-internet": SIMULATION_PLAYBOOK_BY_TICKET["No Internet Connection"],
-  "slow-pc": SIMULATION_PLAYBOOK_BY_TICKET["Slow Computer / High CPU"],
-  printer: SIMULATION_PLAYBOOK_BY_TICKET["Printer Spooler Issue"],
-  "file-recovery": SIMULATION_PLAYBOOK_BY_TICKET["Recover Hidden USB Files"],
-  "password-reset": SIMULATION_PLAYBOOK_BY_TICKET["User Account Locked"],
-  "server-down": SIMULATION_PLAYBOOK_BY_TICKET["Website/Server Down"],
-  malware: SIMULATION_PLAYBOOK_BY_TICKET["Suspicious Process / Malware Check"]
-};
-
 function normalizeCommand(input = "") {
   return String(input)
     .trim()
@@ -274,40 +190,121 @@ function normalizeCommand(input = "") {
     .replace(/\s+/g, " ");
 }
 
-function getSimulationPlaybook({ ticketTitle = "", simulationId = "" } = {}) {
-  if (ticketTitle && SIMULATION_PLAYBOOK_BY_TICKET[ticketTitle]) {
-    return SIMULATION_PLAYBOOK_BY_TICKET[ticketTitle];
-  }
-  if (simulationId && SIMULATION_PLAYBOOK_BY_MODULE[simulationId]) {
-    return SIMULATION_PLAYBOOK_BY_MODULE[simulationId];
-  }
-  return null;
+function cleanCommandCandidate(value = "") {
+  return String(value || "")
+    .trim()
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/[.;:,!?]+$/g, "")
+    .trim();
 }
 
-function extractExpectedCommands(stepText = "", stepDetail = {}, context = {}) {
-  const playbook = getSimulationPlaybook(context);
-  const playbookStep = Array.isArray(playbook) ? playbook[context?.stepIndex || 0] : null;
-  if (Array.isArray(playbookStep?.commands) && playbookStep.commands.length > 0) {
-    return [...new Set(playbookStep.commands.map((cmd) => normalizeCommand(cmd)).filter(Boolean))];
+function isLikelyCommandCandidate(value = "") {
+  const candidate = cleanCommandCandidate(value);
+  if (!candidate || candidate.length < 2) {
+    return false;
+  }
+  if (candidate.length > 140) {
+    return false;
+  }
+  if (/^(ticket|status|category|user|issue|scenario|resolution|progress|result)\b/i.test(candidate)) {
+    return false;
+  }
+  if (/\?$/.test(candidate)) {
+    return false;
+  }
+
+  const words = candidate.split(/\s+/).filter(Boolean);
+  if (words.length > 16) {
+    return false;
+  }
+
+  const first = words[0] || "";
+  if (!/^[a-z0-9_.-]+$/i.test(first)) {
+    return false;
+  }
+
+  return (
+    /(^|\s)(\/[-a-z0-9]+|--[-a-z0-9]+)\b/i.test(candidate) ||
+    /[|\\]/.test(candidate) ||
+    /^[a-z]+-[a-z]/i.test(first) ||
+    /^(ipconfig|ping|tracert|nslookup|tasklist|wmic|cleanmgr|sfc|dism|sc|net|get-service|del|attrib|dir|xcopy|search-adaccount|unlock-adaccount|set-adaccountpassword|ssh|systemctl|tail|netstat|mrt|eventvwr|chkdsk|resmon|services\.msc|help|clear|cls|whoami|hostname|echo|cd|mkdir|gpupdate|netsh)\b/i.test(
+      candidate
+    )
+  );
+}
+
+function splitMultiCommands(candidate = "") {
+  const value = String(candidate || "").trim();
+  if (!value) {
+    return [];
+  }
+  return value
+    .split(/\s+(?:then|and then)\s+|\s*&&\s*|\s*;\s*/i)
+    .map((part) => cleanCommandCandidate(part))
+    .filter(Boolean);
+}
+
+function extractCommandCandidatesFromLine(line = "") {
+  const clean = stripHtml(String(line || "")).trim();
+  if (!clean) {
+    return [];
+  }
+
+  const candidates = [];
+  const backtickMatches = clean.match(/`([^`]+)`/g) || [];
+  backtickMatches.forEach((chunk) => {
+    const command = cleanCommandCandidate(chunk.replace(/`/g, "").trim());
+    splitMultiCommands(command).forEach((part) => candidates.push(part));
+  });
+
+  const promptStyle = clean.match(/^(?:PS\s+[^>]*>|[A-Za-z]:\\[^>]*>|[>$#$])\s*(.+)$/);
+  if (promptStyle?.[1]) {
+    splitMultiCommands(promptStyle[1].trim()).forEach((part) => candidates.push(part));
+  }
+
+  const taggedCommand = clean.match(/^(?:command|run|execute|type)\s*[:\-]\s*(.+)$/i);
+  if (taggedCommand?.[1]) {
+    splitMultiCommands(taggedCommand[1].trim()).forEach((part) => candidates.push(part));
+  }
+
+  const actionLabel = clean.match(/^(?:action|next|step)\s*[:\-]\s*(.+)$/i);
+  if (actionLabel?.[1]) {
+    splitMultiCommands(actionLabel[1].trim()).forEach((part) => candidates.push(part));
+  }
+
+  const runInlineMatches = clean.match(/\b(?:run|execute|type)\s+([a-z0-9_.-]+(?:\s+[^.;,\n]+)?)/gi) || [];
+  runInlineMatches.forEach((match) => {
+    const value = cleanCommandCandidate(match.replace(/^(?:run|execute|type)\s+/i, ""));
+    splitMultiCommands(value).forEach((part) => candidates.push(part));
+  });
+
+  const unique = [];
+  const seen = new Set();
+  candidates.forEach((entry) => {
+    const cleaned = cleanCommandCandidate(entry);
+    const key = normalizeCommand(cleaned);
+    if (!cleaned || !isLikelyCommandCandidate(cleaned) || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    unique.push(cleaned);
+  });
+  return unique;
+}
+
+function extractExpectedCommands(stepText = "", stepDetail = {}) {
+  const explicitStepCommands = Array.isArray(stepDetail?.expectedCommands)
+    ? stepDetail.expectedCommands.map((cmd) => cleanCommandCandidate(cmd)).filter(Boolean)
+    : [];
+  if (explicitStepCommands.length > 0) {
+    return [...new Set(explicitStepCommands.map((cmd) => normalizeCommand(cmd)).filter(Boolean))];
   }
 
   const source = `${stepText}\n${stepDetail?.desc || ""}\n${stepDetail?.action || ""}\n${stepDetail?.screen || ""}`;
-  const commands = [];
-  const explicit = source.match(/`([^`]+)`/g) || [];
-  explicit.forEach((chunk) => commands.push(chunk.replace(/`/g, "").trim()));
-
-  if (/nslookup|dns/i.test(source)) commands.push("nslookup google.com", "ipconfig /flushdns", "ipconfig /all");
-  if (/ipconfig|dhcp|gateway|network|internet|wifi/i.test(source)) commands.push("ipconfig /all", "ipconfig /release", "ipconfig /renew", "ping 8.8.8.8");
-  if (/ping/i.test(source)) commands.push("ping 8.8.8.8", "ping google.com");
-  if (/tracert|traceroute|route/i.test(source)) commands.push("tracert google.com");
-  if (/cpu|slow|performance|task manager|startup/i.test(source)) commands.push("tasklist /v", "wmic startup get caption,command");
-  if (/disk|storage|space|cleanup/i.test(source)) commands.push("wmic logicaldisk get caption,freespace,size", "cleanmgr");
-  if (/spooler|printer|queue|print/i.test(source)) commands.push("sc query spooler", "net stop spooler", "net start spooler");
-  if (/service/i.test(source)) commands.push("sc query spooler", "sc qc spooler");
-  if (/locked|password|account|active directory/i.test(source)) commands.push("net user jdoe /domain", "unlock-adaccount -identity jdoe");
-  if (/malware|suspicious|virus|process/i.test(source)) commands.push("tasklist /svc", "wmic process get name,processid,parentprocessid", "netstat -ano");
-  if (/integrity|repair|system file/i.test(source)) commands.push("sfc /scannow", "dism /online /cleanup-image /restorehealth");
-  if (/event viewer|eventvwr/i.test(source)) commands.push("eventvwr.msc");
+  const commands = source
+    .split("\n")
+    .flatMap((line) => extractCommandCandidatesFromLine(line))
+    .filter(Boolean);
 
   if (commands.length === 0) {
     commands.push("help");
@@ -1304,10 +1301,6 @@ export default function DashboardPage() {
     () => new URLSearchParams(location.search).get("session") || "",
     [location.search]
   );
-  const storageKey = useMemo(
-    () => (user?.id ? `${SESSION_STORAGE_PREFIX}${user.id}` : null),
-    [user?.id]
-  );
   const sidebarPrefsKey = useMemo(
     () => (user?.id ? `${SIDEBAR_GROUP_PREFS_PREFIX}${user.id}` : null),
     [user?.id]
@@ -1341,7 +1334,7 @@ export default function DashboardPage() {
 
   const simulationSuggestions = useMemo(() => {
     if (!Array.isArray(simulationModules) || simulationModules.length === 0) {
-      return QUESTION_BANK;
+      return [];
     }
     return simulationModules.map((module) => ({
       label: module.category || "General",
@@ -1485,21 +1478,7 @@ export default function DashboardPage() {
     const loadSessions = async () => {
       try {
         const response = await api.get("/api/sessions");
-        let source = Array.isArray(response.data?.sessions) ? response.data.sessions : [];
-
-        // One-time migration path from legacy local cache.
-        if (source.length === 0 && storageKey) {
-          try {
-            const raw = localStorage.getItem(storageKey);
-            const parsed = raw ? JSON.parse(raw) : [];
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              source = parsed;
-              await api.put("/api/sessions", { sessions: source });
-            }
-          } catch (_migrationErr) {
-            // ignore local cache parse errors
-          }
-        }
+        const source = Array.isArray(response.data?.sessions) ? response.data.sessions : [];
 
         if (cancelled) {
           return;
@@ -1530,7 +1509,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [api, storageKey, user?.id]);
+  }, [api, user?.id]);
 
   useEffect(() => {
     if (!user?.id || !sessionsHydrated) {
@@ -1544,9 +1523,6 @@ export default function DashboardPage() {
     sessionsSaveTimerRef.current = window.setTimeout(async () => {
       try {
         await api.put("/api/sessions", { sessions });
-        if (storageKey) {
-          localStorage.setItem(storageKey, JSON.stringify(sessions));
-        }
       } catch (_err) {
         // best-effort save
       }
@@ -1558,7 +1534,7 @@ export default function DashboardPage() {
         sessionsSaveTimerRef.current = null;
       }
     };
-  }, [api, sessions, sessionsHydrated, storageKey, user?.id]);
+  }, [api, sessions, sessionsHydrated, user?.id]);
 
   useEffect(() => {
     if (!sessionsHydrated || !requestedSessionId) {
@@ -2322,11 +2298,7 @@ export default function DashboardPage() {
 
     if (!isUtilityCommand && modalSafeStep !== modalRequiredStep) {
       const requiredStepDetail = modalStepDetails[modalRequiredStep] || {};
-      const requiredCommands = extractExpectedCommands(modalSteps[modalRequiredStep] || "", requiredStepDetail, {
-        stepIndex: modalRequiredStep,
-        simulationId: modalCanvasState?.simulationId || "",
-        ticketTitle: modalCanvasState?.ticketTitle || ""
-      });
+      const requiredCommands = extractExpectedCommands(modalSteps[modalRequiredStep] || "", requiredStepDetail);
       const orderMessage = `Step order enforced. Complete Step ${modalRequiredStep + 1} first.`;
       const hintMessage = `Use Step ${modalRequiredStep + 1} commands: ${requiredCommands
         .slice(0, 4)
@@ -2367,11 +2339,7 @@ export default function DashboardPage() {
     }
 
     const stepDetail = modalStepDetails[modalSafeStep] || {};
-    const expectedCommands = extractExpectedCommands(modalSteps[modalSafeStep] || "", stepDetail, {
-      stepIndex: modalSafeStep,
-      simulationId: modalCanvasState?.simulationId || "",
-      ticketTitle: modalCanvasState?.ticketTitle || ""
-    });
+    const expectedCommands = extractExpectedCommands(modalSteps[modalSafeStep] || "", stepDetail);
     const matchesExpected = expectedCommands.some((expected) => normalizedCommand === expected);
     const stepAlreadyCompleted = Boolean(modalCanvasState?.completed?.[modalSafeStep]);
     const shouldScheduleAdvance = matchesExpected && !stepAlreadyCompleted;
@@ -2382,11 +2350,8 @@ export default function DashboardPage() {
         ? prev.stepOutcomes.map((item) => (item ? { ...item } : null))
         : modalSteps.map(() => null);
       const nextEntries = [];
-      const playbook = getSimulationPlaybook({
-        ticketTitle: prev?.ticketTitle || "",
-        simulationId: prev?.simulationId || ""
-      });
-      const playbookStep = Array.isArray(playbook) ? playbook[modalSafeStep] : null;
+      const activeStepDetail = modalStepDetails[modalSafeStep] || {};
+      const stepResultText = stripHtml(activeStepDetail?.result || "") || output;
 
       if (output === "__CLEAR__") {
         actionsByStep[modalSafeStep] = [];
@@ -2406,10 +2371,10 @@ export default function DashboardPage() {
           }
         );
 
-        if (matchesExpected && playbookStep?.result) {
+        if (matchesExpected && stepResultText) {
           nextEntries.push({
             label: "Step Result",
-            output: `Result: ${playbookStep.result}`,
+            output: `Result: ${stepResultText}`,
             time: formatTime(),
             kind: "success"
           });
@@ -2435,14 +2400,13 @@ export default function DashboardPage() {
       if (matchesExpected) {
         completed[modalSafeStep] = true;
         const explanation = stripHtml(
-          playbookStep?.explanation
-          || modalStepDetails[modalSafeStep]?.action
-          || modalStepDetails[modalSafeStep]?.desc
-          || `This command is required to complete Step ${modalSafeStep + 1}.`
+          modalStepDetails[modalSafeStep]?.action ||
+            modalStepDetails[modalSafeStep]?.desc ||
+            `This command is required to complete Step ${modalSafeStep + 1}.`
         );
         stepOutcomes[modalSafeStep] = {
           command,
-          result: playbookStep?.result || output,
+          result: stepResultText,
           explanation,
           time: formatTime()
         };
@@ -2506,15 +2470,16 @@ export default function DashboardPage() {
     setTerminalQueuedCommand(null);
   };
   const modalStepOutcome = modalCanvasState?.stepOutcomes?.[modalSafeStep] || null;
-  const modalExpectedCommands = extractExpectedCommands(
-    modalSteps[modalSafeStep] || "",
-    modalStepDetails[modalSafeStep] || {},
-    {
-      stepIndex: modalSafeStep,
-      simulationId: modalCanvasState?.simulationId || "",
-      ticketTitle: modalCanvasState?.ticketTitle || ""
-    }
-  );
+  const modalExpectedCommands = extractExpectedCommands(modalSteps[modalSafeStep] || "", modalStepDetails[modalSafeStep] || {});
+  const currentStepExpectedCommandSet = useMemo(() => {
+    const set = new Set();
+    modalExpectedCommands.forEach((cmd) => {
+      if (cmd && cmd !== "help") {
+        set.add(cmd);
+      }
+    });
+    return set;
+  }, [modalExpectedCommands]);
 
   useEffect(() => {
     return () => {
@@ -3184,6 +3149,15 @@ export default function DashboardPage() {
                       hostname={modalTerminalProfile.hostname}
                       initialPath={modalTerminalProfile.initialPath}
                       queuedCommand={terminalQueuedCommand}
+                      resolveUnknownCommand={({ normalizedCommand }) => {
+                        if (!normalizedCommand || !currentStepExpectedCommandSet.has(normalizedCommand)) {
+                          return null;
+                        }
+                        return {
+                          known: true,
+                          output: "Command accepted for this step."
+                        };
+                      }}
                       onCommand={handleTerminalCommand}
                     />
                   </div>
@@ -3374,19 +3348,23 @@ export default function DashboardPage() {
                   <div className="messages messages-welcome">
                     <div className="welcome">
                       <h1>Simulation Tickets</h1>
-                      <p>Select a related ticket below to launch guided simulation.</p>
+                      <p>Select an admin-published module below to launch guided simulation.</p>
                       <div className="welcome-related-label">Related Tickets and Common Problems</div>
-                      <div className="quick-grid">
-                        {QUESTION_BANK.map((q) => (
-                          <button key={`sim-${q.title}`} className="quick-card hd-btn-reset" onClick={() => startSuggestedSimulation(q)}>
-                            <div className="quick-card-head">
-                              <SuggestionIcon label={q.label} />
-                              <div className="qc-label">{q.label}</div>
-                            </div>
-                            <div className="qc-title">{q.title}</div>
-                          </button>
-                        ))}
-                      </div>
+                      {simulationSuggestions.length === 0 ? (
+                        <div className="muted-cell">No simulation modules published by Admin yet.</div>
+                      ) : (
+                        <div className="quick-grid">
+                          {simulationSuggestions.map((q) => (
+                            <button key={`sim-${q.simulationId || q.title}`} className="quick-card hd-btn-reset" onClick={() => startSuggestedSimulation(q)}>
+                              <div className="quick-card-head">
+                                <SuggestionIcon label={q.label} />
+                                <div className="qc-label">{q.label}</div>
+                              </div>
+                              <div className="qc-title">{q.title}</div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -3497,6 +3475,15 @@ export default function DashboardPage() {
                               hostname={modalTerminalProfile.hostname}
                               initialPath={modalTerminalProfile.initialPath}
                               queuedCommand={terminalQueuedCommand}
+                              resolveUnknownCommand={({ normalizedCommand }) => {
+                                if (!normalizedCommand || !currentStepExpectedCommandSet.has(normalizedCommand)) {
+                                  return null;
+                                }
+                                return {
+                                  known: true,
+                                  output: "Command accepted for this step."
+                                };
+                              }}
                               onCommand={handleTerminalCommand}
                             />
                           </div>
@@ -3513,19 +3500,23 @@ export default function DashboardPage() {
               {showSimulationCatalog ? (
                 <div className="welcome">
                   <h1>Simulation Tickets</h1>
-                  <p>Select a related ticket below to launch guided simulation.</p>
+                  <p>Select an admin-published module below to launch guided simulation.</p>
                   <div className="welcome-related-label">Related Tickets and Common Problems</div>
-                  <div className="quick-grid">
-                    {simulationSuggestions.map((q) => (
-                      <button key={`sim-${q.simulationId || q.title}`} className="quick-card hd-btn-reset" onClick={() => startSuggestedSimulation(q)}>
-                        <div className="quick-card-head">
-                          <SuggestionIcon label={q.label} />
-                          <div className="qc-label">{q.label}</div>
-                        </div>
-                        <div className="qc-title">{q.title}</div>
-                      </button>
-                    ))}
-                  </div>
+                  {simulationSuggestions.length === 0 ? (
+                    <div className="muted-cell">No simulation modules published by Admin yet.</div>
+                  ) : (
+                    <div className="quick-grid">
+                      {simulationSuggestions.map((q) => (
+                        <button key={`sim-${q.simulationId || q.title}`} className="quick-card hd-btn-reset" onClick={() => startSuggestedSimulation(q)}>
+                          <div className="quick-card-head">
+                            <SuggestionIcon label={q.label} />
+                            <div className="qc-label">{q.label}</div>
+                          </div>
+                          <div className="qc-title">{q.title}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : null}
 

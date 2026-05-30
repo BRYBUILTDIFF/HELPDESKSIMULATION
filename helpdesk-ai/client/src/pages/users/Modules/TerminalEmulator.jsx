@@ -117,7 +117,8 @@ export default function TerminalEmulator({
   hostname = "DESKTOP-SIM",
   initialPath = "C:\\Users\\student",
   queuedCommand = null,
-  onCommand
+  onCommand,
+  resolveUnknownCommand
 }) {
   const containerRef = useRef(null);
   const inputBufferRef = useRef("");
@@ -125,11 +126,16 @@ export default function TerminalEmulator({
   const historyIndexRef = useRef(0);
   const currentPathRef = useRef(normalizePath(initialPath));
   const onCommandRef = useRef(onCommand);
+  const resolveUnknownCommandRef = useRef(resolveUnknownCommand);
   const runQueuedCommandRef = useRef(null);
 
   useEffect(() => {
     onCommandRef.current = onCommand;
   }, [onCommand]);
+
+  useEffect(() => {
+    resolveUnknownCommandRef.current = resolveUnknownCommand;
+  }, [resolveUnknownCommand]);
 
   useEffect(() => {
     currentPathRef.current = normalizePath(initialPath);
@@ -811,7 +817,25 @@ export default function TerminalEmulator({
     };
 
     const submitCommand = (command) => {
-      const result = handleBuiltInCommand(command);
+      const builtInResult = handleBuiltInCommand(command);
+      let result = builtInResult;
+      if (!builtInResult.known && typeof resolveUnknownCommandRef.current === "function") {
+        const override = resolveUnknownCommandRef.current({
+          command,
+          normalizedCommand: builtInResult.normalized,
+          result: builtInResult,
+          currentPath: currentPathRef.current
+        });
+        if (override && typeof override === "object") {
+          result = {
+            ...builtInResult,
+            ...override,
+            normalized: String(override.normalized || builtInResult.normalized || ""),
+            known: typeof override.known === "boolean" ? override.known : true
+          };
+        }
+      }
+
       if (result.clear) {
         term.clear();
       } else if (result.output) {

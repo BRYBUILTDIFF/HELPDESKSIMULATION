@@ -14,8 +14,7 @@ const DEFAULT_MODULES = [
 ];
 
 const ALLOWED_DIFFICULTY = new Set(["Easy", "Medium", "Hard"]);
-let memoryModules = DEFAULT_MODULES.map((m) => ({ ...m, simulation: null }));
-let seeded = false;
+let memoryModules = [];
 
 function sanitizeId(raw) {
   return String(raw || "")
@@ -113,27 +112,8 @@ function buildPayload(payload = {}) {
 }
 
 async function ensureSeeded() {
-  if (seeded || !prisma?.simulationModule) {
-    return;
-  }
-  try {
-    await prisma.simulationModule.createMany({
-      data: DEFAULT_MODULES.map((item) => ({
-        id: item.id,
-        title: item.title,
-        category: item.category,
-        difficulty: item.difficulty,
-        enabled: item.enabled,
-        completions: item.completions,
-        passRate: item.passRate,
-        avgSteps: item.avgSteps
-      })),
-      skipDuplicates: true
-    });
-    seeded = true;
-  } catch (_err) {
-    // fallback mode keeps app operational when DB schema is not migrated yet
-  }
+  // Auto-seeding is intentionally disabled so admin deletions persist across restarts.
+  // If you need starter modules, create them explicitly via Admin API/UI.
 }
 
 async function listModules(options = {}) {

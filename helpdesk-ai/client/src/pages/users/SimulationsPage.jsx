@@ -2,11 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useAxios } from "../../hooks/useAxios";
-import { kb, modules as staticModules, simulations } from "./helpdeskData";
+import { simulations } from "./helpdeskData";
 import "./dashboard.css";
 
 const THEME_STORAGE_KEY = "helpdesk_simulation_theme";
-const SESSION_STORAGE_PREFIX = "helpdesk_simulation_sessions_";
 
 function formatDateTime(isoString) {
   const date = new Date(isoString);
@@ -30,15 +29,6 @@ function sessionPreview(session) {
   }
   const cleaned = firstUser.text.trim().replace(/\s+/g, " ");
   return cleaned.length > 42 ? `${cleaned.slice(0, 42)}...` : cleaned;
-}
-
-function resolveSimulationId(itemId) {
-  const kbEntry = kb[itemId];
-  const candidate = kbEntry?.sim || itemId;
-  if (!candidate) {
-    return null;
-  }
-  return simulations[candidate] ? candidate : null;
 }
 
 function buildFallbackSimulation(module) {
@@ -100,11 +90,6 @@ export default function SimulationsPage() {
   const [mobileView, setMobileView] = useState(false);
   const [serverModules, setServerModules] = useState([]);
 
-  const storageKey = useMemo(
-    () => (user?.id ? `${SESSION_STORAGE_PREFIX}${user.id}` : null),
-    [user?.id]
-  );
-
   const simulationMap = useMemo(() => {
     const map = { ...simulations };
     serverModules.forEach((module) => {
@@ -127,47 +112,27 @@ export default function SimulationsPage() {
   const regularSessions = useMemo(() => sessions.filter((session) => !session.isFavorite), [sessions]);
 
   const catalog = useMemo(() => {
-    if (serverModules.length > 0) {
-      const grouped = new Map();
-      serverModules.forEach((module) => {
-        const cat = module.category || "General";
-        if (!grouped.has(cat)) {
-          grouped.set(cat, { cat, items: [] });
-        }
-        grouped.get(cat).items.push({
-          id: module.id,
-          label: module.title,
-          keys: [module.category].filter(Boolean)
-        });
+    const grouped = new Map();
+    serverModules.forEach((module) => {
+      const cat = module.category || "General";
+      if (!grouped.has(cat)) {
+        grouped.set(cat, { cat, items: [] });
+      }
+      grouped.get(cat).items.push({
+        id: module.id,
+        label: module.title,
+        keys: [module.category].filter(Boolean)
       });
-      return Array.from(grouped.values()).map((group) => ({
-        ...group,
-        cards: group.items.map((item) => {
-          const sim = simulationMap[item.id];
-          return {
-            ...item,
-            simId: item.id,
-            available: Boolean(sim),
-            description: sim?.steps?.[0]?.desc || "Guided simulation module for this support case.",
-            stepCount: sim?.steps?.length || 0
-          };
-        })
-      }));
-    }
-
-    return staticModules.map((group) => ({
+    });
+    return Array.from(grouped.values()).map((group) => ({
       ...group,
       cards: group.items.map((item) => {
-        const simId = resolveSimulationId(item.id);
-        const sim = simId ? simulationMap[simId] : null;
+        const sim = simulationMap[item.id];
         return {
           ...item,
-          simId,
-          available: Boolean(simId),
-          description:
-            sim?.steps?.[0]?.desc ||
-            kb[item.id]?.steps?.[0]?.t ||
-            "Guided simulation module for this support case.",
+          simId: item.id,
+          available: Boolean(sim),
+          description: sim?.steps?.[0]?.desc || "Guided simulation module for this support case.",
           stepCount: sim?.steps?.length || 0
         };
       })
@@ -240,21 +205,8 @@ export default function SimulationsPage() {
           setSessions(serverSessions);
         }
       } catch (_err) {
-        // fallback to local cache for compatibility
-        if (!storageKey) {
-          if (!cancelled) setSessions([]);
-          return;
-        }
-        try {
-          const raw = localStorage.getItem(storageKey);
-          const parsed = raw ? JSON.parse(raw) : [];
-          if (!cancelled) {
-            setSessions(Array.isArray(parsed) ? parsed : []);
-          }
-        } catch (_parseErr) {
-          if (!cancelled) {
-            setSessions([]);
-          }
+        if (!cancelled) {
+          setSessions([]);
         }
       }
     };
@@ -264,7 +216,7 @@ export default function SimulationsPage() {
     return () => {
       cancelled = true;
     };
-  }, [api, storageKey, user?.id]);
+  }, [api, user?.id]);
 
   useEffect(() => {
     const onPointerDown = (event) => {
@@ -545,34 +497,38 @@ export default function SimulationsPage() {
           <div className="chat-wrap">
             <div className="messages">
               <div className="sim-hub">
-                {catalog.map((group) => (
-                  <section key={group.cat} className="sim-hub-section">
-                    <div className="sim-hub-head">
-                      <h2>{group.cat}</h2>
-                      <span>{group.cards.length} cases</span>
-                    </div>
-                    <div className="sim-hub-grid">
-                      {group.cards.map((card) => (
-                        <article key={card.id} className={`sim-hub-card ${card.available ? "" : "is-disabled"}`}>
-                          <div className="sim-hub-card-top">
-                            <div className="sim-hub-label">{card.label}</div>
-                            <span className={`sim-hub-pill ${card.available ? "ok" : "na"}`}>
-                              {card.available ? `${card.stepCount} steps` : "No Simulation"}
-                            </span>
-                          </div>
-                          <p>{card.description}</p>
-                          <button
-                            className="create-sim-btn hd-btn-reset"
-                            disabled={!card.available}
-                            onClick={() => openSimulation(card)}
-                          >
-                            Open Simulation
-                          </button>
-                        </article>
-                      ))}
-                    </div>
-                  </section>
-                ))}
+                {catalog.length === 0 ? (
+                  <div className="muted-cell">No simulation modules published by Admin yet.</div>
+                ) : (
+                  catalog.map((group) => (
+                    <section key={group.cat} className="sim-hub-section">
+                      <div className="sim-hub-head">
+                        <h2>{group.cat}</h2>
+                        <span>{group.cards.length} cases</span>
+                      </div>
+                      <div className="sim-hub-grid">
+                        {group.cards.map((card) => (
+                          <article key={card.id} className={`sim-hub-card ${card.available ? "" : "is-disabled"}`}>
+                            <div className="sim-hub-card-top">
+                              <div className="sim-hub-label">{card.label}</div>
+                              <span className={`sim-hub-pill ${card.available ? "ok" : "na"}`}>
+                                {card.available ? `${card.stepCount} steps` : "No Simulation"}
+                              </span>
+                            </div>
+                            <p>{card.description}</p>
+                            <button
+                              className="create-sim-btn hd-btn-reset"
+                              disabled={!card.available}
+                              onClick={() => openSimulation(card)}
+                            >
+                              Open Simulation
+                            </button>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+                  ))
+                )}
               </div>
             </div>
           </div>
