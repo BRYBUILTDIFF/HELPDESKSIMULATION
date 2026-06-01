@@ -3065,18 +3065,7 @@ export default function DashboardPage() {
                     </button>
                   ))}
                 </div>
-              </div>
-              <div className="step-modal-right">
-                <h3>Simulation Canvas</h3>
-                <div className="step-modal-status-row">
-                  <span className="step-modal-status-pill">
-                    Scenario: {(modalCanvasState?.scenarioType || "general").toUpperCase()}
-                  </span>
-                  <span className={`step-modal-status-pill ${modalResolved ? "is-resolved" : ""}`}>
-                    {modalResolved ? "Resolved" : "In Progress"} | {modalCompletionPct}%
-                  </span>
-                </div>
-                <div className="step-modal-current">
+                <div className="step-modal-current step-modal-current-below-list">
                   <div className="step-modal-current-label">Current Step</div>
                   <div className="step-modal-current-head">
                     <span className="step-modal-current-num">{modalStepCount === 0 ? 0 : modalSafeStep + 1}</span>
@@ -3127,6 +3116,17 @@ export default function DashboardPage() {
                       ))}
                     </div>
                   </div>
+                </div>
+              </div>
+              <div className="step-modal-right">
+                <h3>Simulation Canvas</h3>
+                <div className="step-modal-status-row">
+                  <span className="step-modal-status-pill">
+                    Scenario: {(modalCanvasState?.scenarioType || "general").toUpperCase()}
+                  </span>
+                  <span className={`step-modal-status-pill ${modalResolved ? "is-resolved" : ""}`}>
+                    {modalResolved ? "Resolved" : "In Progress"} | {modalCompletionPct}%
+                  </span>
                 </div>
                 <div className="step-modal-canvas">
                   <div className="step-modal-canvas-header">
@@ -3396,18 +3396,7 @@ export default function DashboardPage() {
                             </button>
                           ))}
                         </div>
-                      </div>
-                      <div className="step-modal-right">
-                        <h3>Simulation Canvas</h3>
-                        <div className="step-modal-status-row">
-                          <span className="step-modal-status-pill">
-                            Scenario: {(modalCanvasState?.scenarioType || "general").toUpperCase()}
-                          </span>
-                          <span className={`step-modal-status-pill ${modalResolved ? "is-resolved" : ""}`}>
-                            {modalResolved ? "Resolved" : "In Progress"} | {modalCompletionPct}%
-                          </span>
-                        </div>
-                        <div className="step-modal-current">
+                        <div className="step-modal-current step-modal-current-below-list">
                           <div className="step-modal-current-label">Current Step</div>
                           <div className="step-modal-current-head">
                             <span className="step-modal-current-num">{modalStepCount === 0 ? 0 : modalSafeStep + 1}</span>
@@ -3453,6 +3442,17 @@ export default function DashboardPage() {
                               ))}
                             </div>
                           </div>
+                        </div>
+                      </div>
+                      <div className="step-modal-right">
+                        <h3>Simulation Canvas</h3>
+                        <div className="step-modal-status-row">
+                          <span className="step-modal-status-pill">
+                            Scenario: {(modalCanvasState?.scenarioType || "general").toUpperCase()}
+                          </span>
+                          <span className={`step-modal-status-pill ${modalResolved ? "is-resolved" : ""}`}>
+                            {modalResolved ? "Resolved" : "In Progress"} | {modalCompletionPct}%
+                          </span>
                         </div>
                         <div className="step-modal-canvas">
                           <div className="step-modal-canvas-header">

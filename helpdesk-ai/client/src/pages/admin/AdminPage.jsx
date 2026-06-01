@@ -33,6 +33,17 @@ const POLICY_LIST_META = {
   inScopeIntentPatterns: "In-Scope Intent Patterns"
 };
 const THEME_STORAGE_KEY = "helpdesk_simulation_theme";
+const SAMPLE_PROMPT_INSIGHT = {
+  normalized: "__sample_no_internet_windows__",
+  samplePrompt: "No internet connection on a Windows PC. Please guide me through terminal-based troubleshooting steps.",
+  occurrences: 1,
+  uniqueUsers: 1,
+  lastSeen: new Date().toISOString(),
+  suggestedCategory: "Network",
+  recommendedSurface: "windows-terminal",
+  recommendedSurfaceLabel: "Windows Terminal",
+  isSample: true
+};
 
 ChartJS.register(
   CategoryScale,
@@ -1073,19 +1084,26 @@ export default function AdminPage() {
   };
 
   const maxCompletions = Math.max(1, ...modules.map((m) => Number(m.completions || 0)));
+  const promptInsightFeed = useMemo(() => {
+    if (Array.isArray(promptInsights) && promptInsights.length > 0) {
+      return promptInsights;
+    }
+    return [SAMPLE_PROMPT_INSIGHT];
+  }, [promptInsights]);
+
   const filteredPromptInsights = useMemo(() => {
     const query = promptInsightQuery.trim().toLowerCase();
     if (!query) {
-      return promptInsights;
+      return promptInsightFeed;
     }
-    return promptInsights.filter((item) => {
+    return promptInsightFeed.filter((item) => {
       return (
         String(item.samplePrompt || "").toLowerCase().includes(query) ||
         String(item.suggestedCategory || "").toLowerCase().includes(query) ||
         String(item.recommendedSurfaceLabel || item.recommendedSurface || "").toLowerCase().includes(query)
       );
     });
-  }, [promptInsightQuery, promptInsights]);
+  }, [promptInsightFeed, promptInsightQuery]);
 
   const previewSteps = Array.isArray(modulePreview?.steps) ? modulePreview.steps : [];
   const previewTotalSteps = previewSteps.length;
@@ -1485,7 +1503,12 @@ export default function AdminPage() {
                       </div>
 
                       <div className="event-row event-header">
-                        <div>Time</div><div>User</div><div>Code</div><div>Status</div><div>Prompt</div><div>Reason</div>
+                        <div className="event-col event-col-time">Time</div>
+                        <div className="event-col event-col-user">User</div>
+                        <div className="event-col event-col-code">Code</div>
+                        <div className="event-col event-col-status">Status</div>
+                        <div className="event-col event-col-prompt">Prompt</div>
+                        <div className="event-col event-col-reason">Reason</div>
                       </div>
                       <div className="event-body">
                         {filteredPolicyEvents.length === 0 ? (
@@ -1495,16 +1518,16 @@ export default function AdminPage() {
                         ) : (
                           filteredPolicyEvents.map((event) => (
                             <div className="event-row" key={event.id}>
-                              <div className="muted-cell">{formatDateTime(event.at)}</div>
-                              <div className="muted-cell">{event.userEmail || "Unknown"}</div>
-                              <div className="muted-cell">{event.code || "UNKNOWN"}</div>
-                              <div>
+                              <div className="muted-cell event-cell event-col-time">{formatDateTime(event.at)}</div>
+                              <div className="muted-cell event-cell event-col-user">{event.userEmail || "Unknown"}</div>
+                              <div className="muted-cell event-cell event-col-code">{event.code || "UNKNOWN"}</div>
+                              <div className="event-cell event-col-status event-status-cell">
                                 <span className={`badge ${event.blocked ? "badge-blocked" : "badge-allowed"}`}>
                                   {event.blocked ? "Blocked" : "Allowed"}
                                 </span>
                               </div>
-                              <div className="prompt-cell">{event.message || "-"}</div>
-                              <div className="reason-cell">{event.reason || "-"}</div>
+                              <div className="prompt-cell event-cell event-col-prompt">{event.message || "-"}</div>
+                              <div className="reason-cell event-cell event-col-reason">{event.reason || "-"}</div>
                             </div>
                           ))
                         )}
@@ -1697,6 +1720,7 @@ export default function AdminPage() {
                           const disregardKey = `module-disregard-prompt-${insight.normalized || insight.samplePrompt}`;
                           const creating = pendingKey === createKey;
                           const disregarding = pendingKey === disregardKey;
+                          const isSample = Boolean(insight.isSample);
                           return (
                             <div className="sim-prompt-card" key={insight.normalized || insight.samplePrompt}>
                               <div className="sim-prompt-text">{insight.samplePrompt}</div>
@@ -1716,14 +1740,16 @@ export default function AdminPage() {
                                 >
                                   {creating ? "Generating..." : "Generate AI Draft"}
                                 </button>
-                                <button
-                                  type="button"
-                                  className="btn-sm btn-danger"
-                                  disabled={creating || disregarding}
-                                  onClick={() => disregardPromptInsight(insight)}
-                                >
-                                  {disregarding ? "Disregarding..." : "Disregard"}
-                                </button>
+                                {!isSample ? (
+                                  <button
+                                    type="button"
+                                    className="btn-sm btn-danger"
+                                    disabled={creating || disregarding}
+                                    onClick={() => disregardPromptInsight(insight)}
+                                  >
+                                    {disregarding ? "Disregarding..." : "Disregard"}
+                                  </button>
+                                ) : null}
                               </div>
                             </div>
                           );
