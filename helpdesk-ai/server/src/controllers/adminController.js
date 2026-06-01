@@ -32,6 +32,7 @@ const SIMULATION_INTENT_PATTERN =
   /\b(reset|unlock|troubleshoot|diagnose|fix|resolve|recover|restore|configure|setup|install|update|investigate|check|verify|repair|guide|step by step|walk me through|how to)\b/;
 const SIMULATION_DOMAIN_PATTERN =
   /\b(password|account|admin|login|signin|sign in|active directory|ad user|dns|vpn|network|internet|ip|gateway|service|process|event log|error|not working|failed|cannot|outlook|email|mailbox|printer|spooler|cpu|memory|disk|storage|malware|virus|permissions?)\b/;
+const SIMULATION_ELIGIBLE_POLICY_CODES = new Set(["ALLOWED", "ALLOWED_RULE_MATCH"]);
 const disregardedPromptInsightKeys = new Set();
 
 function isAllowedAdminUserPassword(password) {
@@ -147,8 +148,13 @@ function evaluateSimulationPromptAlignment(prompt = "") {
 
   const hasIntent = SIMULATION_INTENT_PATTERN.test(normalized);
   const hasDomain = SIMULATION_DOMAIN_PATTERN.test(normalized);
-  if (!hasIntent && !hasDomain) {
-    return { allowed: false, reason: "Prompt does not map to a troubleshooting simulation workflow." };
+  if (!hasDomain) {
+    return {
+      allowed: false,
+      reason: hasIntent
+        ? "Prompt has troubleshooting intent but no supported IT troubleshooting domain."
+        : "Prompt does not map to a supported IT troubleshooting domain."
+    };
   }
 
   const inferredSurface = inferPromptSimulationSurface(raw) || "windows-terminal";
@@ -568,7 +574,12 @@ async function getSimulationModules(_req, res, next) {
 async function getSimulationPromptInsights(req, res, next) {
   try {
     const limit = Math.max(1, Math.min(Number(req.query.limit || 50), 200));
-    const events = (await listPolicyEvents(limit)).filter((event) => !event.blocked && String(event.message || "").trim());
+    const events = (await listPolicyEvents(limit)).filter(
+      (event) =>
+        !event.blocked &&
+        SIMULATION_ELIGIBLE_POLICY_CODES.has(String(event.code || "").trim().toUpperCase()) &&
+        String(event.message || "").trim()
+    );
 
     const grouped = new Map();
     for (const event of events) {

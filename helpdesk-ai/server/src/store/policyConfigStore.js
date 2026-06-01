@@ -15,7 +15,8 @@ const POLICY_MESSAGES_KEYS = [
   "followUpNoContextMessage",
   "emptyPromptMessage",
   "promptTooLongMessage",
-  "defaultOutOfScopeMessage"
+  "defaultOutOfScopeMessage",
+  "clarifyMessage"
 ];
 
 const DEFAULT_POLICY_CONFIG = {
@@ -115,7 +116,9 @@ const DEFAULT_POLICY_CONFIG = {
     emptyPromptMessage: "Please enter your IT support question.",
     promptTooLongMessage: "Your prompt is too long. Please shorten it to continue.",
     defaultOutOfScopeMessage:
-      "I can only assist with IT support topics such as account access, hardware issues, network problems, software errors, email, security, or server troubleshooting. Please rephrase your question."
+      "I can only assist with IT support topics such as account access, hardware issues, network problems, software errors, email, security, or server troubleshooting. Please rephrase your question.",
+    clarifyMessage:
+      "Could you clarify if this is an IT-related issue? I'm here to help with IT support topics."
   }
 };
 
@@ -211,6 +214,22 @@ function toRegExpList(patterns) {
     .filter(Boolean);
 }
 
+function toKeywordRegExpList(keywords) {
+  return keywords
+    .map((keyword) => String(keyword || "").trim())
+    .filter(Boolean)
+    .map((keyword) => {
+      const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const compact = escaped.replace(/\s+/g, "\\s+");
+      try {
+        return new RegExp(`\\b${compact}\\b`, "i");
+      } catch (_err) {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
 function getPolicyConfig() {
   return clone(cachedConfig);
 }
@@ -219,7 +238,9 @@ function getPolicyRuntimeConfig() {
   return {
     ...clone(cachedConfig),
     greetingPatternRegex: toRegExpList(cachedConfig.greetingPatterns),
-    inScopeIntentRegex: toRegExpList(cachedConfig.inScopeIntentPatterns)
+    inScopeIntentRegex: toRegExpList(cachedConfig.inScopeIntentPatterns),
+    inScopeKeywordRegex: toKeywordRegExpList(cachedConfig.inScopeKeywords),
+    outOfScopeKeywordRegex: toKeywordRegExpList(cachedConfig.outOfScopeKeywords)
   };
 }
 

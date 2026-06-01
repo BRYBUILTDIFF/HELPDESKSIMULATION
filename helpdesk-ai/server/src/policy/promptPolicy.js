@@ -5,10 +5,53 @@ const DEEPSEEK_MODEL = "deepseek-r1:7b";
 const CLASSIFIER_TIMEOUT_MS = 8000;
 const CLARIFY_MESSAGE_FALLBACK =
   "Could you clarify if this is an IT-related issue? I'm here to help with IT support topics.";
+const FOLLOW_UP_NO_CONTEXT_REGEX =
+  /\b(what now|next step|next steps|and then|then what|how about now|didn't work|didnt work|still not working|same issue|again|repeat that|continue)\b/i;
 
 let cachedFetchImpl = typeof globalThis.fetch === "function" ? globalThis.fetch.bind(globalThis) : null;
 
-function getClassifierSystemPrompt() {
+function listPreview(values, limit = 24) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      values
+        .map((entry) => String(entry || "").trim().toLowerCase())
+        .filter(Boolean)
+    )
+  ).slice(0, limit);
+}
+
+function matchesAnyRegex(regexList, text) {
+  if (!Array.isArray(regexList) || !text) {
+    return false;
+  }
+  return regexList.some((regex) => {
+    try {
+      regex.lastIndex = 0;
+      return regex.test(text);
+    } catch (_err) {
+      return false;
+    }
+  });
+}
+
+function isLikelyFollowUpWithoutContext(input, history, signals) {
+  if (Array.isArray(history) && history.length > 0) {
+    return false;
+  }
+  if (!FOLLOW_UP_NO_CONTEXT_REGEX.test(input)) {
+    return false;
+  }
+  return !signals.hasInScopeKeyword && !signals.hasInScopeIntent && !signals.hasOutOfScopeKeyword;
+}
+
+function getClassifierSystemPrompt(policy = {}) {
+  const inScopePreview = listPreview(policy.inScopeKeywords).join(", ");
+  const outOfScopePreview = listPreview(policy.outOfScopeKeywords).join(", ");
+
   return [
     "You are an IT helpdesk policy classifier.",
     "Classify the user's latest message into exactly one label: in_scope, out_of_scope, or greeting.",
@@ -20,7 +63,9 @@ function getClassifierSystemPrompt() {
     "If ambiguous but possibly IT-related, classify as in_scope.",
     "If short follow-up continues an IT support conversation, classify as in_scope.",
     "If greeting only and no IT question, classify as greeting.",
-    "Handle multilingual input correctly, including Filipino/Tagalog."
+    "Handle multilingual input correctly, including Filipino/Tagalog.",
+    `Reference in-scope terms: ${inScopePreview || "none provided"}.`,
+    `Reference out-of-scope terms: ${outOfScopePreview || "none provided"}.`
   ].join(" ");
 }
 
@@ -64,7 +109,7 @@ async function getFetchImpl() {
  * @param {Array<{role: string, content: string}>} history
  * @returns {Promise<{classification: "in_scope" | "out_of_scope" | "greeting", confidence: number, reason: string}>}
  */
-async function classifyWithDeepSeek(message, history) {
+async function classifyWithDeepSeek(message, history, policy) {
   const fetchImpl = await getFetchImpl();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), CLASSIFIER_TIMEOUT_MS);
@@ -82,7 +127,7 @@ async function classifyWithDeepSeek(message, history) {
         model: DEEPSEEK_MODEL,
         stream: false,
         messages: [
-          { role: "system", content: getClassifierSystemPrompt() },
+          { role: "system", content: getClassifierSystemPrompt(policy) },
           ...safeHistory,
           { role: "user", content: safeMessage }
         ]
@@ -148,6 +193,7 @@ async function classifyWithDeepSeek(message, history) {
 async function evaluatePromptPolicy(message, history = []) {
   const policy = getPolicyRuntimeConfig();
   const input = String(message || "").trim();
+  const safeHistory = sanitizeHistory(history);
 
   if (!input) {
     return {
@@ -167,8 +213,58 @@ async function evaluatePromptPolicy(message, history = []) {
     };
   }
 
+  const hasGreetingPattern = matchesAnyRegex(policy.greetingPatternRegex, input);
+  const hasInScopeKeyword = matchesAnyRegex(policy.inScopeKeywordRegex, input);
+  const hasOutOfScopeKeyword = matchesAnyRegex(policy.outOfScopeKeywordRegex, input);
+  const hasInScopeIntent = matchesAnyRegex(policy.inScopeIntentRegex, input);
+  const signals = { hasInScopeKeyword, hasOutOfScopeKeyword, hasInScopeIntent };
+
+  if (isLikelyFollowUpWithoutContext(input, safeHistory, signals)) {
+    return {
+      allowed: false,
+      code: "FOLLOW_UP_NO_CONTEXT",
+      reason: "Likely follow-up prompt without prior IT context.",
+      userMessage: policy.messages.followUpNoContextMessage
+    };
+  }
+
+  if (hasGreetingPattern && !hasInScopeKeyword && !hasInScopeIntent && !hasOutOfScopeKeyword) {
+    return {
+      allowed: true,
+      code: "GREETING_PATTERN",
+      reason: "Matched greeting pattern.",
+      directReply: policy.messages.greetingReply
+    };
+  }
+
+  if (hasOutOfScopeKeyword && !hasInScopeKeyword && !hasInScopeIntent) {
+    return {
+      allowed: false,
+      code: "OUT_OF_SCOPE_KEYWORD",
+      reason: "Matched out-of-scope keyword without IT scope signal.",
+      userMessage: policy.messages.outOfScopeMessage || policy.messages.defaultOutOfScopeMessage
+    };
+  }
+
+  if (hasOutOfScopeKeyword && (hasInScopeKeyword || hasInScopeIntent)) {
+    return {
+      allowed: false,
+      code: "MIXED_SCOPE",
+      reason: "Prompt contains mixed in-scope and out-of-scope signals.",
+      userMessage: policy.messages.mixedScopeMessage
+    };
+  }
+
+  if ((hasInScopeKeyword || hasInScopeIntent) && !hasOutOfScopeKeyword) {
+    return {
+      allowed: true,
+      code: "ALLOWED_RULE_MATCH",
+      reason: "Matched in-scope keyword or intent pattern."
+    };
+  }
+
   try {
-    const classificationResult = await classifyWithDeepSeek(input, history);
+    const classificationResult = await classifyWithDeepSeek(input, safeHistory, policy);
 
     if (classificationResult.classification === "greeting") {
       return {
@@ -187,6 +283,15 @@ async function evaluatePromptPolicy(message, history = []) {
       };
     }
 
+    if ((hasInScopeKeyword || hasInScopeIntent) && classificationResult.confidence < 0.85) {
+      return {
+        allowed: false,
+        code: "CLARIFY",
+        reason: classificationResult.reason,
+        userMessage: policy.messages.clarifyMessage || CLARIFY_MESSAGE_FALLBACK
+      };
+    }
+
     if (classificationResult.confidence < 0.75) {
       return {
         allowed: false,
@@ -200,7 +305,7 @@ async function evaluatePromptPolicy(message, history = []) {
       allowed: false,
       code: "OUT_OF_SCOPE",
       reason: classificationResult.reason,
-      userMessage: policy.messages.outOfScopeMessage
+      userMessage: policy.messages.outOfScopeMessage || policy.messages.defaultOutOfScopeMessage
     };
   } catch (err) {
     console.error("[PolicyClassifier]", err);
