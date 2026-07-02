@@ -1848,9 +1848,7 @@ export default function AdminPage() {
                 </div>
               </div>
               <div className="sim-preview-topbar-right">
-                <span className="sim-preview-step-pill">Step {previewTotalSteps === 0 ? 0 : previewSafeStep + 1} of {previewTotalSteps}</span>
-                <span className="sim-preview-tag">{modulePreview.scenarioType || "general"}</span>
-                <button type="button" className="btn-sm" onClick={closeModulePreview}>X</button>
+                <button type="button" className="btn-sm sim-preview-close-btn" onClick={closeModulePreview} aria-label="Close simulation preview">X</button>
               </div>
             </div>
 
@@ -1959,7 +1957,7 @@ MacBook-Pro:~ student$ _`}
                 </div>
 
                 <div className="sim-preview-footer">
-                  <div className="sim-preview-footer-left">
+                  <div className="sim-preview-footer-center">
                     <div className="sim-preview-step-dots" aria-hidden="true">
                       {previewSteps.map((step, index) => (
                         <span
@@ -1968,7 +1966,7 @@ MacBook-Pro:~ student$ _`}
                         />
                       ))}
                     </div>
-                    <span className="sim-preview-footer-nav">{previewTotalSteps === 0 ? 0 : previewSafeStep + 1} of {previewTotalSteps}</span>
+                    <span className="sim-preview-footer-nav">Step {previewTotalSteps === 0 ? 0 : previewSafeStep + 1} of {previewTotalSteps}</span>
                   </div>
                   <div className="sim-preview-btn-row">
                     <button type="button" className="btn-sm" onClick={closeModulePreview}>
@@ -2047,7 +2045,17 @@ MacBook-Pro:~ student$ _`}
                 </div>
 
                 <div className="sim-runtime-footer">
-                  <button type="button" className="btn-sm" onClick={closeModulePreview}>Close</button>
+                  <div className="sim-preview-footer-center">
+                    <div className="sim-preview-step-dots" aria-hidden="true">
+                      {previewSteps.map((step, index) => (
+                        <span
+                          key={`dot-${step.title}-${index}`}
+                          className={`sim-preview-step-dot ${index < previewSafeStep ? "done" : index === previewSafeStep ? "active" : "todo"}`}
+                        />
+                      ))}
+                    </div>
+                    <span className="sim-preview-footer-nav">Step {previewTotalSteps === 0 ? 0 : previewSafeStep + 1} of {previewTotalSteps}</span>
+                  </div>
                 </div>
               </>
             )}

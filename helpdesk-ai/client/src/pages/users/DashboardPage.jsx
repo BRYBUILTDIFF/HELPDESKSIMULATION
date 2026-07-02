@@ -3065,58 +3065,6 @@ export default function DashboardPage() {
                     </button>
                   ))}
                 </div>
-                <div className="step-modal-current step-modal-current-below-list">
-                  <div className="step-modal-current-label">Current Step</div>
-                  <div className="step-modal-current-head">
-                    <span className="step-modal-current-num">{modalStepCount === 0 ? 0 : modalSafeStep + 1}</span>
-                    <span className="step-modal-current-title">
-                      Step {modalStepCount === 0 ? 0 : modalSafeStep + 1}
-                    </span>
-                  </div>
-                  <div className="step-modal-current-text">{modalSteps[modalSafeStep] || "No steps available."}</div>
-                  {modalStepDetails[modalSafeStep]?.desc ? (
-                    <div className="step-modal-current-text step-modal-current-subtext" dangerouslySetInnerHTML={{ __html: modalStepDetails[modalSafeStep].desc }} />
-                  ) : null}
-                  {modalStepOutcome ? (
-                    <div className="step-result-card">
-                      <div className="step-result-title">Step Result</div>
-                      <div className="step-result-row">
-                        <strong>Command:</strong> <code>{modalStepOutcome.command}</code>
-                      </div>
-                      <div className="step-result-row">
-                        <strong>Result:</strong> {modalStepOutcome.result}
-                      </div>
-                      <div className="step-result-row">
-                        <strong>Why this command:</strong> {modalStepOutcome.explanation}
-                      </div>
-                      {modalCanvasState?.completed?.[modalSafeStep] && modalSafeStep !== modalRequiredStep && !modalResolved ? (
-                        <div className="step-result-row">
-                          Proceeding to next required step in 5 seconds...
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  <div className="terminal-guide">
-                    <div className="terminal-guide-label">Suggested Commands For This Step</div>
-                    <div className="terminal-guide-list">
-                      {modalExpectedCommands.map((cmd) => (
-                        <button
-                          key={cmd}
-                          className="terminal-guide-chip hd-btn-reset"
-                          onClick={() =>
-                            setTerminalQueuedCommand({
-                              id: `${Date.now()}-${Math.random()}`,
-                              command: formatTerminalCommandForDisplay(cmd)
-                            })
-                          }
-                          title="Use this command"
-                        >
-                          {formatTerminalCommandForDisplay(cmd)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
               </div>
               <div className="step-modal-right">
                 <h3>Simulation Canvas</h3>
@@ -3128,6 +3076,60 @@ export default function DashboardPage() {
                     {modalResolved ? "Resolved" : "In Progress"} | {modalCompletionPct}%
                   </span>
                 </div>
+                <div className="step-modal-current">
+                  <div className="step-modal-current-label">Current Step</div>
+                  <div className="step-modal-current-head">
+                    <span className="step-modal-current-num">{modalStepCount === 0 ? 0 : modalSafeStep + 1}</span>
+                    <span className="step-modal-current-title">
+                      {modalSteps[modalSafeStep] || `Step ${modalStepCount === 0 ? 0 : modalSafeStep + 1}`}
+                    </span>
+                  </div>
+                  {modalStepDetails[modalSafeStep]?.action ? (
+                    <div className="step-modal-current-text">{modalStepDetails[modalSafeStep].action}</div>
+                  ) : null}
+                  {modalStepDetails[modalSafeStep]?.desc ? (
+                    <div className="step-modal-current-text step-modal-current-subtext" dangerouslySetInnerHTML={{ __html: modalStepDetails[modalSafeStep].desc }} />
+                  ) : null}
+                </div>
+                <div className="terminal-guide">
+                  <div className="terminal-guide-label">Suggested Commands For This Step</div>
+                  <div className="terminal-guide-list">
+                    {modalExpectedCommands.map((cmd) => (
+                      <button
+                        key={cmd}
+                        className="terminal-guide-chip hd-btn-reset"
+                        onClick={() =>
+                          setTerminalQueuedCommand({
+                            id: `${Date.now()}-${Math.random()}`,
+                            command: formatTerminalCommandForDisplay(cmd)
+                          })
+                        }
+                        title="Use this command"
+                      >
+                        {formatTerminalCommandForDisplay(cmd)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {modalStepOutcome ? (
+                  <div className="step-result-card">
+                    <div className="step-result-title">Step Result</div>
+                    <div className="step-result-row">
+                      <strong>Command:</strong> <code>{modalStepOutcome.command}</code>
+                    </div>
+                    <div className="step-result-row">
+                      <strong>Result:</strong> {modalStepOutcome.result}
+                    </div>
+                    <div className="step-result-row">
+                      <strong>Why this command:</strong> {modalStepOutcome.explanation}
+                    </div>
+                    {modalCanvasState?.completed?.[modalSafeStep] && modalSafeStep !== modalRequiredStep && !modalResolved ? (
+                      <div className="step-result-row">
+                        Proceeding to next required step in 5 seconds...
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="step-modal-canvas">
                   <div className="step-modal-canvas-header">
                     <div className="step-modal-canvas-title">Terminal Simulation</div>
@@ -3163,8 +3165,8 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="step-modal-footer">
-                  <div className="terminal-line muted">
-                    Step navigation is click-based. Completion is sequential. Required step: {modalRequiredStep + 1} of {modalStepCount}.
+                  <div className="step-modal-footer-center">
+                    <span>Step {modalStepCount === 0 ? 0 : modalSafeStep + 1} of {modalStepCount}</span>
                   </div>
                 </div>
               </div>
@@ -3391,57 +3393,17 @@ export default function DashboardPage() {
                               className={`step-modal-item hd-btn-reset ${idx === modalSafeStep ? "active" : ""} ${modalCanvasState?.completed?.[idx] ? "completed" : ""}`}
                               onClick={() => setModalStepIndex(idx)}
                             >
-                              <span className="step-modal-item-num">{modalCanvasState?.completed?.[idx] ? "âœ“" : idx + 1}</span>
-                              <span className="step-modal-item-text">{step}</span>
+                              <span className="step-modal-item-num">{modalCanvasState?.completed?.[idx] ? "✓" : idx + 1}</span>
+                              <span className="step-modal-item-text">
+                                <span className="step-modal-item-title">{step}</span>
+                                {modalStepDetails[idx]?.action || modalStepDetails[idx]?.desc ? (
+                                  <span className="step-modal-item-subtext">
+                                    {modalStepDetails[idx]?.action || stripHtml(String(modalStepDetails[idx]?.desc || ""))}
+                                  </span>
+                                ) : null}
+                              </span>
                             </button>
                           ))}
-                        </div>
-                        <div className="step-modal-current step-modal-current-below-list">
-                          <div className="step-modal-current-label">Current Step</div>
-                          <div className="step-modal-current-head">
-                            <span className="step-modal-current-num">{modalStepCount === 0 ? 0 : modalSafeStep + 1}</span>
-                            <span className="step-modal-current-title">
-                              Step {modalStepCount === 0 ? 0 : modalSafeStep + 1}
-                            </span>
-                          </div>
-                          <div className="step-modal-current-text">{modalSteps[modalSafeStep] || "No steps available."}</div>
-                          {modalStepDetails[modalSafeStep]?.desc ? (
-                            <div className="step-modal-current-text step-modal-current-subtext" dangerouslySetInnerHTML={{ __html: modalStepDetails[modalSafeStep].desc }} />
-                          ) : null}
-                          {modalStepOutcome ? (
-                            <div className="step-result-card">
-                              <div className="step-result-title">Step Result</div>
-                              <div className="step-result-row">
-                                <strong>Command:</strong> <code>{modalStepOutcome.command}</code>
-                              </div>
-                              <div className="step-result-row">
-                                <strong>Result:</strong> {modalStepOutcome.result}
-                              </div>
-                              <div className="step-result-row">
-                                <strong>Why this command:</strong> {modalStepOutcome.explanation}
-                              </div>
-                            </div>
-                          ) : null}
-                          <div className="terminal-guide">
-                            <div className="terminal-guide-label">Suggested Commands For This Step</div>
-                            <div className="terminal-guide-list">
-                              {modalExpectedCommands.map((cmd) => (
-                                <button
-                                  key={cmd}
-                                  className="terminal-guide-chip hd-btn-reset"
-                                  onClick={() =>
-                                    setTerminalQueuedCommand({
-                                      id: `${Date.now()}-${Math.random()}`,
-                                      command: formatTerminalCommandForDisplay(cmd)
-                                    })
-                                  }
-                                  title="Use this command"
-                                >
-                                  {formatTerminalCommandForDisplay(cmd)}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
                         </div>
                       </div>
                       <div className="step-modal-right">
@@ -3454,6 +3416,40 @@ export default function DashboardPage() {
                             {modalResolved ? "Resolved" : "In Progress"} | {modalCompletionPct}%
                           </span>
                         </div>
+                        <div className="step-modal-current">
+                          <div className="step-modal-current-label">Current Step</div>
+                          <div className="step-modal-current-head">
+                            <span className="step-modal-current-num">{modalStepCount === 0 ? 0 : modalSafeStep + 1}</span>
+                            <span className="step-modal-current-title">
+                              {modalSteps[modalSafeStep] || `Step ${modalStepCount === 0 ? 0 : modalSafeStep + 1}`}
+                            </span>
+                          </div>
+                          {modalStepDetails[modalSafeStep]?.action ? (
+                            <div className="step-modal-current-text">{modalStepDetails[modalSafeStep].action}</div>
+                          ) : null}
+                          {modalStepDetails[modalSafeStep]?.desc ? (
+                            <div className="step-modal-current-text step-modal-current-subtext" dangerouslySetInnerHTML={{ __html: modalStepDetails[modalSafeStep].desc }} />
+                          ) : null}
+                        </div>
+                        {modalStepOutcome ? (
+                          <div className="step-result-card">
+                            <div className="step-result-title">Step Result</div>
+                            <div className="step-result-row">
+                              <strong>Command:</strong> <code>{modalStepOutcome.command}</code>
+                            </div>
+                            <div className="step-result-row">
+                              <strong>Result:</strong> {modalStepOutcome.result}
+                            </div>
+                            <div className="step-result-row">
+                              <strong>Why this command:</strong> {modalStepOutcome.explanation}
+                            </div>
+                            {modalCanvasState?.completed?.[modalSafeStep] && modalSafeStep !== modalRequiredStep && !modalResolved ? (
+                              <div className="step-result-row">
+                                Proceeding to next required step in 5 seconds...
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
                         <div className="step-modal-canvas">
                           <div className="step-modal-canvas-header">
                             <div className="step-modal-canvas-title">Terminal Simulation</div>
@@ -3488,6 +3484,19 @@ export default function DashboardPage() {
                             />
                           </div>
                         </div>
+                      </div>
+                    </div>
+                    <div className="step-modal-footer">
+                      <div className="step-modal-footer-center">
+                        <div className="step-modal-step-dots" aria-hidden="true">
+                          {modalSteps.map((_, index) => (
+                            <span
+                              key={`dot-${index}`}
+                              className={`step-modal-step-dot ${index < modalSafeStep ? "done" : index === modalSafeStep ? "active" : "todo"}`}
+                            />
+                          ))}
+                        </div>
+                        <span className="step-modal-footer-nav">Step {modalStepCount === 0 ? 0 : modalSafeStep + 1} of {modalStepCount}</span>
                       </div>
                     </div>
                   </div>

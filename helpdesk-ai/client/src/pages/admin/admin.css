@@ -1738,12 +1738,16 @@
   gap: 10px;
 }
 
-.sim-preview-step-pill {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.45);
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 999px;
-  padding: 3px 9px;
+.sim-preview-close-btn {
+  color: #fff;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  box-shadow: 0 8px 18px rgba(239, 68, 68, 0.22);
+}
+
+.sim-preview-close-btn:hover {
+  background: linear-gradient(135deg, #f87171, #ef4444);
+  color: #fff;
 }
 
 .sim-preview-tag {
@@ -2092,6 +2096,7 @@
 }
 
 .sim-preview-footer {
+  position: relative;
   min-height: 52px;
   height: 52px;
   padding: 0 18px;
@@ -2103,10 +2108,15 @@
   gap: 10px;
 }
 
-.sim-preview-footer-left {
+.sim-preview-footer-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
+  pointer-events: none;
 }
 
 .sim-preview-step-dots {

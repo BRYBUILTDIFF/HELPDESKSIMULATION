@@ -254,77 +254,92 @@ export default function SimulationsPage() {
       {currentSim ? (
         <div className="step-modal-overlay" onClick={closeSimulation}>
           <div className="step-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="step-modal-header">
-              <div className="step-modal-title">{activeSimLabel} | {currentSim.title}</div>
-              <button className="step-modal-close hd-btn-reset" onClick={closeSimulation}>
-                X
-              </button>
-            </div>
-            <div className="step-modal-progress-wrap">
-              <div className="step-modal-progress-info">
-                <span>Step {simStep + 1} of {simTotalSteps}</span>
-                <span>{simProgress}%</span>
+            <div className="sim-preview-topbar">
+              <div className="sim-preview-topbar-left">
+                <div className="sim-preview-window-dots" aria-hidden="true">
+                  <span className="dot red" />
+                  <span className="dot yellow" />
+                  <span className="dot green" />
+                </div>
+                <div className="sim-preview-module-title">
+                  <span>{activeSimLabel}</span> · Simulation
+                </div>
               </div>
-              <div className="step-modal-progress-track">
-                <div className="step-modal-progress-fill" style={{ width: `${simProgress}%` }} />
+              <div className="sim-preview-topbar-right">
+                <button type="button" className="btn-sm sim-preview-close-btn" onClick={closeSimulation} aria-label="Close simulation">
+                  X
+                </button>
               </div>
             </div>
-            <div className="step-modal-body">
-              <div className="step-modal-left">
+            <div className="step-modal-body sim-runtime-body">
+              <aside className="sim-runtime-steps">
                 <h3>Simulation Steps</h3>
-                <div className="step-modal-list">
+                <div className="sim-runtime-step-list">
                   {currentSim.steps.map((step, idx) => (
                     <button
                       key={`${step.title}-${idx}`}
-                      className={`step-modal-item hd-btn-reset ${idx === simStep ? "active" : ""}`}
+                      type="button"
+                      className={`sim-runtime-step ${idx === simStep ? "active" : ""}`}
                       onClick={() => setSimStep(idx)}
                     >
-                      <span className="step-modal-item-num">{idx + 1}</span>
-                      <span className="step-modal-item-text">{step.title}</span>
+                      <span className="sim-runtime-step-num">{idx + 1}</span>
+                      <span className="sim-runtime-step-copy">
+                        <span className="sim-runtime-step-title">{step.title}</span>
+                        {step.action ? <span className="sim-runtime-step-sub">{step.action}</span> : null}
+                      </span>
                     </button>
                   ))}
                 </div>
-              </div>
-              <div className="step-modal-right">
-                <h3>Simulation Walkthrough</h3>
-                <div className="step-modal-current">
-                  <div className="step-modal-current-label">Current Step</div>
-                  <div className="step-modal-current-head">
-                    <span className="step-modal-current-num">{simStep + 1}</span>
-                    <span className="step-modal-current-title">{currentSim.steps[simStep].title}</span>
+              </aside>
+
+              <section className="sim-runtime-canvas">
+                <h3>Simulation Canvas</h3>
+                <div className="sim-runtime-status-row">
+                  <span className="sim-runtime-status-pill">Scenario: {activeSimLabel}</span>
+                  <span className="sim-runtime-status-pill">In Progress | {simProgress}%</span>
+                </div>
+
+                <div className="sim-runtime-current">
+                  <div className="sim-runtime-current-label">Current Step</div>
+                  <div className="sim-runtime-current-head">
+                    <span className="sim-runtime-current-num">{simStep + 1}</span>
+                    <span className="sim-runtime-current-title">{currentSim.steps[simStep].title}</span>
                   </div>
                   <div
-                    className="step-modal-current-text"
+                    className="sim-runtime-current-text"
                     dangerouslySetInnerHTML={{ __html: currentSim.steps[simStep].desc }}
                   />
                 </div>
-                <div className="sim-step-card">
-                  <div className="sim-step-num">SIMULATED SCREEN</div>
-                  <div className="sim-screen">
-                    <pre>{currentSim.steps[simStep].screen}</pre>
+
+                <div className="sim-runtime-terminal">
+                  <div className="sim-preview-terminal-head">
+                    <span className="dot red" />
+                    <span className="dot yellow" />
+                    <span className="dot green" />
+                    <strong>Helpdesk Terminal</strong>
                   </div>
-                  <div className="sim-action">
-                    <strong>Action</strong>
-                    {currentSim.steps[simStep].action}
-                  </div>
-                  {currentSim.steps[simStep].result ? (
-                    <div className="sim-result">OK {currentSim.steps[simStep].result}</div>
-                  ) : null}
+                  <TerminalEmulator
+                    className="sim-runtime-terminal-body"
+                    initialMessage="Windows Terminal simulation ready. Type 'help' for available commands."
+                    username="student"
+                    hostname="DESKTOP-SIM"
+                    initialPath="C:\\Users\\student"
+                    onCommand={() => {}}
+                  />
                 </div>
-                <div className="step-modal-footer">
-                  <div className="step-modal-nav">
-                    <button className="step-modal-nav-btn hd-btn-reset" disabled={simStep <= 0} onClick={() => moveStep(-1)}>
-                      Previous
-                    </button>
-                    <button
-                      className="step-modal-nav-btn primary hd-btn-reset"
-                      disabled={simStep >= simTotalSteps - 1}
-                      onClick={() => moveStep(1)}
-                    >
-                      Next
-                    </button>
-                  </div>
+              </section>
+            </div>
+            <div className="sim-runtime-footer">
+              <div className="sim-preview-footer-center">
+                <div className="sim-preview-step-dots" aria-hidden="true">
+                  {currentSim.steps.map((step, index) => (
+                    <span
+                      key={`dot-${step.title}-${index}`}
+                      className={`sim-preview-step-dot ${index < simStep ? "done" : index === simStep ? "active" : "todo"}`}
+                    />
+                  ))}
                 </div>
+                <span className="sim-preview-footer-nav">Step {simStep + 1} of {simTotalSteps}</span>
               </div>
             </div>
           </div>
