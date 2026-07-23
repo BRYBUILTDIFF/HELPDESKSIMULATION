@@ -219,10 +219,56 @@ async function getMe(req, res, next) {
   }
 }
 
+async function changePassword(req, res, next) {
+  try {
+    const currentPassword = String(req.body?.currentPassword || "");
+    const newPassword = String(req.body?.newPassword || "");
+
+    if (!PASSWORD_REGEX.test(newPassword)) {
+      return res.status(400).json({
+        message: "New password must be at least 8 characters and include uppercase, number, and special character."
+      });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!user || !user.isActive) {
+      return res.status(401).json({ message: "Unauthenticated" });
+    }
+
+    const validCurrentPassword = await comparePassword(currentPassword, user.passwordHash);
+    if (!validCurrentPassword) {
+      return res.status(400).json({ message: "Current password is incorrect." });
+    }
+
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ message: "New password must be different from your current password." });
+    }
+
+    const passwordHash = await hashPassword(newPassword);
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: user.id }, data: { passwordHash } }),
+      prisma.refreshToken.deleteMany({ where: { userId: user.id } })
+    ]);
+
+    const payload = { id: user.id, email: user.email, role: user.role };
+    const accessToken = generateAccessToken(payload);
+    const refreshToken = generateRefreshToken(payload);
+    await prisma.refreshToken.create({
+      data: { token: refreshToken, userId: user.id, expiresAt: getRefreshExpiryDate() }
+    });
+
+    res.cookie("refreshToken", refreshToken, getCookieOptions());
+    return res.status(200).json({ accessToken, message: "Password changed successfully." });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 module.exports = {
   register,
   login,
   refresh,
   logout,
-  getMe
+  getMe,
+  changePassword
 };

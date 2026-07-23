@@ -34,5 +34,18 @@ router.post("/login", [emailRule, passwordRule], validateRequest, authController
 router.post("/refresh", authController.refresh);
 router.post("/logout", authController.logout);
 router.get("/me", verifyToken, authController.getMe);
+router.post(
+  "/change-password",
+  verifyToken,
+  [
+    body("currentPassword").isString().notEmpty().withMessage("Current password is required"),
+    body("newPassword")
+      .isString()
+      .isLength({ min: 8 })
+      .withMessage("New password must be at least 8 characters")
+  ],
+  validateRequest,
+  authController.changePassword
+);
 
 module.exports = router;

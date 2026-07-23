@@ -115,6 +115,7 @@ const QUESTION_VARIANTS_BY_TITLE = {
 const THEME_STORAGE_KEY = "helpdesk_simulation_theme";
 const SIDEBAR_GROUP_PREFS_PREFIX = "helpdesk_sidebar_group_prefs_";
 const MAX_COMPOSER_HEIGHT = 280;
+const PASSWORD_REQUIREMENTS = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
 const SUGGESTED_SIMULATION_MAP = {
   "No Internet Connection": "no-internet",
@@ -1253,8 +1254,24 @@ function getActionsForStep(scenarioType, stepText) {
   return prioritized.slice(0, 4);
 }
 
+function PasswordVisibilityIcon({ visible }) {
+  return visible ? (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m3 3 18 18" />
+      <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+      <path d="M9.4 5.2A10.7 10.7 0 0 1 12 5c5 0 8.9 3.1 10 7-0.5 1.5-1.4 2.8-2.6 3.9" />
+      <path d="M6.3 6.3C4.4 7.6 3.1 9.5 2 12c1.1 3.9 5 7 10 7 1.2 0 2.4-0.2 3.5-0.6" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 export default function DashboardPage() {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshAccessToken } = useAuth();
   const api = useAxios();
   const location = useLocation();
   const chatWrapRef = useRef(null);
@@ -1283,6 +1300,12 @@ export default function DashboardPage() {
   const [modalCanvasState, setModalCanvasState] = useState(null);
   const [terminalQueuedCommand, setTerminalQueuedCommand] = useState(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordVisibility, setPasswordVisibility] = useState({ current: false, next: false, confirm: false });
   const [openSessionMenuId, setOpenSessionMenuId] = useState(null);
   const [theme, setTheme] = useState("dark");
   const [showSimulationCatalog, setShowSimulationCatalog] = useState(false);
@@ -1591,6 +1614,67 @@ export default function DashboardPage() {
     }
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 360)}px`;
+  };
+
+  const toggleAccountMenu = () => {
+    if (sidebarCollapsed) {
+      setSidebarCollapsed(false);
+      setAccountMenuOpen(true);
+      return;
+    }
+    setAccountMenuOpen((prev) => !prev);
+  };
+
+  const openAccountSettings = () => {
+    setAccountMenuOpen(false);
+    setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+    setPasswordError("");
+    setPasswordSuccess("");
+    setPasswordVisibility({ current: false, next: false, confirm: false });
+    setAccountSettingsOpen(true);
+  };
+
+  const closeAccountSettings = () => {
+    if (changingPassword) return;
+    setAccountSettingsOpen(false);
+    setPasswordError("");
+    setPasswordSuccess("");
+  };
+
+  const submitPasswordChange = async (event) => {
+    event.preventDefault();
+    setPasswordError("");
+    setPasswordSuccess("");
+
+    if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+      setPasswordError("Complete all password fields.");
+      return;
+    }
+    if (!PASSWORD_REQUIREMENTS.test(passwordForm.newPassword)) {
+      setPasswordError("Use at least 8 characters with an uppercase letter, number, and special character.");
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordError("New password and confirmation do not match.");
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const response = await api.post("/api/auth/change-password", {
+        currentPassword: passwordForm.currentPassword,
+        newPassword: passwordForm.newPassword
+      });
+      if (response.data?.accessToken) {
+        await refreshAccessToken();
+      }
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setPasswordSuccess(response.data?.message || "Password changed successfully.");
+    } catch (err) {
+      setPasswordError(err.response?.data?.message || "Unable to change password. Please try again.");
+    } finally {
+      setChangingPassword(false);
+    }
   };
 
   useEffect(() => {
@@ -3174,6 +3258,113 @@ export default function DashboardPage() {
           </div>
         </div>
       ) : null}
+      {accountSettingsOpen ? (
+        <div className="account-settings-overlay" role="presentation" onMouseDown={closeAccountSettings}>
+          <section
+            className="account-settings-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="account-settings-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="account-settings-modal-head">
+              <div>
+                <p className="account-settings-eyebrow">Settings</p>
+                <h2 id="account-settings-title">Account settings</h2>
+                <p>Review your account and update your password.</p>
+              </div>
+              <button type="button" className="account-settings-close hd-btn-reset" onClick={closeAccountSettings} aria-label="Close account settings">
+                ×
+              </button>
+            </div>
+
+            <div className="account-details-card">
+              <div className="account-details-avatar">{(user?.firstName || user?.email || "U").charAt(0).toUpperCase()}</div>
+              <div>
+                <strong>{user?.firstName || ""} {user?.lastName || ""}</strong>
+                <span>{user?.email || ""}</span>
+              </div>
+              <span className="account-role-badge">{user?.role || "USER"}</span>
+            </div>
+
+            <form className="password-change-form" onSubmit={submitPasswordChange}>
+              <h3>Change password</h3>
+              <p className="password-change-note">Use at least 8 characters, including an uppercase letter, number, and special character.</p>
+              {passwordError ? <div className="account-settings-alert error">{passwordError}</div> : null}
+              {passwordSuccess ? <div className="account-settings-alert success">{passwordSuccess}</div> : null}
+              <label>
+                <span>Current password</span>
+                <span className="password-input-wrap">
+                  <input
+                    type={passwordVisibility.current ? "text" : "password"}
+                    value={passwordForm.currentPassword}
+                    onChange={(event) => setPasswordForm((prev) => ({ ...prev, currentPassword: event.target.value }))}
+                    autoComplete="current-password"
+                    disabled={changingPassword}
+                  />
+                  <button
+                    type="button"
+                    className="password-visibility-btn hd-btn-reset"
+                    onClick={() => setPasswordVisibility((prev) => ({ ...prev, current: !prev.current }))}
+                    aria-label={passwordVisibility.current ? "Hide current password" : "Show current password"}
+                    title={passwordVisibility.current ? "Hide password" : "Show password"}
+                  >
+                    <PasswordVisibilityIcon visible={passwordVisibility.current} />
+                  </button>
+                </span>
+              </label>
+              <label>
+                <span>New password</span>
+                <span className="password-input-wrap">
+                  <input
+                    type={passwordVisibility.next ? "text" : "password"}
+                    value={passwordForm.newPassword}
+                    onChange={(event) => setPasswordForm((prev) => ({ ...prev, newPassword: event.target.value }))}
+                    autoComplete="new-password"
+                    disabled={changingPassword}
+                  />
+                  <button
+                    type="button"
+                    className="password-visibility-btn hd-btn-reset"
+                    onClick={() => setPasswordVisibility((prev) => ({ ...prev, next: !prev.next }))}
+                    aria-label={passwordVisibility.next ? "Hide new password" : "Show new password"}
+                    title={passwordVisibility.next ? "Hide password" : "Show password"}
+                  >
+                    <PasswordVisibilityIcon visible={passwordVisibility.next} />
+                  </button>
+                </span>
+              </label>
+              <label>
+                <span>Confirm new password</span>
+                <span className="password-input-wrap">
+                  <input
+                    type={passwordVisibility.confirm ? "text" : "password"}
+                    value={passwordForm.confirmPassword}
+                    onChange={(event) => setPasswordForm((prev) => ({ ...prev, confirmPassword: event.target.value }))}
+                    autoComplete="new-password"
+                    disabled={changingPassword}
+                  />
+                  <button
+                    type="button"
+                    className="password-visibility-btn hd-btn-reset"
+                    onClick={() => setPasswordVisibility((prev) => ({ ...prev, confirm: !prev.confirm }))}
+                    aria-label={passwordVisibility.confirm ? "Hide confirmed password" : "Show confirmed password"}
+                    title={passwordVisibility.confirm ? "Hide password" : "Show password"}
+                  >
+                    <PasswordVisibilityIcon visible={passwordVisibility.confirm} />
+                  </button>
+                </span>
+              </label>
+              <div className="account-settings-actions">
+                <button type="button" className="account-settings-cancel hd-btn-reset" onClick={closeAccountSettings} disabled={changingPassword}>Cancel</button>
+                <button type="submit" className="account-settings-submit hd-btn-reset" disabled={changingPassword}>
+                  {changingPassword ? "Updating..." : "Update password"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
       <div id="helpdesk-app" className={sidebarCollapsed ? "sidebar-collapsed" : ""}>
         {mobileView && !sidebarCollapsed ? (
           <button
@@ -3280,7 +3471,7 @@ export default function DashboardPage() {
 
           <div className="hd-sidebar-footer" ref={accountMenuRef}>
             <div className="sidebar-footer-row">
-              <button className="avatar-menu-btn hd-btn-reset" onClick={() => setAccountMenuOpen((prev) => !prev)}>
+              <button className="avatar-menu-btn hd-btn-reset" onClick={toggleAccountMenu}>
                 <div className="avatar-dot">{(user?.firstName || "U").slice(0, 1).toUpperCase()}</div>
                 <div className="avatar-labels">
                   <div className="avatar-name">{user?.firstName || "User"} {user?.lastName || ""}</div>
@@ -3289,11 +3480,14 @@ export default function DashboardPage() {
               </button>
               <button
                 className="sidebar-settings-btn hd-btn-reset"
-                onClick={() => setAccountMenuOpen((prev) => !prev)}
+                onClick={toggleAccountMenu}
                 aria-label="Account settings"
                 title="Account settings"
               >
-                ⚙
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.1 2.1-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5v.2h-3v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1-2.1-2.1.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H5v-3h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2.1-2.1.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V3.6h3v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 2.1 2.1-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.2v3h-.2a1.7 1.7 0 0 0-1.5 1Z" />
+                </svg>
               </button>
             </div>
             {accountMenuOpen ? (
@@ -3314,6 +3508,9 @@ export default function DashboardPage() {
                     <span className="avatar-theme-state">{theme === "light" ? "On" : "Off"}</span>
                   </button>
                 </div>
+                <button className="avatar-popover-btn hd-btn-reset" onClick={openAccountSettings}>
+                  Account settings
+                </button>
                 <button className="avatar-popover-btn danger hd-btn-reset" onClick={logout}>
                   Logout
                 </button>

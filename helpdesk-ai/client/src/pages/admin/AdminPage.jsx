@@ -26,6 +26,8 @@ const PAGE_META = {
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 const DEFAULT_USER_PASSWORD = "password123";
+const USERS_PER_PAGE = 8;
+const POLICY_EVENTS_PER_PAGE = 10;
 const POLICY_LIST_META = {
   greetingPatterns: "Greeting Patterns",
   inScopeKeywords: "In-Scope Keywords",
@@ -294,14 +296,69 @@ function NavIcon({ id }) {
   );
 }
 
+function PaginationControls({ page, pageCount, total, itemLabel, onPageChange }) {
+  if (pageCount <= 1) {
+    return <div className="pagination pagination-single"><span>{total} {itemLabel}</span></div>;
+  }
+
+  const firstPage = Math.max(1, Math.min(page - 2, pageCount - 4));
+  const lastPage = Math.min(pageCount, firstPage + 4);
+  const pages = Array.from({ length: lastPage - firstPage + 1 }, (_, index) => firstPage + index);
+
+  return (
+    <div className="pagination pagination-controls">
+      <span className="pagination-summary">Showing {total} {itemLabel} · Page {page} of {pageCount}</span>
+      <div className="pagination-buttons" aria-label={`${itemLabel} pagination`}>
+        <button type="button" className="pagination-btn" onClick={() => onPageChange(page - 1)} disabled={page === 1}>Previous</button>
+        {firstPage > 1 ? <><button type="button" className="pagination-btn" onClick={() => onPageChange(1)}>1</button><span className="pagination-ellipsis">…</span></> : null}
+        {pages.map((pageNumber) => (
+          <button
+            key={pageNumber}
+            type="button"
+            className={`pagination-btn pagination-number ${pageNumber === page ? "active" : ""}`}
+            onClick={() => onPageChange(pageNumber)}
+            aria-current={pageNumber === page ? "page" : undefined}
+          >
+            {pageNumber}
+          </button>
+        ))}
+        {lastPage < pageCount ? <><span className="pagination-ellipsis">…</span><button type="button" className="pagination-btn" onClick={() => onPageChange(pageCount)}>{pageCount}</button></> : null}
+        <button type="button" className="pagination-btn" onClick={() => onPageChange(page + 1)} disabled={page === pageCount}>Next</button>
+      </div>
+    </div>
+  );
+}
+
+function PasswordVisibilityIcon({ visible }) {
+  return visible ? (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m3 3 18 18" />
+      <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+      <path d="M9.4 5.2A10.7 10.7 0 0 1 12 5c5 0 8.9 3.1 10 7-0.5 1.5-1.4 2.8-2.6 3.9" />
+      <path d="M6.3 6.3C4.4 7.6 3.1 9.5 2 12c1.1 3.9 5 7 10 7 1.2 0 2.4-0.2 3.5-0.6" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 export default function AdminPage() {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshAccessToken } = useAuth();
   const api = useAxios();
   const profileMenuRef = useRef(null);
 
   const [activePage, setActivePage] = useState("overview");
   const [theme, setTheme] = useState("dark");
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
+  const [accountPasswordForm, setAccountPasswordForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  const [accountPasswordVisibility, setAccountPasswordVisibility] = useState({ current: false, next: false, confirm: false });
+  const [accountSettingsError, setAccountSettingsError] = useState("");
+  const [accountSettingsSuccess, setAccountSettingsSuccess] = useState("");
+  const [accountPasswordSaving, setAccountPasswordSaving] = useState(false);
   const [users, setUsers] = useState([]);
   const [policySummary, setPolicySummary] = useState({ total: 0, blocked: 0, allowed: 0, blockRate: 0, last24h: 0, byCode: {} });
   const [policyEvents, setPolicyEvents] = useState([]);
@@ -313,6 +370,7 @@ export default function AdminPage() {
   const [userQuery, setUserQuery] = useState("");
   const [userRoleFilter, setUserRoleFilter] = useState("ALL");
   const [userStatusFilter, setUserStatusFilter] = useState("ALL");
+  const [userPage, setUserPage] = useState(1);
 
   const [policyStatusFilter, setPolicyStatusFilter] = useState("ALL");
   const [policyTimeFilter, setPolicyTimeFilter] = useState("ALL");
@@ -338,10 +396,12 @@ export default function AdminPage() {
 
   const [policyQuery, setPolicyQuery] = useState("");
   const [policyCodeFilter, setPolicyCodeFilter] = useState("ALL");
+  const [policyPage, setPolicyPage] = useState(1);
   const [promptInsights, setPromptInsights] = useState([]);
   const [promptInsightsLoading, setPromptInsightsLoading] = useState(false);
   const [promptInsightsError, setPromptInsightsError] = useState("");
   const [promptInsightQuery, setPromptInsightQuery] = useState("");
+  const [moduleQuery, setModuleQuery] = useState("");
   const [modulePreview, setModulePreview] = useState(null);
   const [modulePreviewStep, setModulePreviewStep] = useState(0);
   const [modulePreviewSurface, setModulePreviewSurface] = useState("windows-terminal");
@@ -436,6 +496,7 @@ export default function AdminPage() {
     const onEscape = (event) => {
       if (event.key === "Escape") {
         setProfileMenuOpen(false);
+        setAccountSettingsOpen(false);
       }
     };
     document.addEventListener("mousedown", onPointerDown);
@@ -514,6 +575,33 @@ export default function AdminPage() {
       return statusPass && timePass && codePass && queryPass;
     });
   }, [policyEvents, policyStatusFilter, policyTimeFilter, todayStart, weekStart, policyCodeFilter, policyQuery]);
+
+  const userPageCount = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE));
+  const policyPageCount = Math.max(1, Math.ceil(filteredPolicyEvents.length / POLICY_EVENTS_PER_PAGE));
+  const paginatedUsers = useMemo(
+    () => filteredUsers.slice((userPage - 1) * USERS_PER_PAGE, userPage * USERS_PER_PAGE),
+    [filteredUsers, userPage]
+  );
+  const paginatedPolicyEvents = useMemo(
+    () => filteredPolicyEvents.slice((policyPage - 1) * POLICY_EVENTS_PER_PAGE, policyPage * POLICY_EVENTS_PER_PAGE),
+    [filteredPolicyEvents, policyPage]
+  );
+
+  useEffect(() => {
+    setUserPage(1);
+  }, [userQuery, userRoleFilter, userStatusFilter]);
+
+  useEffect(() => {
+    setPolicyPage(1);
+  }, [policyQuery, policyCodeFilter, policyStatusFilter, policyTimeFilter]);
+
+  useEffect(() => {
+    setUserPage((current) => Math.min(current, userPageCount));
+  }, [userPageCount]);
+
+  useEffect(() => {
+    setPolicyPage((current) => Math.min(current, policyPageCount));
+  }, [policyPageCount]);
 
   const aiResponseWeekChart = useMemo(() => {
     const dayMs = 24 * 60 * 60 * 1000;
@@ -741,6 +829,58 @@ export default function AdminPage() {
     setShowCreatePassword(false);
     setShowCreateConfirmPassword(false);
     setUserForm(buildDefaultUserForm());
+  };
+
+  const openAccountSettings = () => {
+    setProfileMenuOpen(false);
+    setAccountPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+    setAccountPasswordVisibility({ current: false, next: false, confirm: false });
+    setAccountSettingsError("");
+    setAccountSettingsSuccess("");
+    setAccountSettingsOpen(true);
+  };
+
+  const closeAccountSettings = () => {
+    if (accountPasswordSaving) return;
+    setAccountSettingsOpen(false);
+    setAccountSettingsError("");
+    setAccountSettingsSuccess("");
+  };
+
+  const saveAccountPassword = async (event) => {
+    event.preventDefault();
+    setAccountSettingsError("");
+    setAccountSettingsSuccess("");
+
+    if (!accountPasswordForm.currentPassword || !accountPasswordForm.newPassword || !accountPasswordForm.confirmPassword) {
+      setAccountSettingsError("Complete all password fields.");
+      return;
+    }
+    if (!PASSWORD_REGEX.test(accountPasswordForm.newPassword)) {
+      setAccountSettingsError("Use at least 8 characters with an uppercase letter, number, and special character.");
+      return;
+    }
+    if (accountPasswordForm.newPassword !== accountPasswordForm.confirmPassword) {
+      setAccountSettingsError("New password and confirmation do not match.");
+      return;
+    }
+
+    setAccountPasswordSaving(true);
+    try {
+      const response = await api.post("/api/auth/change-password", {
+        currentPassword: accountPasswordForm.currentPassword,
+        newPassword: accountPasswordForm.newPassword
+      });
+      if (response.data?.accessToken) {
+        await refreshAccessToken();
+      }
+      setAccountPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setAccountSettingsSuccess(response.data?.message || "Password changed successfully.");
+    } catch (err) {
+      setAccountSettingsError(safeError(err));
+    } finally {
+      setAccountPasswordSaving(false);
+    }
   };
 
   const saveUserModal = async () => {
@@ -1105,6 +1245,17 @@ export default function AdminPage() {
     });
   }, [promptInsightFeed, promptInsightQuery]);
 
+  const filteredModules = useMemo(() => {
+    const query = moduleQuery.trim().toLowerCase();
+    if (!query) {
+      return modules;
+    }
+    return modules.filter((module) =>
+      [module.title, module.category, module.difficulty, module.enabled ? "enabled" : "disabled"]
+        .some((value) => String(value || "").toLowerCase().includes(query))
+    );
+  }, [moduleQuery, modules]);
+
   const previewSteps = Array.isArray(modulePreview?.steps) ? modulePreview.steps : [];
   const previewTotalSteps = previewSteps.length;
   const previewSafeStep = Math.max(0, Math.min(modulePreviewStep, Math.max(0, previewTotalSteps - 1)));
@@ -1195,7 +1346,9 @@ export default function AdminPage() {
                 <div className="footer-title">{user?.firstName || "System"} {user?.lastName || "Admin"}</div>
                 <div className="footer-sub">{user?.email || "Account"}</div>
               </div>
-              <span className="profile-caret" aria-hidden="true">{profileMenuOpen ? "â–²" : "â–¼"}</span>
+              <span className={`profile-caret ${profileMenuOpen ? "is-open" : ""}`} aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5" /></svg>
+              </span>
             </button>
 
             {profileMenuOpen ? (
@@ -1216,6 +1369,7 @@ export default function AdminPage() {
                     <span className="profile-theme-state">{theme === "light" ? "On" : "Off"}</span>
                   </button>
                 </div>
+                <button type="button" className="profile-account-btn" onClick={openAccountSettings}>Account settings</button>
                 <button type="button" className="logout-btn profile-logout-btn" onClick={logout}>Logout</button>
               </div>
             ) : null}
@@ -1231,7 +1385,7 @@ export default function AdminPage() {
             </div>
           </header>
 
-          <div className="content">
+          <div className={`content ${activePage === "sims" ? "content-simulations" : ""}`}>
             {error ? <div className="admin-alert error">{error}</div> : null}
             {loading ? <div className="admin-alert">Loading admin data...</div> : null}
 
@@ -1364,7 +1518,7 @@ export default function AdminPage() {
                         <td colSpan={6}>No users found.</td>
                       </tr>
                     ) : (
-                      filteredUsers.map((targetUser) => {
+                      paginatedUsers.map((targetUser) => {
                         const busyActive = pendingKey === `user-active-${targetUser.id}`;
                         const busyDelete = pendingKey === `user-delete-${targetUser.id}`;
                         const isSelf = targetUser.id === user?.id;
@@ -1421,10 +1575,13 @@ export default function AdminPage() {
                   </tbody>
                 </table>
 
-                <div className="pagination">
-                  <span>{filteredUsers.length} users shown</span>
-                  <span>Page 1 of 1</span>
-                </div>
+                <PaginationControls
+                  page={userPage}
+                  pageCount={userPageCount}
+                  total={filteredUsers.length}
+                  itemLabel="users"
+                  onPageChange={setUserPage}
+                />
               </div>
             ) : null}
 
@@ -1516,7 +1673,7 @@ export default function AdminPage() {
                             <div className="prompt-cell" style={{ gridColumn: "1 / -1" }}>No policy events found for the selected filters.</div>
                           </div>
                         ) : (
-                          filteredPolicyEvents.map((event) => (
+                          paginatedPolicyEvents.map((event) => (
                             <div className="event-row" key={event.id}>
                               <div className="muted-cell event-cell event-col-time">{formatDateTime(event.at)}</div>
                               <div className="muted-cell event-cell event-col-user">{event.userEmail || "Unknown"}</div>
@@ -1532,6 +1689,13 @@ export default function AdminPage() {
                           ))
                         )}
                       </div>
+                      <PaginationControls
+                        page={policyPage}
+                        pageCount={policyPageCount}
+                        total={filteredPolicyEvents.length}
+                        itemLabel="events"
+                        onPageChange={setPolicyPage}
+                      />
                     </div>
                   </div>
                 ) : (
@@ -1684,7 +1848,7 @@ export default function AdminPage() {
             ) : null}
 
             {!loading && activePage === "sims" ? (
-              <div className="page active">
+              <div className="page active simulation-modules-page">
                 <div className="sim-toolbar">
                   <div className="sim-toolbar-title">{moduleStats.total} modules · {moduleStats.enabled} enabled</div>
                 </div>
@@ -1759,12 +1923,23 @@ export default function AdminPage() {
                   </div>
 
                   <div className="panel sim-modules-panel">
-                    <div className="panel-title">
-                      Modules
-                      <span>{moduleStats.total} total</span>
+                    <div className="sim-modules-head">
+                      <div className="panel-title">
+                        Modules
+                        <span>{filteredModules.length} of {moduleStats.total}</span>
+                      </div>
+                      <input
+                        className="policy-search-input sim-module-search"
+                        value={moduleQuery}
+                        onChange={(event) => setModuleQuery(event.target.value)}
+                        placeholder="Search modules by title, category, status..."
+                        aria-label="Search simulation modules"
+                      />
                     </div>
                     <div className="sim-grid">
-                      {modules.map((module) => {
+                      {filteredModules.length === 0 ? (
+                        <div className="muted-cell sim-modules-empty">No modules match your search.</div>
+                      ) : filteredModules.map((module) => {
                         const completions = Number(module.completions || 0);
                         const progressWidth = Math.round((completions / maxCompletions) * 100);
                         const pending = pendingKey === `module-${module.id}`;
@@ -2269,9 +2444,75 @@ MacBook-Pro:~ student$ _`}
           </div>
         </div>
       ) : null}
+
+      {accountSettingsOpen ? (
+        <div className="admin-modal-overlay" onClick={closeAccountSettings}>
+          <form className="admin-modal admin-account-settings-modal" onSubmit={saveAccountPassword} onClick={(event) => event.stopPropagation()}>
+            <div className="account-modal-head">
+              <div className="account-modal-head-left">
+                <div className="account-modal-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M12 5a4 4 0 1 1 0 8 4 4 0 0 1 0-8z" /><path d="M4.5 20a7.5 7.5 0 0 1 15 0" /></svg>
+                </div>
+                <div>
+                  <h3>Account settings</h3>
+                  <p>Review your administrator account and update your password.</p>
+                </div>
+              </div>
+              <button type="button" className="account-modal-close" onClick={closeAccountSettings} aria-label="Close account settings">×</button>
+            </div>
+
+            <div className="admin-account-details">
+              <div className="admin-account-avatar">{(user?.firstName || user?.email || "A").charAt(0).toUpperCase()}</div>
+              <div>
+                <strong>{user?.firstName || ""} {user?.lastName || ""}</strong>
+                <span>{user?.email || ""}</span>
+              </div>
+              <em>{user?.role || "ADMIN"}</em>
+            </div>
+
+            <div className="account-modal-body admin-account-settings-body">
+              <h4>Change password</h4>
+              <p className="admin-account-password-note">Use at least 8 characters, including an uppercase letter, number, and special character.</p>
+              {accountSettingsError ? <div className="admin-alert error">{accountSettingsError}</div> : null}
+              {accountSettingsSuccess ? <div className="admin-account-success">{accountSettingsSuccess}</div> : null}
+              <div className="admin-account-password-fields">
+                {[
+                  ["current", "Current password", "currentPassword", "current-password"],
+                  ["next", "New password", "newPassword", "new-password"],
+                  ["confirm", "Confirm new password", "confirmPassword", "new-password"]
+                ].map(([key, label, field, autoComplete]) => (
+                  <label className="admin-field" key={key}>
+                    <span>{label}</span>
+                    <span className="admin-password-input-wrap">
+                      <input
+                        type={accountPasswordVisibility[key] ? "text" : "password"}
+                        value={accountPasswordForm[field]}
+                        autoComplete={autoComplete}
+                        disabled={accountPasswordSaving}
+                        onChange={(event) => setAccountPasswordForm((prev) => ({ ...prev, [field]: event.target.value }))}
+                      />
+                      <button
+                        type="button"
+                        className="admin-password-visibility-btn"
+                        onClick={() => setAccountPasswordVisibility((prev) => ({ ...prev, [key]: !prev[key] }))}
+                        aria-label={accountPasswordVisibility[key] ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+                      >
+                        <PasswordVisibilityIcon visible={accountPasswordVisibility[key]} />
+                      </button>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <div className="admin-account-settings-actions">
+                <button type="button" className="btn-sm" onClick={closeAccountSettings} disabled={accountPasswordSaving}>Cancel</button>
+                <button type="submit" className="btn-sm create-user-btn" disabled={accountPasswordSaving}>
+                  {accountPasswordSaving ? "Updating..." : "Update password"}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </div>
   );
 }
-
-
-
