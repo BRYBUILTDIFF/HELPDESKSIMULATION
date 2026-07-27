@@ -4,6 +4,41 @@
   overflow: hidden;
 }
 
+.windows-os-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(2, 6, 23, 0.88);
+}
+
+.windows-os-shell {
+  width: min(1500px, 100%);
+  height: min(900px, calc(100vh - 36px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 14px;
+  background: #0f172a;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+}
+
+.windows-os-header { min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 16px; border-bottom: 1px solid rgba(148, 163, 184, 0.2); }
+.windows-os-header h2 { margin: 2px 0 0; font-size: 16px; color: var(--text); }
+.windows-os-kicker { color: #38bdf8; text-transform: uppercase; font: 10px var(--mono); letter-spacing: .09em; }
+.windows-os-controls { display: flex; align-items: center; gap: 12px; color: var(--text3); font-size: 12px; }
+.windows-os-status { flex: 1; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 32px; text-align: center; color: var(--text2); }
+.windows-os-status h3 { margin: 0; color: var(--text); font-size: 18px; }
+.windows-os-status p { margin: 0; max-width: 450px; line-height: 1.55; }
+.windows-os-status.is-error h3 { color: #fca5a5; }
+.windows-os-spinner { width: 30px; height: 30px; border: 3px solid rgba(56, 189, 248, .2); border-top-color: #38bdf8; border-radius: 50%; animation: windows-os-spin .9s linear infinite; }
+.windows-os-frame { width: 100%; flex: 1; min-height: 0; border: 0; background: #050505; }
+.windows-os-error-actions { display: flex; gap: 10px; }
+@keyframes windows-os-spin { to { transform: rotate(360deg); } }
+
 .helpdesk-root {
   --bg: #0d1117;
   --bg2: #161b22;

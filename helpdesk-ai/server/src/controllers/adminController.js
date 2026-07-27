@@ -89,7 +89,9 @@ function inferScenarioType(category = "", prompt = "") {
 
 function mapSurfaceToTerminalType(surface = "") {
   const normalized = String(surface || "").trim().toLowerCase();
-  return normalized === "mac-terminal" || normalized === "mac-os" ? "mac-terminal" : "windows-terminal";
+  if (normalized === "mac-terminal") return "mac-terminal";
+  if (normalized === "windows-terminal") return "windows-terminal";
+  return null;
 }
 
 function toSimulationSurfaceLabel(surface = "") {
@@ -173,6 +175,7 @@ function buildFallbackSimulationDefinition({ title, category, prompt, surface })
   return {
     title: safeTitle,
     scenarioType,
+    surface,
     terminalType: mapSurfaceToTerminalType(surface),
     steps: [
       {
@@ -216,10 +219,10 @@ function buildFallbackSimulationDefinition({ title, category, prompt, surface })
 
 function sanitizeSimulationDefinition(definition, fallback) {
   const source = definition && typeof definition === "object" ? definition : {};
-  const terminalType = String(source.terminalType || fallback.terminalType || "windows-terminal")
-    .trim()
-    .toLowerCase();
-  const safeTerminalType = terminalType === "mac-terminal" ? "mac-terminal" : "windows-terminal";
+  const surface = ["windows-terminal", "mac-terminal", "windows-os", "mac-os"].includes(String(source.surface || "").trim().toLowerCase())
+    ? String(source.surface).trim().toLowerCase()
+    : fallback.surface || (String(source.terminalType || "").trim().toLowerCase() === "mac-terminal" ? "mac-terminal" : "windows-terminal");
+  const safeTerminalType = surface === "windows-terminal" || surface === "mac-terminal" ? surface : null;
   const rawSteps = Array.isArray(source.steps) ? source.steps : [];
   const steps = rawSteps
     .map((step, index) => ({
@@ -238,6 +241,7 @@ function sanitizeSimulationDefinition(definition, fallback) {
   return {
     title: String(source.title || fallback.title).trim() || fallback.title,
     scenarioType: String(source.scenarioType || fallback.scenarioType || "general").trim().toLowerCase() || "general",
+    surface,
     terminalType: safeTerminalType,
     steps
   };
@@ -285,7 +289,7 @@ async function generateSimulationDraftFromPrompt(prompt, occurrences = 1, option
         {
           role: "system",
           content:
-            `Create an IT support simulation module from a frequent user prompt. The recommended simulation surface is ${alignment.surfaceLabel} and terminalType must be "${preferredTerminalType}". Return JSON only with this schema: {"title": string, "category": string, "difficulty": "Easy"|"Medium"|"Hard", "simulation": {"title": string, "scenarioType": "general"|"network"|"email"|"printer", "terminalType": "windows-terminal"|"mac-terminal", "steps": [{"title": string, "desc": string, "screen": string, "action": string, "result": string}]}}. Include 5 to 7 practical steps.`
+            `Create an IT support simulation module from a frequent user prompt. The required simulation surface is ${alignment.surfaceLabel}. Return JSON only with this schema: {"title": string, "category": string, "difficulty": "Easy"|"Medium"|"Hard", "simulation": {"title": string, "scenarioType": "general"|"network"|"email"|"printer", "surface": "windows-terminal"|"mac-terminal"|"windows-os"|"mac-os", "terminalType": "windows-terminal"|"mac-terminal"|null, "steps": [{"title": string, "desc": string, "screen": string, "action": string, "result": string}]}}. Include 5 to 7 practical steps.`
         },
         {
           role: "user",
@@ -300,6 +304,7 @@ async function generateSimulationDraftFromPrompt(prompt, occurrences = 1, option
     const difficulty = DIFFICULTY_LEVELS.includes(parsed?.difficulty) ? parsed.difficulty : fallback.difficulty;
     const fallbackForTitle = buildFallbackSimulationDefinition({ title, category, prompt, surface: alignment.surface });
     const simulation = sanitizeSimulationDefinition(parsed?.simulation, fallbackForTitle);
+    simulation.surface = alignment.surface;
     simulation.terminalType = preferredTerminalType;
     return {
       title,

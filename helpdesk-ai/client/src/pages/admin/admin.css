@@ -2182,6 +2182,38 @@
   font-size: 11px;
 }
 
+.sim-preview-selected-surface {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border: 0.5px solid rgba(56, 189, 248, 0.55);
+  border-radius: 6px;
+  background: rgba(56, 189, 248, 0.13);
+  color: #e0f6ff;
+  font-size: 12px;
+}
+
+.sim-preview-selected-surface .sim-preview-env-icon {
+  color: #38bdf8;
+}
+
+.sim-preview-surface-lock {
+  margin-left: auto;
+  color: #7dd3fc;
+  display: grid;
+  place-items: center;
+}
+
+.sim-preview-surface-lock svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+
 .sim-preview-sim-frame {
   margin: 10px;
   border: 0.5px solid rgba(255, 255, 255, 0.1);
@@ -2219,6 +2251,137 @@
   font-family: "Consolas", "Courier New", monospace;
   font-size: 11px;
   line-height: 1.65;
+}
+
+/* Windows Terminal-style PowerShell preview used while approving a module draft. */
+.sim-preview-windows-terminal {
+  min-height: 240px;
+  background: #0c0c0c;
+  color: #f0f0f0;
+}
+
+.windows-terminal-titlebar {
+  height: 39px;
+  display: flex;
+  align-items: stretch;
+  background: #202020;
+  color: #f4f4f4;
+  font-family: "Segoe UI", sans-serif;
+}
+
+.windows-terminal-tab {
+  min-width: 174px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 12px;
+  border-radius: 7px 7px 0 0;
+  background: #0c0c0c;
+  font-size: 11px;
+}
+
+.windows-terminal-powershell-icon {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  background: #1f6feb;
+  color: white;
+  font-family: Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: -1px;
+}
+
+.windows-terminal-tab-close {
+  margin-left: auto;
+  color: #d7d7d7;
+  font-size: 18px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.windows-terminal-menu {
+  width: 28px;
+  border: 0;
+  background: transparent;
+  color: #d8d8d8;
+  font: 18px/1 "Segoe UI", sans-serif;
+  cursor: default;
+}
+
+.windows-terminal-menu {
+  font-size: 16px;
+}
+
+.windows-terminal-window-controls {
+  display: flex;
+  margin-left: auto;
+}
+
+.windows-terminal-window-controls span {
+  width: 35px;
+  display: grid;
+  place-items: center;
+  color: #e3e3e3;
+  font-size: 13px;
+}
+
+.windows-terminal-window-controls span:last-child {
+  font-size: 17px;
+  font-weight: 300;
+}
+
+.sim-preview-windows-terminal pre {
+  min-height: 201px;
+  padding: 13px 14px;
+  background: #0c0c0c;
+  color: #e6e6e6;
+  font-size: 12px;
+  line-height: 1.48;
+}
+
+.sim-preview-mac-terminal {
+  min-height: 240px;
+  background: #1e1e1e;
+}
+
+.mac-terminal-titlebar {
+  position: relative;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid #5d6468;
+  background: linear-gradient(#626a6f, #3f474b);
+  color: #e9e9e9;
+  font: 11px/1 "Menlo", "SFMono-Regular", monospace;
+}
+
+.mac-terminal-window-dots {
+  position: absolute;
+  left: 7px;
+  display: flex;
+  gap: 6px;
+}
+
+.mac-terminal-window-dots .dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  display: block;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.22);
+}
+
+.sim-preview-mac-terminal pre {
+  min-height: 218px;
+  padding: 7px 6px;
+  background: #1e1e1e;
+  color: #f4f4f4;
+  font-family: "Menlo", "SFMono-Regular", "Courier New", monospace;
+  font-size: 10px;
+  line-height: 1.35;
 }
 
 .sim-preview-terminal-note {
@@ -2640,6 +2803,12 @@
   color: #0369a1;
 }
 
+.admin-console-root.theme-light .sim-preview-selected-surface {
+  border-color: rgba(2, 132, 199, 0.4);
+  background: rgba(2, 132, 199, 0.1);
+  color: #0f172a;
+}
+
 .admin-console-root.theme-light .sim-preview-sim-frame {
   border-color: #d4e0ec;
   background: #ffffff;
@@ -2657,6 +2826,18 @@
 
 .admin-console-root.theme-light .sim-preview-terminal-window pre {
   color: #0f172a;
+}
+
+.admin-console-root.theme-light .sim-preview-windows-terminal,
+.admin-console-root.theme-light .sim-preview-windows-terminal pre {
+  background: #0c0c0c;
+  color: #e6e6e6;
+}
+
+.admin-console-root.theme-light .sim-preview-mac-terminal,
+.admin-console-root.theme-light .sim-preview-mac-terminal pre {
+  background: #1e1e1e;
+  color: #f4f4f4;
 }
 
 .admin-console-root.theme-light .sim-preview-surface-image-wrap {

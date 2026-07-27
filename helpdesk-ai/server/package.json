@@ -10,6 +10,7 @@
     "generate": "prisma generate"
   },
   "dependencies": {
+    "@aws-sdk/client-ec2": "^3.1095.0",
     "@prisma/client": "^6.8.2",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",

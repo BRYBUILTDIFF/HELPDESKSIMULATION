@@ -128,15 +128,9 @@ function stripHtml(value = "") {
   return String(value || "").replace(/<[^>]+>/g, "").trim();
 }
 
-function mapSurfaceToTerminalType(surface = "") {
+function normalizeSurface(surface = "", terminalType = "") {
   const value = String(surface || "").toLowerCase();
-  if (value === "mac-terminal" || value === "mac-os") {
-    return "mac-terminal";
-  }
-  return "windows-terminal";
-}
-
-function mapTerminalTypeToSurface(terminalType = "") {
+  if (["windows-terminal", "mac-terminal", "windows-os", "mac-os"].includes(value)) return value;
   return String(terminalType || "").toLowerCase() === "mac-terminal" ? "mac-terminal" : "windows-terminal";
 }
 
@@ -215,6 +209,7 @@ function buildFallbackSimulationDefinition(module) {
   return {
     title,
     scenarioType: "general",
+    surface: "windows-terminal",
     terminalType: "windows-terminal",
     steps: [
       {
@@ -1087,7 +1082,7 @@ export default function AdminPage() {
     }
     setModulePreview(preview);
     setModulePreviewStep(0);
-    setModulePreviewSurface(mapTerminalTypeToSurface(options?.surface || preview?.terminalType));
+    setModulePreviewSurface(normalizeSurface(options?.surface || preview?.surface, preview?.terminalType));
     setModuleDraftMeta(options?.draftMeta || null);
     setModuleDraftError("");
   };
@@ -1174,7 +1169,8 @@ export default function AdminPage() {
         sourcePrompt: moduleDraftMeta.sourcePrompt,
         simulation: {
           ...modulePreview,
-          terminalType: mapSurfaceToTerminalType(modulePreviewSurface)
+          surface: modulePreviewSurface,
+          terminalType: modulePreviewSurface === "windows-terminal" || modulePreviewSurface === "mac-terminal" ? modulePreviewSurface : null
         },
         enabled: true
       });
@@ -1270,6 +1266,8 @@ export default function AdminPage() {
     { value: "mac-os", label: "Mac OS", icon: "M" }
   ];
   const isDraftPreview = Boolean(moduleDraftMeta);
+  const isAiGeneratedDraft = moduleDraftMeta?.mode === "from_prompt";
+  const selectedPreviewSurface = previewSurfaceOptions.find((option) => option.value === modulePreviewSurface);
   const previewRuntimeHint = stripHtml(previewCurrentStep.action || previewCurrentStep.desc || "");
   const previewFullName = [userForm.firstName.trim(), userForm.lastName.trim()].filter(Boolean).join(" ");
   const previewInitials =
@@ -1973,7 +1971,7 @@ export default function AdminPage() {
                                 className="btn-sm"
                                 onClick={() =>
                                   openModulePreview(getModuleSimulationDefinition(module), {
-                                    surface: module?.simulation?.terminalType
+                                    surface: module?.simulation?.surface,
                                   })
                                 }
                               >
@@ -2079,43 +2077,73 @@ export default function AdminPage() {
                   <aside className="sim-preview-right">
                     <div className="sim-preview-sim-header">
                       <div className="sim-preview-sim-title">Simulation Surface</div>
-                      <div className="sim-preview-env-label">Environment</div>
-                      <div className="sim-preview-env-options">
-                        {previewSurfaceOptions.map((option) => (
-                          <button
-                            key={option.value}
-                            type="button"
-                            className={`sim-preview-env-btn ${modulePreviewSurface === option.value ? "active" : ""}`}
-                            onClick={() => setModulePreviewSurface(option.value)}
-                          >
-                            <span className="sim-preview-env-icon">{option.icon}</span>
-                            <span>{option.label}</span>
-                          </button>
-                        ))}
+                      <div className="sim-preview-env-label">
+                        {isAiGeneratedDraft ? "AI-selected environment" : "Environment"}
                       </div>
+                      {isAiGeneratedDraft ? (
+                        <div className="sim-preview-selected-surface" title="This environment was selected by AI for this draft.">
+                          <span className="sim-preview-env-icon">{selectedPreviewSurface?.icon}</span>
+                          <span>{formatSurfaceLabel(modulePreviewSurface)}</span>
+                          <span className="sim-preview-surface-lock" aria-label="Locked">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <rect x="5" y="10" width="14" height="10" rx="2" />
+                              <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                            </svg>
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="sim-preview-env-options">
+                          {previewSurfaceOptions.map((option) => (
+                            <button
+                              key={option.value}
+                              type="button"
+                              className={`sim-preview-env-btn ${modulePreviewSurface === option.value ? "active" : ""}`}
+                              onClick={() => setModulePreviewSurface(option.value)}
+                            >
+                              <span className="sim-preview-env-icon">{option.icon}</span>
+                              <span>{option.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <div className="sim-preview-sim-frame">
-                      {modulePreviewSurface === "windows-terminal" || modulePreviewSurface === "mac-terminal" ? (
-                        <div className="sim-preview-terminal-window">
-                          <div className="sim-preview-terminal-head">
-                            <span className="dot red" />
-                            <span className="dot yellow" />
-                            <span className="dot green" />
-                            <strong>{modulePreviewSurface === "windows-terminal" ? "Windows Terminal" : "Mac Terminal"}</strong>
+                      {modulePreviewSurface === "windows-terminal" ? (
+                        <div className="sim-preview-terminal-window sim-preview-windows-terminal">
+                          <div className="windows-terminal-titlebar">
+                            <div className="windows-terminal-tab active">
+                              <span className="windows-terminal-powershell-icon">›_</span>
+                              <strong>Windows PowerShell</strong>
+                              <span className="windows-terminal-tab-close" aria-hidden="true">×</span>
+                            </div>
+                            <button type="button" className="windows-terminal-menu" aria-label="Terminal options">⌄</button>
+                            <div className="windows-terminal-window-controls" aria-hidden="true">
+                              <span>−</span><span>□</span><span>×</span>
+                            </div>
                           </div>
-                          <pre>
-{modulePreviewSurface === "windows-terminal"
-  ? `Microsoft Windows [Version 10.0.22631]
-C:\\Users\\student> rem Simulation preview only
-C:\\Users\\student> echo ${previewCurrentStep.title || "Ready"}
+                          <pre>{`Windows PowerShell
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+PS C:\\Users\\student> echo ${previewCurrentStep.title || "Ready"}
 ${previewCurrentStep.title || "Ready"}
-C:\\Users\\student> _`
-  : `MacBook-Pro:~ student$ # Simulation preview only
-MacBook-Pro:~ student$ echo ${previewCurrentStep.title || "Ready"}
+
+PS C:\\Users\\student> _`}</pre>
+                        </div>
+                      ) : modulePreviewSurface === "mac-terminal" ? (
+                        <div className="sim-preview-terminal-window sim-preview-mac-terminal">
+                          <div className="mac-terminal-titlebar">
+                            <div className="mac-terminal-window-dots" aria-hidden="true">
+                              <span className="dot red" />
+                              <span className="dot yellow" />
+                              <span className="dot green" />
+                            </div>
+                            <strong>⌂ jumpcloud — zsh — 80×24</strong>
+                          </div>
+                          <pre>{`Last login: Tue Jan 11 11:10:04 on console
+jumpcloud@JumpCloud ~ % echo ${previewCurrentStep.title || "Ready"}
 ${previewCurrentStep.title || "Ready"}
-MacBook-Pro:~ student$ _`}
-                          </pre>
+jumpcloud@JumpCloud ~ % _`}</pre>
                         </div>
                       ) : (
                         <div className="sim-preview-surface-image-wrap">

@@ -14,6 +14,7 @@ const DEFAULT_MODULES = [
 ];
 
 const ALLOWED_DIFFICULTY = new Set(["Easy", "Medium", "Hard"]);
+const ALLOWED_SURFACES = new Set(["windows-terminal", "mac-terminal", "windows-os", "mac-os"]);
 let memoryModules = [];
 
 function sanitizeId(raw) {
@@ -61,8 +62,14 @@ function normalizeSimulation(definition, fallbackTitle = "Simulation Scenario") 
   if (!definition || typeof definition !== "object") {
     return null;
   }
-  const terminalType = String(definition.terminalType || "windows-terminal").trim().toLowerCase();
-  const safeTerminalType = terminalType === "mac-terminal" ? "mac-terminal" : "windows-terminal";
+  const requestedSurface = String(definition.surface || "").trim().toLowerCase();
+  const legacyTerminalType = String(definition.terminalType || "").trim().toLowerCase();
+  const surface = ALLOWED_SURFACES.has(requestedSurface)
+    ? requestedSurface
+    : legacyTerminalType === "mac-terminal"
+      ? "mac-terminal"
+      : "windows-terminal";
+  const terminalType = surface === "windows-terminal" || surface === "mac-terminal" ? surface : null;
   const steps = Array.isArray(definition.steps)
     ? definition.steps.map((step, index) => normalizeSimulationStep(step, index)).filter((step) => step.title)
     : [];
@@ -72,7 +79,8 @@ function normalizeSimulation(definition, fallbackTitle = "Simulation Scenario") 
   return {
     title: String(definition.title || fallbackTitle).trim() || fallbackTitle,
     scenarioType: String(definition.scenarioType || "general").trim().toLowerCase() || "general",
-    terminalType: safeTerminalType,
+    surface,
+    terminalType,
     steps
   };
 }
@@ -131,6 +139,16 @@ async function listModules(options = {}) {
     }
   }
   return memoryModules.filter((m) => (onlyEnabled ? m.enabled : true)).map((m) => ({ ...m }));
+}
+
+async function getModuleById(id) {
+  const safeId = String(id || "");
+  if (prisma?.simulationModule) {
+    const module = await prisma.simulationModule.findUnique({ where: { id: safeId } });
+    return module ? mapDbModule(module) : null;
+  }
+  const module = memoryModules.find((item) => item.id === safeId);
+  return module ? { ...module } : null;
 }
 
 async function createModule(payload = {}) {
@@ -258,6 +276,7 @@ async function deleteModule(id) {
 
 module.exports = {
   listModules,
+  getModuleById,
   createModule,
   updateModule,
   deleteModule

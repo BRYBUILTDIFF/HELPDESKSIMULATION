@@ -12,6 +12,8 @@ const adminRoutes = require("./routes/admin.routes");
 const aiRoutes = require("./routes/ai.routes");
 const sessionRoutes = require("./routes/session.routes");
 const simulationRoutes = require("./routes/simulation.routes");
+const simulationSessionRoutes = require("./routes/simulationSession.routes");
+const { cleanupExpiredWindowsSimulationSessions } = require("./services/windowsSimulationService");
 
 const app = express();
 const allowedOrigins = [
@@ -94,6 +96,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/ai", aiLimiter, aiRoutes);
 app.use("/api/sessions", sessionRoutes);
 app.use("/api/simulations", simulationRoutes);
+app.use("/api/simulation-sessions", simulationSessionRoutes);
 
 app.get("/api/health", (_req, res) => {
   res.status(200).json({ ok: true });
@@ -119,4 +122,8 @@ app.use((err, _req, res, _next) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  cleanupExpiredWindowsSimulationSessions().catch((error) => console.error("Simulation cleanup startup pass failed", error?.message));
+  setInterval(() => {
+    cleanupExpiredWindowsSimulationSessions().catch((error) => console.error("Simulation cleanup pass failed", error?.message));
+  }, 5 * 60 * 1000).unref();
 });

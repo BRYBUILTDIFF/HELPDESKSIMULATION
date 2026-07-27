@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useAxios } from "../../hooks/useAxios";
+import TerminalEmulator from "./Modules/TerminalEmulator";
+import WindowsOsSimulation from "./Modules/WindowsOsSimulation";
 import { simulations } from "./helpdeskData";
 import "./dashboard.css";
 
@@ -36,6 +38,7 @@ function buildFallbackSimulation(module) {
   const category = String(module?.category || "General").trim();
   return {
     title,
+    surface: "windows-terminal",
     steps: [
       {
         title: "Gather Incident Details",
@@ -251,7 +254,11 @@ export default function SimulationsPage() {
 
   return (
     <div className={`helpdesk-root ${theme === "light" ? "theme-light" : ""}`}>
-      {currentSim ? (
+      {currentSim?.surface === "windows-os" ? (
+        <WindowsOsSimulation api={api} moduleId={activeSimId} title={activeSimLabel} onEnded={closeSimulation} />
+      ) : null}
+
+      {currentSim && currentSim.surface !== "windows-os" ? (
         <div className="step-modal-overlay" onClick={closeSimulation}>
           <div className="step-modal" onClick={(e) => e.stopPropagation()}>
             <div className="sim-preview-topbar">
