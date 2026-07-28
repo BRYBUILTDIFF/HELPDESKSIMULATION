@@ -255,7 +255,7 @@ export default function SimulationsPage() {
   return (
     <div className={`helpdesk-root ${theme === "light" ? "theme-light" : ""}`}>
       {currentSim?.surface === "windows-os" ? (
-        <WindowsOsSimulation api={api} moduleId={activeSimId} title={activeSimLabel} onEnded={closeSimulation} />
+          <WindowsOsSimulation api={api} moduleId={activeSimId} title={activeSimLabel} steps={currentSim?.steps || []} onEnded={closeSimulation} />
       ) : null}
 
       {currentSim && currentSim.surface !== "windows-os" ? (

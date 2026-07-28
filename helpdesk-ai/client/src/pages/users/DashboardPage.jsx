@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useAxios } from "../../hooks/useAxios";
 import TerminalEmulator from "./Modules/TerminalEmulator";
+import WindowsOsSimulation from "./Modules/WindowsOsSimulation";
 import { simulations } from "./helpdeskData";
 import "./dashboard.css";
 
@@ -1314,6 +1315,7 @@ export default function DashboardPage() {
   const [sidebarSearchInput, setSidebarSearchInput] = useState("");
   const [sidebarSearch, setSidebarSearch] = useState("");
   const [simulationModules, setSimulationModules] = useState([]);
+  const [activeWindowsOsModule, setActiveWindowsOsModule] = useState(null);
   const [sidebarGroupsCollapsed, setSidebarGroupsCollapsed] = useState({
     chats: false,
     simulations: false
@@ -2018,6 +2020,12 @@ export default function DashboardPage() {
     if (!simulationId || !sim) {
       sendMessage(questionText);
       setPendingSimulationCreation(false);
+      return;
+    }
+
+    if (sim.surface === "windows-os") {
+      setPendingSimulationCreation(false);
+        setActiveWindowsOsModule({ id: simulationId, title: sim.title || suggestion?.title || "Windows OS Simulation", steps: sim.steps || [] });
       return;
     }
 
@@ -3116,6 +3124,15 @@ export default function DashboardPage() {
 
   return (
     <div className={`helpdesk-root ${theme === "light" ? "theme-light" : ""}`}>
+      {activeWindowsOsModule ? (
+        <WindowsOsSimulation
+            api={api}
+            moduleId={activeWindowsOsModule.id}
+            title={activeWindowsOsModule.title}
+            steps={activeWindowsOsModule.steps}
+            onEnded={() => setActiveWindowsOsModule(null)}
+        />
+      ) : null}
       {stepModalOpen && !isSimulationSession ? (
         <div className="step-modal-overlay" onClick={closeStepModal}>
           <div className="step-modal" onClick={(e) => e.stopPropagation()}>
