@@ -1,8 +1,8 @@
 const { getPolicyRuntimeConfig } = require("../store/policyConfigStore");
 
-const DEEPSEEK_URL = "http://localhost:11434/api/chat";
-const DEEPSEEK_MODEL = "deepseek-r1:7b";
-const CLASSIFIER_TIMEOUT_MS = 8000;
+const DEEPSEEK_URL = process.env.POLICY_CLASSIFIER_URL || "http://localhost:11434/api/chat";
+const DEEPSEEK_MODEL = process.env.POLICY_CLASSIFIER_MODEL || "deepseek-r1:7b";
+const CLASSIFIER_TIMEOUT_MS = Math.max(1000, Number(process.env.POLICY_CLASSIFIER_TIMEOUT_MS) || 8000);
 const CLARIFY_MESSAGE_FALLBACK =
   "Could you clarify if this is an IT-related issue? I'm here to help with IT support topics.";
 const FOLLOW_UP_NO_CONTEXT_REGEX =
@@ -60,7 +60,7 @@ function getClassifierSystemPrompt(policy = {}) {
     "No markdown, no code fences, no additional keys, no explanation.",
     "IN-SCOPE includes: hardware, software, operating systems, network, VPN, email, account access, passwords, printers, security, remote access, active directory, IT ticketing.",
     "OUT-OF-SCOPE includes: health, finance, relationships, food, travel, entertainment, academics, politics, and anything unrelated to IT support.",
-    "If ambiguous but possibly IT-related, classify as in_scope.",
+    "Classify as in_scope only when the message has a clear IT helpdesk connection. If it is ambiguous or lacks IT context, classify as out_of_scope.",
     "If short follow-up continues an IT support conversation, classify as in_scope.",
     "If greeting only and no IT question, classify as greeting.",
     "Handle multilingual input correctly, including Filipino/Tagalog.",
@@ -101,6 +101,63 @@ async function getFetchImpl() {
   } catch (_err) {
     throw new Error("No fetch implementation available.");
   }
+}
+
+function isClassifierPayload(value) {
+  return value && typeof value === "object" && ["in_scope", "out_of_scope", "greeting"].includes(String(value.classification || "").trim());
+}
+
+function findClassifierPayloadInText(rawContent) {
+  const content = String(rawContent || "").trim();
+  if (!content) {
+    return null;
+  }
+
+  try {
+    const direct = JSON.parse(content.replace(/^```(?:json)?\s*|\s*```$/gi, "").trim());
+    if (isClassifierPayload(direct)) {
+      return direct;
+    }
+  } catch (_err) {
+    // Some DeepSeek responses contain thinking text or markdown around the JSON payload.
+  }
+
+  for (let start = content.indexOf("{"); start >= 0; start = content.indexOf("{", start + 1)) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let index = start; index < content.length; index += 1) {
+      const character = content[index];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === '"') inString = false;
+        continue;
+      }
+
+      if (character === '"') {
+        inString = true;
+      } else if (character === "{") {
+        depth += 1;
+      } else if (character === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          try {
+            const candidate = JSON.parse(content.slice(start, index + 1));
+            if (isClassifierPayload(candidate)) {
+              return candidate;
+            }
+          } catch (_err) {
+            // Continue looking for another JSON object in the model response.
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -153,10 +210,8 @@ async function classifyWithDeepSeek(message, history, policy) {
       throw new Error("Classifier returned empty output.");
     }
 
-    let parsed;
-    try {
-      parsed = JSON.parse(rawModelContent);
-    } catch (_err) {
+    const parsed = findClassifierPayloadInText(rawModelContent);
+    if (!parsed) {
       console.error("[PolicyClassifier] Non-JSON classifier content:", rawModelContent);
       throw new Error("Classifier returned non-JSON content.");
     }
@@ -310,9 +365,10 @@ async function evaluatePromptPolicy(message, history = []) {
   } catch (err) {
     console.error("[PolicyClassifier]", err);
     return {
-      allowed: true,
+      allowed: false,
       code: "CLASSIFIER_ERROR",
-      reason: err?.message || "Classifier error."
+      reason: `Scope classifier unavailable; request safely blocked. ${err?.message || "Classifier error."}`,
+      userMessage: policy.messages.defaultOutOfScopeMessage || policy.messages.outOfScopeMessage
     };
   }
 }

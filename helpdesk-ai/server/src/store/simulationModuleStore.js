@@ -274,10 +274,55 @@ async function deleteModule(id) {
   return { ...removed };
 }
 
+async function recordModuleCompletion({ moduleId, userId, attemptKey, surface, stepsCompleted }) {
+  const safeId = String(moduleId || "");
+  const safeAttemptKey = String(attemptKey || "").trim();
+  const requestedSteps = Math.max(0, Number.parseInt(stepsCompleted, 10) || 0);
+
+  if (!safeId || !safeAttemptKey || !prisma?.simulationModule || !prisma?.simulationCompletion) {
+    return null;
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.simulationCompletion.findUnique({ where: { attemptKey: safeAttemptKey } });
+    if (existing) {
+      if (existing.userId !== userId || existing.moduleId !== safeId) {
+        const error = new Error("This simulation attempt does not belong to the current user.");
+        error.status = 403;
+        throw error;
+      }
+      const module = await tx.simulationModule.findUnique({ where: { id: safeId } });
+      return module ? { module: mapDbModule(module), recorded: false } : null;
+    }
+
+    const module = await tx.simulationModule.findUnique({ where: { id: safeId } });
+    if (!module || !module.enabled) return null;
+    const expectedSteps = Array.isArray(module.simulation?.steps) ? module.simulation.steps.length : 0;
+
+    const previousCompletions = Math.max(0, Number(module.completions || 0));
+    const nextCompletions = previousCompletions + 1;
+    const completedSteps = expectedSteps > 0
+      ? Math.min(requestedSteps, expectedSteps)
+      : requestedSteps;
+    const nextAverageSteps = ((Number(module.avgSteps || 0) * previousCompletions) + completedSteps) / nextCompletions;
+    const nextPassRate = ((Number(module.passRate || 0) * previousCompletions) + 100) / nextCompletions;
+
+    await tx.simulationCompletion.create({
+      data: { userId, moduleId: safeId, attemptKey: safeAttemptKey, surface: String(surface || "terminal"), stepsCompleted: completedSteps }
+    });
+    const updated = await tx.simulationModule.update({
+      where: { id: safeId },
+      data: { completions: nextCompletions, avgSteps: nextAverageSteps, passRate: nextPassRate }
+    });
+    return { module: mapDbModule(updated), recorded: true };
+  });
+}
+
 module.exports = {
   listModules,
   getModuleById,
   createModule,
   updateModule,
-  deleteModule
+  deleteModule,
+  recordModuleCompletion
 };

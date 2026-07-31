@@ -21,6 +21,7 @@ model User {
   sessionState  UserSessionState?
   policyEvents  PolicyEvent[]
   simulationSessions SimulationSession[]
+  simulationCompletions SimulationCompletion[]
 }
 
 model RefreshToken {
@@ -55,6 +56,22 @@ model SimulationModule {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   simulationSessions SimulationSession[]
+  simulationCompletions SimulationCompletion[]
+}
+
+model SimulationCompletion {
+  id             String   @id @default(cuid())
+  userId         Int
+  moduleId       String
+  attemptKey     String   @unique
+  surface        String
+  stepsCompleted Int
+  completedAt    DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module         SimulationModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@index([moduleId, completedAt])
+  @@index([userId, completedAt])
 }
 
 model SimulationSession {

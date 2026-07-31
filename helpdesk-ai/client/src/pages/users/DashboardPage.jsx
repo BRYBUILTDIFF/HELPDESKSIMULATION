@@ -117,6 +117,22 @@ const THEME_STORAGE_KEY = "helpdesk_simulation_theme";
 const SIDEBAR_GROUP_PREFS_PREFIX = "helpdesk_sidebar_group_prefs_";
 const MAX_COMPOSER_HEIGHT = 280;
 const PASSWORD_REQUIREMENTS = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+const OPERATING_SYSTEM_PATTERN = /\b(windows|win\s?\d+|macos|mac\s?os|macintosh|linux|ubuntu|debian|fedora)\b/i;
+const TERMINAL_REQUEST_PATTERN = /\b(terminal|command line|command-line|command prompt|powershell|cmd|bash|zsh|shell)\b/i;
+const PLATFORM_SPECIFIC_TASK_PATTERN = /\b(create|make|write|save|delete|remove|rename|move|copy|file|folder|directory|\.txt|text file)\b/i;
+const RELATED_TICKET_STOP_WORDS = new Set([
+  "about", "after", "again", "also", "computer", "desktop", "device", "does", "fix", "from", "have", "help", "how", "issue", "laptop", "need", "not", "please", "problem", "that", "the", "this", "using", "what", "when", "where", "windows", "with", "work", "working"
+]);
+const RELATED_TICKET_CATEGORY_SIGNALS = {
+  network: ["internet", "wifi", "network", "dns", "vpn", "ethernet", "connection", "router", "gateway", "online"],
+  account: ["password", "login", "signin", "account", "locked", "unlock", "access", "authentication", "mfa"],
+  peripheral: ["printer", "print", "spooler", "scanner", "webcam", "keyboard", "mouse"],
+  performance: ["slow", "cpu", "memory", "ram", "disk", "storage", "performance", "lag"],
+  email: ["email", "outlook", "mail", "calendar", "smtp", "exchange"],
+  security: ["virus", "malware", "phishing", "security", "ransomware", "suspicious"],
+  server: ["server", "website", "service", "outage", "down", "hosting"],
+  files: ["file", "folder", "usb", "document", "onedrive", "sharepoint"]
+};
 
 const SUGGESTED_SIMULATION_MAP = {
   "No Internet Connection": "no-internet",
@@ -135,6 +151,11 @@ function buildQuestionFromModule(module) {
   const title = String(module?.title || "IT support issue").trim();
   const category = String(module?.category || "General").trim();
   return `Please guide me through a ${category.toLowerCase()} troubleshooting simulation for "${title}" using clear step-by-step terminal checks.`;
+}
+
+function needsOperatingSystemClarification(message) {
+  const input = String(message || "").trim();
+  return Boolean(input) && !OPERATING_SYSTEM_PATTERN.test(input) && TERMINAL_REQUEST_PATTERN.test(input) && PLATFORM_SPECIFIC_TASK_PATTERN.test(input);
 }
 
 function buildFallbackSimulationDefinition(module) {
@@ -751,6 +772,7 @@ function createSession(title = "New Chat", options = {}) {
     isFavorite: false,
     simulationStepsByMessage: {},
     simulationCanvasByMessage: {},
+    windowsOsSimulation: null,
     suggestedQuestions: pickRandomQuestions()
   };
 }
@@ -786,6 +808,15 @@ function normalizeLoadedSession(session, idx) {
       session?.simulationCanvasByMessage && typeof session.simulationCanvasByMessage === "object"
         ? session.simulationCanvasByMessage
         : {},
+    windowsOsSimulation:
+      session?.windowsOsSimulation && typeof session.windowsOsSimulation === "object" && session.windowsOsSimulation.moduleId
+        ? {
+            moduleId: String(session.windowsOsSimulation.moduleId),
+            title: String(session.windowsOsSimulation.title || incomingTitle || "Windows OS Simulation"),
+            steps: Array.isArray(session.windowsOsSimulation.steps) ? session.windowsOsSimulation.steps : [],
+            lastEndedAt: session.windowsOsSimulation.lastEndedAt || null
+          }
+        : null,
     suggestedQuestions:
       Array.isArray(session?.suggestedQuestions) && session.suggestedQuestions.length > 0
         ? session.suggestedQuestions
@@ -909,13 +940,13 @@ function SessionItem({
   menuOpen,
   onSelect,
   onMenuToggle,
-  onRename,
   onFavorite,
   onDelete
 }) {
   const menuButtonRef = useRef(null);
   const menuPopoverRef = useRef(null);
   const [menuStyle, setMenuStyle] = useState(null);
+  const sessionType = item.isSimulationSession ? "simulation" : type;
 
   useLayoutEffect(() => {
     if (!menuOpen) {
@@ -957,8 +988,8 @@ function SessionItem({
   return (
     <div className={`sidebar-session-row ${isActive ? "active" : ""} ${menuOpen ? "menu-open" : ""}`}>
       <button className="sidebar-session-btn hd-btn-reset" onClick={onSelect}>
-        <div className={`sidebar-session-icon type-${type}`}>
-          <SidebarTypeIcon type={type} />
+        <div className={`sidebar-session-icon type-${sessionType}`}>
+          <SidebarTypeIcon type={sessionType} />
         </div>
         <div className="sidebar-session-body">
           <div className="sidebar-session-title">
@@ -988,9 +1019,6 @@ function SessionItem({
             style={menuStyle || undefined}
             onClick={(e) => e.stopPropagation()}
           >
-            <button className="session-menu-item hd-btn-reset" onClick={onRename}>
-              Rename
-            </button>
             <button className="session-menu-item hd-btn-reset" onClick={onFavorite}>
               {item.isFavorite ? "Remove Favorite" : "Favorite"}
             </button>
@@ -1019,9 +1047,9 @@ function SidebarGroup({
   onAdd,
   onSelectItem,
   onToggleMenu,
-  onRename,
   onFavorite,
-  onDelete
+  onDelete,
+  createEnabled = true
 }) {
   const listRef = useRef(null);
   const noResults = searchActive && items.length === 0;
@@ -1029,8 +1057,8 @@ function SidebarGroup({
   const [showMoreHint, setShowMoreHint] = useState(false);
   const createLabel = type === "simulation" ? "New Simulation" : "New Chat";
   const createIcon = type === "simulation" ? ">" : "+";
-  const toggleLabel = sidebarCollapsed ? createLabel : `Toggle ${label}`;
-  const handleGroupToggle = sidebarCollapsed ? onAdd : onToggle;
+  const toggleLabel = sidebarCollapsed && createEnabled ? createLabel : `Toggle ${label}`;
+  const handleGroupToggle = sidebarCollapsed && createEnabled ? onAdd : onToggle;
 
   useLayoutEffect(() => {
     if (!hasSessionItems || collapsed || items.length < 5) {
@@ -1079,7 +1107,7 @@ function SidebarGroup({
 
       {!collapsed ? (
         <>
-          {!noResults ? (
+          {createEnabled && !noResults ? (
             <button
               className={`sidebar-create-card hd-btn-reset type-${type}`}
               onClick={onAdd}
@@ -1116,7 +1144,6 @@ function SidebarGroup({
                     e.stopPropagation();
                     onToggleMenu(item.id);
                   }}
-                  onRename={() => onRename(item.id)}
                   onFavorite={() => onFavorite(item.id)}
                   onDelete={() => onDelete(item.id)}
                 />
@@ -1214,6 +1241,7 @@ function createSimulationCanvasState(steps, scenarioType, meta = {}) {
     actionsTakenByStep: safeSteps.map(() => []),
     stepOutcomes: safeSteps.map(() => null),
     resolved: false,
+    completionRecorded: false,
     createdAt: new Date().toISOString()
   };
 }
@@ -1235,6 +1263,7 @@ function normalizeSimulationCanvasState(state, steps, fallbackType) {
     actionsTakenByStep: safeSteps.map((_, idx) => (Array.isArray(actions[idx]) ? actions[idx] : [])),
     stepOutcomes: safeSteps.map((_, idx) => (outcomes[idx] && typeof outcomes[idx] === "object" ? outcomes[idx] : null)),
     resolved: Boolean(state?.resolved),
+    completionRecorded: Boolean(state?.completionRecorded),
     stepDetails: Array.isArray(state?.stepDetails) ? state.stepDetails : [],
     createdAt: state?.createdAt || new Date().toISOString()
   };
@@ -1300,6 +1329,8 @@ export default function DashboardPage() {
   const [modalMessageId, setModalMessageId] = useState(null);
   const [modalCanvasState, setModalCanvasState] = useState(null);
   const [terminalQueuedCommand, setTerminalQueuedCommand] = useState(null);
+  const [terminalCompletionPending, setTerminalCompletionPending] = useState(false);
+  const [terminalCompletionError, setTerminalCompletionError] = useState("");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
@@ -1314,8 +1345,11 @@ export default function DashboardPage() {
   const [mobileView, setMobileView] = useState(false);
   const [sidebarSearchInput, setSidebarSearchInput] = useState("");
   const [sidebarSearch, setSidebarSearch] = useState("");
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [simulationModules, setSimulationModules] = useState([]);
   const [activeWindowsOsModule, setActiveWindowsOsModule] = useState(null);
+  const [aiSuggestedTickets, setAiSuggestedTickets] = useState([]);
+  const [aiSuggestedTicketsLoading, setAiSuggestedTicketsLoading] = useState(true);
   const [sidebarGroupsCollapsed, setSidebarGroupsCollapsed] = useState({
     chats: false,
     simulations: false
@@ -1369,6 +1403,30 @@ export default function DashboardPage() {
     }));
   }, [simulationModules]);
 
+  const displayedRelatedTicketSuggestions = aiSuggestedTickets;
+
+  useEffect(() => {
+    let cancelled = false;
+    setAiSuggestedTicketsLoading(true);
+
+    api.get("/api/ai/suggested-tickets")
+      .then((response) => {
+        if (!cancelled) {
+          setAiSuggestedTickets(Array.isArray(response.data?.suggestions) ? response.data.suggestions : []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAiSuggestedTickets([]);
+      })
+      .finally(() => {
+        if (!cancelled) setAiSuggestedTicketsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+
   const filteredChatSessions = useMemo(() => {
     const term = sidebarSearch.trim().toLowerCase();
     if (!term) {
@@ -1392,6 +1450,17 @@ export default function DashboardPage() {
       return title.includes(term) || preview.includes(term);
     });
   }, [simulationSessions, sidebarSearch]);
+
+  const filteredFavoriteSessions = useMemo(() => {
+    const term = sidebarSearch.trim().toLowerCase();
+    return sessions.filter((session) => {
+      if (!session.isFavorite) return false;
+      if (!term) return true;
+      const title = String(session.title || "").toLowerCase();
+      const preview = String(sessionPreview(session) || "").toLowerCase();
+      return title.includes(term) || preview.includes(term);
+    });
+  }, [sessions, sidebarSearch]);
 
   useEffect(() => {
     const saved = localStorage.getItem(THEME_STORAGE_KEY);
@@ -1929,9 +1998,22 @@ export default function DashboardPage() {
     );
   };
 
-  const sendMessage = async (overrideText = "") => {
-    const text = (overrideText || input).trim();
-    if (!text || typing) {
+  const pushOperatingSystemQuestion = (sessionId, originalPrompt) => {
+    appendMessageToSession(sessionId, {
+      id: `${Date.now()}-os-choice`,
+      role: "ai",
+      type: "os-choice",
+      text: "Which operating system are you using?",
+      originalPrompt: String(originalPrompt || ""),
+      time: formatTime()
+    });
+  };
+
+  const sendMessage = async (overrideText = "", options = {}) => {
+    const requestedText = (overrideText || input).trim();
+    const displayText = String(options.displayText || requestedText).trim();
+    const apiText = String(options.apiText || requestedText).trim();
+    if (!requestedText || !displayText || !apiText || typing) {
       return;
     }
 
@@ -1940,7 +2022,7 @@ export default function DashboardPage() {
     const previousMessages = targetSession.messages;
     const firstPromptContext = firstUserPrompt([
       ...previousMessages,
-      { role: "user", type: "text", text }
+      { role: "user", type: "text", text: displayText }
     ]);
 
     setSessions((prev) =>
@@ -1958,7 +2040,7 @@ export default function DashboardPage() {
       id: `${Date.now()}-user`,
       role: "user",
       type: "text",
-      text,
+      text: displayText,
       time: formatTime()
     });
 
@@ -1966,29 +2048,35 @@ export default function DashboardPage() {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
+
+    if (!options.skipOperatingSystemClarification && needsOperatingSystemClarification(requestedText)) {
+      pushOperatingSystemQuestion(sessionId, requestedText);
+      return;
+    }
+
     setTyping(true);
 
     try {
       const history = normalizeForHistory(previousMessages);
       const response = await api.post("/api/ai/chat", {
-        message: text,
+        message: apiText,
         history
       });
       if (response.data?.policy?.blocked) {
         pushAiMessage(sessionId, response.data.reply || "Request blocked by policy.", "policy", {
-          userPromptText: text,
+          userPromptText: displayText,
           firstPromptText: firstPromptContext
         });
       } else {
         pushAiMessage(sessionId, response.data.reply || "No response generated.", "text", {
-          userPromptText: text,
+          userPromptText: displayText,
           firstPromptText: firstPromptContext
         });
       }
     } catch (error) {
       if (!error.response) {
         pushAiMessage(sessionId, "Connection error. Please try again.", "text", {
-          userPromptText: text,
+          userPromptText: displayText,
           firstPromptText: firstPromptContext
         });
       } else if (error.response.status === 503) {
@@ -1997,19 +2085,42 @@ export default function DashboardPage() {
           "AI service is not configured yet. Please set AI_API_KEY on the server.",
           "text",
           {
-            userPromptText: text,
+            userPromptText: displayText,
             firstPromptText: firstPromptContext
           }
         );
       } else {
         pushAiMessage(sessionId, error.response.data?.message || "Unable to get AI response right now.", "text", {
-          userPromptText: text,
+          userPromptText: displayText,
           firstPromptText: firstPromptContext
         });
       }
     } finally {
       setTyping(false);
     }
+  };
+
+  const chooseOperatingSystem = (choiceMessage, operatingSystem) => {
+    if (!choiceMessage?.originalPrompt || choiceMessage.osChoiceSelected || typing) {
+      return;
+    }
+
+    updateMessageById(choiceMessage.id, (message) => ({ ...message, osChoiceSelected: operatingSystem }));
+
+    if (operatingSystem === "Not sure") {
+      pushAiMessage(
+        activeSessionId,
+        "Look for the Windows Start button at the bottom-left of your screen, or the Apple menu at the top-left. Once you know whether you are using Windows, macOS, or Linux, select or type it and I will provide the correct terminal steps.",
+        "text"
+      );
+      return;
+    }
+
+    sendMessage(choiceMessage.originalPrompt, {
+      displayText: operatingSystem,
+      apiText: `${choiceMessage.originalPrompt}\n\nThe user confirmed they are using ${operatingSystem}. Provide instructions only for ${operatingSystem}; do not include alternatives for other operating systems.`,
+      skipOperatingSystemClarification: true
+    });
   };
 
   const startSuggestedSimulation = (suggestion) => {
@@ -2024,8 +2135,36 @@ export default function DashboardPage() {
     }
 
     if (sim.surface === "windows-os") {
+      const canReuseCurrentSession = currentSession?.isSimulationSession && currentSession?.windowsOsSimulation?.moduleId === simulationId;
+      const targetSession = canReuseCurrentSession
+        ? currentSession
+        : createSession(sim.title || suggestion?.title || "Windows OS Simulation", { isSimulationSession: true });
+      const sessionId = targetSession.id;
+      if (!canReuseCurrentSession) {
+        setSessions((prev) => [targetSession, ...prev]);
+        setActiveSessionId(sessionId);
+      }
+      setSessions((prev) =>
+        prev.map((session) =>
+          session.id === sessionId
+            ? {
+                ...session,
+                isSimulationSession: true,
+                hasSimulation: true,
+                title: sim.title || session.title,
+                updatedAt: new Date().toISOString(),
+                windowsOsSimulation: {
+                  moduleId: simulationId,
+                  title: sim.title || suggestion?.title || "Windows OS Simulation",
+                  steps: sim.steps || [],
+                  lastEndedAt: null
+                }
+              }
+            : session
+        )
+      );
       setPendingSimulationCreation(false);
-        setActiveWindowsOsModule({ id: simulationId, title: sim.title || suggestion?.title || "Windows OS Simulation", steps: sim.steps || [] });
+      setActiveWindowsOsModule({ id: simulationId, title: sim.title || suggestion?.title || "Windows OS Simulation", steps: sim.steps || [], sessionId });
       return;
     }
 
@@ -2100,7 +2239,45 @@ export default function DashboardPage() {
     });
   };
 
-  const startNewSession = () => {
+  const finishWindowsOsWorkspace = (workspace = activeWindowsOsModule, openNewSimulation = false) => {
+    if (!workspace) return;
+    if (workspace.sessionId) {
+      setSessions((prev) => prev.map((session) =>
+        session.id === workspace.sessionId
+          ? {
+              ...session,
+              updatedAt: new Date().toISOString(),
+              windowsOsSimulation: {
+                ...session.windowsOsSimulation,
+                lastEndedAt: new Date().toISOString()
+              }
+            }
+          : session
+      ));
+    }
+    setActiveWindowsOsModule(null);
+    if (openNewSimulation) {
+      setPendingSimulationCreation(true);
+      setActiveSessionId("");
+      setShowSimulationCatalog(true);
+    }
+  };
+
+  const endWindowsOsForNavigation = async () => {
+    const workspace = activeWindowsOsModule;
+    if (!workspace) return;
+    if (workspace.simulationSessionId) {
+      try {
+        await api.post(`/api/simulation-sessions/${workspace.simulationSessionId}/end`);
+      } catch (_err) {
+        // The server cleanup job remains the fallback if this navigation request is interrupted.
+      }
+    }
+    finishWindowsOsWorkspace(workspace);
+  };
+
+  const startNewSession = async () => {
+    await endWindowsOsForNavigation();
     setShowSimulationCatalog(false);
     setPendingSimulationCreation(false);
     setOpenSessionMenuId(null);
@@ -2112,7 +2289,8 @@ export default function DashboardPage() {
     setModalCanvasState(null);
   };
 
-  const startNewSimulationSession = () => {
+  const startNewSimulationSession = async () => {
+    await endWindowsOsForNavigation();
     setOpenSessionMenuId(null);
     setPendingSimulationCreation(true);
     setActiveSessionId("");
@@ -2127,6 +2305,17 @@ export default function DashboardPage() {
 
   function loadSimulationWorkspaceFromSession(session) {
     if (!session?.isSimulationSession) {
+      return;
+    }
+    if (session?.windowsOsSimulation?.moduleId) {
+      setActiveWindowsOsModule({
+        id: session.windowsOsSimulation.moduleId,
+        title: session.windowsOsSimulation.title || session.title || "Windows OS Simulation",
+        steps: Array.isArray(session.windowsOsSimulation.steps) ? session.windowsOsSimulation.steps : [],
+        sessionId: session.id
+      });
+      setShowSimulationCatalog(false);
+      setStepModalOpen(false);
       return;
     }
     const canvasByMessage = session.simulationCanvasByMessage || {};
@@ -2170,8 +2359,18 @@ export default function DashboardPage() {
     setStepModalOpen(false);
   }
 
-  const deleteSession = (sessionId) => {
+  const deleteSession = async (sessionId) => {
     setOpenSessionMenuId(null);
+    const isDeletingWindowsWorkspace = activeWindowsOsModule?.sessionId === sessionId;
+
+    if (isDeletingWindowsWorkspace) {
+      await endWindowsOsForNavigation();
+    } else if (activeSessionId === sessionId) {
+      // Terminal simulations are client-side, but their canvas must not remain
+      // visible after the session that owns it has been removed.
+      closeStepModal();
+    }
+
     setSessions((prev) => {
       const next = prev.filter((session) => session.id !== sessionId);
       if (next.length === 0) {
@@ -2185,33 +2384,6 @@ export default function DashboardPage() {
       }
       return next;
     });
-  };
-
-  const renameSession = (sessionId) => {
-    const current = sessions.find((session) => session.id === sessionId);
-    if (!current) {
-      return;
-    }
-    const inputTitle = window.prompt("Rename session title", current.title || "New Chat");
-    if (inputTitle == null) {
-      return;
-    }
-    const title = inputTitle.trim();
-    if (!title) {
-      return;
-    }
-    setSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? {
-              ...session,
-              title: sessionTitleFromMessage(title),
-              updatedAt: new Date().toISOString()
-            }
-          : session
-      )
-    );
-    setOpenSessionMenuId(null);
   };
 
   const toggleFavoriteSession = (sessionId) => {
@@ -2560,6 +2732,36 @@ export default function DashboardPage() {
     setModalCanvasState(null);
     setModalStepDetails([]);
     setTerminalQueuedCommand(null);
+    setTerminalCompletionError("");
+  };
+
+  const endTerminalSimulation = () => {
+    closeStepModal();
+    if (isSimulationSession) {
+      setPendingSimulationCreation(true);
+      setActiveSessionId("");
+      setShowSimulationCatalog(true);
+    }
+  };
+
+  const completeTerminalSimulation = async () => {
+    const simulationId = String(modalCanvasState?.simulationId || "").trim();
+    if (!simulationId || terminalCompletionPending) return;
+    setTerminalCompletionPending(true);
+    setTerminalCompletionError("");
+    try {
+      await api.post(`/api/simulations/modules/${simulationId}/complete`, {
+        attemptKey: `terminal:${currentSession?.id || "session"}:${modalMessageId || "simulation"}`,
+        surface: modalCanvasState?.terminalType || "windows-terminal",
+        stepsCompleted: modalStepCount > 0 ? modalSafeStep + 1 : 0
+      });
+      syncModalCanvasState((prev) => ({ ...prev, completionRecorded: true }));
+      endTerminalSimulation();
+    } catch (err) {
+      setTerminalCompletionError(err?.response?.data?.message || "Unable to record this completed simulation.");
+    } finally {
+      setTerminalCompletionPending(false);
+    }
   };
   const modalStepOutcome = modalCanvasState?.stepOutcomes?.[modalSafeStep] || null;
   const modalExpectedCommands = extractExpectedCommands(modalSteps[modalSafeStep] || "", modalStepDetails[modalSafeStep] || {});
@@ -2594,12 +2796,14 @@ export default function DashboardPage() {
       .filter(Boolean);
 
     const isStepLine = (line) =>
-      /^(\d+[\).\:-]|[-*])\s+/.test(line) || /^(#{1,6}\s*)?(step|phase)\s*\d+\s*[:\-]/i.test(line);
+      /^(?:#{1,6}\s*)?(\d+[\).\:-]|[-*])\s+/.test(line) ||
+      /^(?:#{1,6}\s*|\*\*)?(step|phase|method)\s*\d+\s*[:\-]?/i.test(line);
     const cleanStepLine = (line) =>
       String(line || "")
         .replace(/^#{1,6}\s*/, "")
+        .replace(/^\*\*(.*?)\*\*$/, "$1")
         .replace(/^(\d+[\).\:-]|[-*])\s+/, "")
-        .replace(/^(step|phase)\s*\d+\s*[:\-]\s*/i, "")
+        .replace(/^(step|phase|method)\s*\d+\s*[:\-]?\s*/i, "")
         .trim();
 
     const parsedStepItems = [];
@@ -2656,7 +2860,8 @@ export default function DashboardPage() {
     );
 
     const intro =
-      lines.find((line) => !/^(\d+[\).\:-]|[-*])\s+/.test(line)) ||
+      "Please follow the guided steps below.";
+      lines.find((line) => !isStepLine(line)) || "Please follow the guided steps below.";
       "Please follow the guided steps below.";
 
     const stepQuestionCount = steps.filter((step) => /\?\s*$/.test(step)).length;
@@ -2850,6 +3055,31 @@ export default function DashboardPage() {
       );
     }
 
+    if (msg.type === "os-choice") {
+      const selected = String(msg.osChoiceSelected || "");
+      return (
+        <div className="msg-bubble os-choice-bubble">
+          <span className="os-choice-kicker">Terminal setup</span>
+          <h3>Which operating system are you using?</h3>
+          <p>To provide the correct commands, choose your device before I create the step-by-step guide.</p>
+          <div className="os-choice-options">
+            {["Windows", "macOS", "Linux", "Not sure"].map((operatingSystem) => (
+              <button
+                key={operatingSystem}
+                type="button"
+                className={`os-choice-btn hd-btn-reset ${selected === operatingSystem ? "is-selected" : ""}`}
+                disabled={Boolean(selected) || typing}
+                onClick={() => chooseOperatingSystem(msg, operatingSystem)}
+              >
+                {operatingSystem}
+              </button>
+            ))}
+          </div>
+          {selected ? <span className="os-choice-selected">Selected: {selected}</span> : null}
+        </div>
+      );
+    }
+
     if (msg.type === "sim-module") {
       return (
         <div className="msg-bubble">
@@ -2922,8 +3152,7 @@ export default function DashboardPage() {
             <div className="response-card">
             <div className="step-header">
               <small>Step {activeStepNum} of {totalSteps}</small>
-              <h2>{stepItems[0]?.title || "Start with these checks"}</h2>
-              <p>{parsed.intro}</p>
+              <h2>{parsed.intro || "Follow these troubleshooting steps"}</h2>
             </div>
 
             <div className="progress-wrap">
@@ -3086,9 +3315,6 @@ export default function DashboardPage() {
         </button>
         {openSessionMenuId === session.id ? (
           <div className="session-menu-popover" onClick={(e) => e.stopPropagation()}>
-            <button className="session-menu-item hd-btn-reset" onClick={() => renameSession(session.id)}>
-              Rename
-            </button>
             <button className="session-menu-item hd-btn-reset" onClick={() => toggleFavoriteSession(session.id)}>
               {session.isFavorite ? "Remove Favorite" : "Favorite"}
             </button>
@@ -3108,7 +3334,12 @@ export default function DashboardPage() {
     }));
   };
 
-  const handleSelectSession = (session) => {
+  const handleSelectSession = async (session) => {
+    // A Windows OS workspace owns a dedicated EC2 instance. End it before
+    // leaving its saved simulation session so it cannot continue invisibly.
+    if (activeWindowsOsModule && activeWindowsOsModule.sessionId !== session.id) {
+      await endWindowsOsForNavigation();
+    }
     setPendingSimulationCreation(false);
     setActiveSessionId(session.id);
     if (session.isSimulationSession) {
@@ -3124,23 +3355,15 @@ export default function DashboardPage() {
 
   return (
     <div className={`helpdesk-root ${theme === "light" ? "theme-light" : ""}`}>
-      {activeWindowsOsModule ? (
-        <WindowsOsSimulation
-            api={api}
-            moduleId={activeWindowsOsModule.id}
-            title={activeWindowsOsModule.title}
-            steps={activeWindowsOsModule.steps}
-            onEnded={() => setActiveWindowsOsModule(null)}
-        />
-      ) : null}
       {stepModalOpen && !isSimulationSession ? (
         <div className="step-modal-overlay" onClick={closeStepModal}>
           <div className="step-modal" onClick={(e) => e.stopPropagation()}>
             <div className="step-modal-header">
               <div className="step-modal-title">{modalSourceTitle}</div>
-              <button className="step-modal-close hd-btn-reset" onClick={closeStepModal}>
-                X
-              </button>
+              {modalCanvasState?.simulationId ? <div className="terminal-simulation-header-actions">
+                <button type="button" className="terminal-simulation-end hd-btn-reset" onClick={endTerminalSimulation}>End simulation</button>
+                <button type="button" className="terminal-simulation-complete hd-btn-reset" disabled={Boolean(modalCanvasState?.completionRecorded) || terminalCompletionPending} onClick={completeTerminalSimulation}>{terminalCompletionPending ? "Completing..." : modalCanvasState?.completionRecorded ? "Completed" : "✓ Complete Simulation"}</button>
+              </div> : <button className="step-modal-close hd-btn-reset" onClick={closeStepModal}>X</button>}
             </div>
             <div className="step-modal-progress-wrap">
               <div className="step-modal-progress-info">
@@ -3169,14 +3392,6 @@ export default function DashboardPage() {
               </div>
               <div className="step-modal-right">
                 <h3>Simulation Canvas</h3>
-                <div className="step-modal-status-row">
-                  <span className="step-modal-status-pill">
-                    Scenario: {(modalCanvasState?.scenarioType || "general").toUpperCase()}
-                  </span>
-                  <span className={`step-modal-status-pill ${modalResolved ? "is-resolved" : ""}`}>
-                    {modalResolved ? "Resolved" : "In Progress"} | {modalCompletionPct}%
-                  </span>
-                </div>
                 <div className="step-modal-current">
                   <div className="step-modal-current-label">Current Step</div>
                   <div className="step-modal-current-head">
@@ -3266,9 +3481,12 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="step-modal-footer">
+                  <button type="button" className="terminal-simulation-nav hd-btn-reset" disabled={modalSafeStep === 0} onClick={() => setModalStepIndex(modalSafeStep - 1)}>← Previous</button>
                   <div className="step-modal-footer-center">
                     <span>Step {modalStepCount === 0 ? 0 : modalSafeStep + 1} of {modalStepCount}</span>
                   </div>
+                  <button type="button" className="terminal-simulation-nav is-next hd-btn-reset" disabled={modalSafeStep >= modalStepCount - 1} onClick={() => setModalStepIndex(modalSafeStep + 1)}>Next step →</button>
+                  {terminalCompletionError ? <div className="terminal-simulation-error" role="alert">{terminalCompletionError}</div> : null}
                 </div>
               </div>
             </div>
@@ -3414,22 +3632,55 @@ export default function DashboardPage() {
           </div>
 
           <div className="hd-modules-list">
-            <label className="sidebar-search-wrap">
-              <span className="sidebar-search-icon">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="11" cy="11" r="7" />
-                  <path d="M20 20l-3.5-3.5" />
-                </svg>
-              </span>
-              <input
-                className="sidebar-search-input"
-                value={sidebarSearchInput}
-                onChange={(e) => setSidebarSearchInput(e.target.value)}
-                placeholder="Search chats & sims…"
-              />
-            </label>
+            <div className="sidebar-search-row">
+              <label className="sidebar-search-wrap">
+                <span className="sidebar-search-icon">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="M20 20l-3.5-3.5" />
+                  </svg>
+                </span>
+                <input
+                  className="sidebar-search-input"
+                  value={sidebarSearchInput}
+                  onChange={(e) => setSidebarSearchInput(e.target.value)}
+                  placeholder="Search chats & sims…"
+                />
+              </label>
+              <button
+                type="button"
+                className={`sidebar-favorites-filter hd-btn-reset ${favoritesOnly ? "is-active" : ""}`}
+                onClick={() => setFavoritesOnly((prev) => !prev)}
+                aria-label={favoritesOnly ? "Show all sessions" : "Show favorite sessions"}
+                title={favoritesOnly ? "Show all sessions" : "Show favorites"}
+                aria-pressed={favoritesOnly}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 20-1.4-1.3C5.4 14 2 10.9 2 7.1 2 4 4.4 2 7.5 2c1.7 0 3.3.8 4.5 2.1C13.2 2.8 14.8 2 16.5 2 19.6 2 22 4 22 7.1c0 3.8-3.4 6.9-8.6 11.6L12 20Z" /></svg>
+              </button>
+            </div>
 
             <div className="sidebar-groups">
+              {favoritesOnly ? (
+                <SidebarGroup
+                  label="Favorites"
+                  type="chat"
+                  icon={<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 20-1.4-1.3C5.4 14 2 10.9 2 7.1 2 4 4.4 2 7.5 2c1.7 0 3.3.8 4.5 2.1C13.2 2.8 14.8 2 16.5 2 19.6 2 22 4 22 7.1c0 3.8-3.4 6.9-8.6 11.6L12 20Z" /></svg>}
+                  items={filteredFavoriteSessions}
+                  hasAnyItems={sessions.some((session) => session.isFavorite)}
+                  sidebarCollapsed={sidebarCollapsed}
+                  collapsed={sidebarGroupsCollapsed.favorites}
+                  searchActive={searchActive}
+                  activeSessionId={activeSessionId}
+                  openSessionMenuId={openSessionMenuId}
+                  onToggle={() => toggleSidebarGroup("favorites")}
+                  onAdd={() => {}}
+                  onSelectItem={handleSelectSession}
+                  onToggleMenu={(id) => setOpenSessionMenuId((prev) => (prev === id ? null : id))}
+                  onFavorite={toggleFavoriteSession}
+                  onDelete={deleteSession}
+                  createEnabled={false}
+                />
+              ) : <>
               <SidebarGroup
                 label="Chats"
                 type="chat"
@@ -3454,7 +3705,6 @@ export default function DashboardPage() {
                 }}
                 onSelectItem={handleSelectSession}
                 onToggleMenu={(id) => setOpenSessionMenuId((prev) => (prev === id ? null : id))}
-                onRename={renameSession}
                 onFavorite={toggleFavoriteSession}
                 onDelete={deleteSession}
               />
@@ -3479,10 +3729,10 @@ export default function DashboardPage() {
                 onAdd={startNewSimulationSession}
                 onSelectItem={handleSelectSession}
                 onToggleMenu={(id) => setOpenSessionMenuId((prev) => (prev === id ? null : id))}
-                onRename={renameSession}
                 onFavorite={toggleFavoriteSession}
                 onDelete={deleteSession}
               />
+              </>}
             </div>
           </div>
 
@@ -3557,8 +3807,23 @@ export default function DashboardPage() {
             ) : null}
           </div>
 
-          <div className="chat-wrap" ref={chatWrapRef}>
-            {isSimulationSession ? (
+          <div className={`chat-wrap ${activeWindowsOsModule ? "has-windows-os-simulation" : ""}`} ref={chatWrapRef}>
+            {activeWindowsOsModule ? (
+              <WindowsOsSimulation
+                api={api}
+                moduleId={activeWindowsOsModule.id}
+                title={activeWindowsOsModule.title}
+                steps={activeWindowsOsModule.steps}
+                onSessionReady={(simulationSession) => {
+                  setActiveWindowsOsModule((current) => (
+                    current?.sessionId === activeWindowsOsModule.sessionId
+                      ? { ...current, simulationSessionId: simulationSession.id }
+                      : current
+                  ));
+                }}
+                onEnded={() => finishWindowsOsWorkspace(activeWindowsOsModule, true)}
+              />
+            ) : isSimulationSession ? (
               <div className="simulation-inline-shell">
                 {showSimulationCatalog ? (
                   <div className="messages messages-welcome">
@@ -3587,6 +3852,10 @@ export default function DashboardPage() {
                   <div className="step-modal step-inline">
                     <div className="step-modal-header">
                       <div className="step-modal-title">{modalSourceTitle}</div>
+                      <div className="terminal-simulation-header-actions">
+                        <button type="button" className="terminal-simulation-end hd-btn-reset" onClick={endTerminalSimulation}>End simulation</button>
+                        <button type="button" className="terminal-simulation-complete hd-btn-reset" disabled={Boolean(modalCanvasState?.completionRecorded) || terminalCompletionPending} onClick={completeTerminalSimulation}>{terminalCompletionPending ? "Completing..." : modalCanvasState?.completionRecorded ? "Completed" : "✓ Complete Simulation"}</button>
+                      </div>
                     </div>
                     <div className="step-modal-progress-wrap">
                       <div className="step-modal-progress-info">
@@ -3622,14 +3891,6 @@ export default function DashboardPage() {
                       </div>
                       <div className="step-modal-right">
                         <h3>Simulation Canvas</h3>
-                        <div className="step-modal-status-row">
-                          <span className="step-modal-status-pill">
-                            Scenario: {(modalCanvasState?.scenarioType || "general").toUpperCase()}
-                          </span>
-                          <span className={`step-modal-status-pill ${modalResolved ? "is-resolved" : ""}`}>
-                            {modalResolved ? "Resolved" : "In Progress"} | {modalCompletionPct}%
-                          </span>
-                        </div>
                         <div className="step-modal-current">
                           <div className="step-modal-current-label">Current Step</div>
                           <div className="step-modal-current-head">
@@ -3701,6 +3962,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <div className="step-modal-footer">
+                      <button type="button" className="terminal-simulation-nav hd-btn-reset" disabled={modalSafeStep === 0} onClick={() => setModalStepIndex(modalSafeStep - 1)}>← Previous</button>
                       <div className="step-modal-footer-center">
                         <div className="step-modal-step-dots" aria-hidden="true">
                           {modalSteps.map((_, index) => (
@@ -3712,6 +3974,8 @@ export default function DashboardPage() {
                         </div>
                         <span className="step-modal-footer-nav">Step {modalStepCount === 0 ? 0 : modalSafeStep + 1} of {modalStepCount}</span>
                       </div>
+                      <button type="button" className="terminal-simulation-nav is-next hd-btn-reset" disabled={modalSafeStep >= modalStepCount - 1} onClick={() => setModalStepIndex(modalSafeStep + 1)}>Next step →</button>
+                      {terminalCompletionError ? <div className="terminal-simulation-error" role="alert">{terminalCompletionError}</div> : null}
                     </div>
                   </div>
                 )}
@@ -3775,18 +4039,24 @@ export default function DashboardPage() {
                       </button>
                     </div>
                   </div>
-                  <div className="welcome-related-label">Related Tickets and Common Problems</div>
-                  <div className="quick-grid">
-                    {(currentSession?.suggestedQuestions || pickRandomQuestions()).map((q) => (
-                      <button key={q.title} className="quick-card hd-btn-reset" onClick={() => sendMessage(pickSuggestionQuestion(q))}>
-                        <div className="quick-card-head">
-                          <SuggestionIcon label={q.label} />
-                          <div className="qc-label">{q.label}</div>
-                        </div>
-                        <div className="qc-title">{q.title}</div>
-                      </button>
-                    ))}
-                  </div>
+                  {!input.trim() && aiSuggestedTicketsLoading ? (
+                    <div className="welcome-autocomplete-empty">Preparing AI help desk suggestions...</div>
+                  ) : !input.trim() && displayedRelatedTicketSuggestions.length > 0 ? (
+                    <>
+                      <div className="welcome-related-label">AI Suggested Help Desk Issues</div>
+                      <div className="quick-grid">
+                        {displayedRelatedTicketSuggestions.map((q) => (
+                          <button key={q.title} className="quick-card hd-btn-reset" onClick={() => sendMessage(pickSuggestionQuestion(q))}>
+                            <div className="quick-card-head">
+                              <SuggestionIcon label={q.label} />
+                              <div className="qc-label">{q.label}</div>
+                            </div>
+                            <div className="qc-title">{q.title}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
                 </div>
               ) : null}
 

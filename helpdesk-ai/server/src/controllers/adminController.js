@@ -579,6 +579,12 @@ async function getSimulationModules(_req, res, next) {
 async function getSimulationPromptInsights(req, res, next) {
   try {
     const limit = Math.max(1, Math.min(Number(req.query.limit || 50), 200));
+    const existingModules = await listModules();
+    const createdPromptKeys = new Set(
+      existingModules
+        .map((module) => normalizePrompt(module.sourcePrompt))
+        .filter((normalized) => normalized && normalized.length >= 8)
+    );
     const events = (await listPolicyEvents(limit)).filter(
       (event) =>
         !event.blocked &&
@@ -592,7 +598,7 @@ async function getSimulationPromptInsights(req, res, next) {
       if (!normalized || normalized.length < 8) {
         continue;
       }
-      if (disregardedPromptInsightKeys.has(normalized)) {
+      if (disregardedPromptInsightKeys.has(normalized) || createdPromptKeys.has(normalized)) {
         continue;
       }
       const alignment = evaluateSimulationPromptAlignment(event.message);

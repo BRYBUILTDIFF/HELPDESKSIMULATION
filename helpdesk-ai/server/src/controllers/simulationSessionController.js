@@ -33,6 +33,13 @@ async function createSimulationSession(req, res, next) {
       return res.status(400).json({ message: "This module does not use the Windows OS simulation surface." });
     }
     const activeWhere = { status: { in: ACTIVE_STATUSES } };
+    const existingUserSession = await prisma.simulationSession.findFirst({
+      where: { userId: req.user.id, moduleId: module.id, ...activeWhere, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: "desc" }
+    });
+    if (existingUserSession) {
+      return res.status(200).json({ ...safeSession(existingUserSession), resumed: true });
+    }
     const [perUser, global] = await Promise.all([
       prisma.simulationSession.count({ where: { userId: req.user.id, ...activeWhere } }),
       prisma.simulationSession.count({ where: activeWhere })

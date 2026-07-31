@@ -13,6 +13,7 @@ import { Bar, Line } from "react-chartjs-2";
 import { useAuth } from "../../hooks/useAuth";
 import { useAxios } from "../../hooks/useAxios";
 import TerminalEmulator from "../users/Modules/TerminalEmulator";
+import WindowsOsSimulation from "../users/Modules/WindowsOsSimulation";
 import macOsPreviewImg from "../../IMG/MAC.jpg";
 import windowsOsPreviewImg from "../../IMG/WIN 11.webp";
 import "./admin.css";
@@ -35,17 +36,6 @@ const POLICY_LIST_META = {
   inScopeIntentPatterns: "In-Scope Intent Patterns"
 };
 const THEME_STORAGE_KEY = "helpdesk_simulation_theme";
-const SAMPLE_PROMPT_INSIGHT = {
-  normalized: "__sample_no_internet_windows__",
-  samplePrompt: "No internet connection on a Windows PC. Please guide me through terminal-based troubleshooting steps.",
-  occurrences: 1,
-  uniqueUsers: 1,
-  lastSeen: new Date().toISOString(),
-  suggestedCategory: "Network",
-  recommendedSurface: "windows-terminal",
-  recommendedSurfaceLabel: "Windows Terminal",
-  isSample: true
-};
 
 ChartJS.register(
   CategoryScale,
@@ -344,6 +334,8 @@ export default function AdminPage() {
   const { user, logout, refreshAccessToken } = useAuth();
   const api = useAxios();
   const profileMenuRef = useRef(null);
+  const userActionNoticeTimerRef = useRef(null);
+  const userActionErrorTimerRef = useRef(null);
 
   const [activePage, setActivePage] = useState("overview");
   const [theme, setTheme] = useState("dark");
@@ -361,6 +353,8 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [pendingKey, setPendingKey] = useState("");
+  const [userActionNotice, setUserActionNotice] = useState("");
+  const [userActionErrorNotice, setUserActionErrorNotice] = useState("");
 
   const [userQuery, setUserQuery] = useState("");
   const [userRoleFilter, setUserRoleFilter] = useState("ALL");
@@ -392,19 +386,23 @@ export default function AdminPage() {
   const [policyQuery, setPolicyQuery] = useState("");
   const [policyCodeFilter, setPolicyCodeFilter] = useState("ALL");
   const [policyPage, setPolicyPage] = useState(1);
+  const [selectedPolicyEvent, setSelectedPolicyEvent] = useState(null);
   const [promptInsights, setPromptInsights] = useState([]);
   const [promptInsightsLoading, setPromptInsightsLoading] = useState(false);
   const [promptInsightsError, setPromptInsightsError] = useState("");
   const [promptInsightQuery, setPromptInsightQuery] = useState("");
   const [moduleQuery, setModuleQuery] = useState("");
   const [modulePreview, setModulePreview] = useState(null);
+  const [modulePreviewModuleId, setModulePreviewModuleId] = useState("");
   const [modulePreviewStep, setModulePreviewStep] = useState(0);
   const [modulePreviewSurface, setModulePreviewSurface] = useState("windows-terminal");
   const [moduleDraftMeta, setModuleDraftMeta] = useState(null);
   const [moduleDraftError, setModuleDraftError] = useState("");
+  const [adminWindowsOsTest, setAdminWindowsOsTest] = useState(null);
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [userModalMode, setUserModalMode] = useState("create");
   const [editingUserId, setEditingUserId] = useState(null);
+  const [userPendingDeletion, setUserPendingDeletion] = useState(null);
   const [userForm, setUserForm] = useState(buildDefaultUserForm());
   const [useDefaultPassword, setUseDefaultPassword] = useState(false);
   const [showCreatePassword, setShowCreatePassword] = useState(false);
@@ -492,6 +490,7 @@ export default function AdminPage() {
       if (event.key === "Escape") {
         setProfileMenuOpen(false);
         setAccountSettingsOpen(false);
+        setSelectedPolicyEvent(null);
       }
     };
     document.addEventListener("mousedown", onPointerDown);
@@ -500,6 +499,15 @@ export default function AdminPage() {
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onEscape);
     };
+  }, []);
+
+  useEffect(() => () => {
+    if (userActionNoticeTimerRef.current) {
+      window.clearTimeout(userActionNoticeTimerRef.current);
+    }
+    if (userActionErrorTimerRef.current) {
+      window.clearTimeout(userActionErrorTimerRef.current);
+    }
   }, []);
 
   const userStats = useMemo(() => {
@@ -786,6 +794,28 @@ export default function AdminPage() {
     return current !== draft;
   }, [policyConfig.messages, policyConfigDraft]);
 
+  const showUserActionNotice = (message) => {
+    if (userActionNoticeTimerRef.current) {
+      window.clearTimeout(userActionNoticeTimerRef.current);
+    }
+    setUserActionNotice(message);
+    userActionNoticeTimerRef.current = window.setTimeout(() => {
+      setUserActionNotice("");
+      userActionNoticeTimerRef.current = null;
+    }, 3000);
+  };
+
+  const showUserActionErrorNotice = (message) => {
+    if (userActionErrorTimerRef.current) {
+      window.clearTimeout(userActionErrorTimerRef.current);
+    }
+    setUserActionErrorNotice(message);
+    userActionErrorTimerRef.current = window.setTimeout(() => {
+      setUserActionErrorNotice("");
+      userActionErrorTimerRef.current = null;
+    }, 3000);
+  };
+
   const openCreateUserModal = () => {
     setUserModalMode("create");
     setEditingUserId(null);
@@ -926,6 +956,7 @@ export default function AdminPage() {
 
       await loadUsers();
       closeUserModal();
+      showUserActionNotice(userModalMode === "create" ? "User account created successfully." : "User account updated successfully.");
     } catch (err) {
       setUserFormError(safeError(err));
     } finally {
@@ -940,24 +971,23 @@ export default function AdminPage() {
     try {
       await api.patch(`/api/admin/users/${targetUser.id}`, { isActive: nextActive });
       await loadUsers();
+      showUserActionNotice(`Account ${nextActive ? "activated" : "deactivated"} successfully.`);
     } catch (err) {
-      window.alert(safeError(err));
+      showUserActionErrorNotice(safeError(err));
     } finally {
       setPendingKey("");
     }
   };
 
   const deleteUserAccount = async (targetUser) => {
-    if (!window.confirm(`Delete account for ${targetUser.email}? This cannot be undone.`)) {
-      return;
-    }
-
     const key = `user-delete-${targetUser.id}`;
     setPendingKey(key);
 
     try {
       await api.delete(`/api/admin/users/${targetUser.id}`);
       await loadUsers();
+      setUserPendingDeletion(null);
+      showUserActionNotice("User account deleted successfully.");
     } catch (err) {
       window.alert(safeError(err));
     } finally {
@@ -1081,6 +1111,7 @@ export default function AdminPage() {
       return;
     }
     setModulePreview(preview);
+    setModulePreviewModuleId(options?.moduleId || "");
     setModulePreviewStep(0);
     setModulePreviewSurface(normalizeSurface(options?.surface || preview?.surface, preview?.terminalType));
     setModuleDraftMeta(options?.draftMeta || null);
@@ -1089,6 +1120,7 @@ export default function AdminPage() {
 
   const closeModulePreview = () => {
     setModulePreview(null);
+    setModulePreviewModuleId("");
     setModulePreviewStep(0);
     setModulePreviewSurface("windows-terminal");
     setModuleDraftMeta(null);
@@ -1221,10 +1253,7 @@ export default function AdminPage() {
 
   const maxCompletions = Math.max(1, ...modules.map((m) => Number(m.completions || 0)));
   const promptInsightFeed = useMemo(() => {
-    if (Array.isArray(promptInsights) && promptInsights.length > 0) {
-      return promptInsights;
-    }
-    return [SAMPLE_PROMPT_INSIGHT];
+    return Array.isArray(promptInsights) ? promptInsights : [];
   }, [promptInsights]);
 
   const filteredPromptInsights = useMemo(() => {
@@ -1560,7 +1589,7 @@ export default function AdminPage() {
                                   type="button"
                                   className="btn-sm btn-danger"
                                   disabled={busyDelete || isSelf}
-                                  onClick={() => deleteUserAccount(targetUser)}
+                                  onClick={() => setUserPendingDeletion(targetUser)}
                                 >
                                   Delete
                                 </button>
@@ -1662,8 +1691,7 @@ export default function AdminPage() {
                         <div className="event-col event-col-user">User</div>
                         <div className="event-col event-col-code">Code</div>
                         <div className="event-col event-col-status">Status</div>
-                        <div className="event-col event-col-prompt">Prompt</div>
-                        <div className="event-col event-col-reason">Reason</div>
+                        <div className="event-col event-col-actions">Actions</div>
                       </div>
                       <div className="event-body">
                         {filteredPolicyEvents.length === 0 ? (
@@ -1681,8 +1709,18 @@ export default function AdminPage() {
                                   {event.blocked ? "Blocked" : "Allowed"}
                                 </span>
                               </div>
-                              <div className="prompt-cell event-cell event-col-prompt">{event.message || "-"}</div>
-                              <div className="reason-cell event-cell event-col-reason">{event.reason || "-"}</div>
+                              <div className="event-cell event-col-actions">
+                                <button
+                                  type="button"
+                                  className="policy-event-view-btn"
+                                  onClick={() => setSelectedPolicyEvent(event)}
+                                  aria-label={`View policy event details for ${event.userEmail || "user"}`}
+                                  title="View event details"
+                                >
+                                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.6-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.6 6.5-9.5 6.5S2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="2.7" /></svg>
+                                  <span>View</span>
+                                </button>
+                              </div>
                             </div>
                           ))
                         )}
@@ -1972,6 +2010,7 @@ export default function AdminPage() {
                                 onClick={() =>
                                   openModulePreview(getModuleSimulationDefinition(module), {
                                     surface: module?.simulation?.surface,
+                                    moduleId: module.id,
                                   })
                                 }
                               >
@@ -2228,22 +2267,42 @@ jumpcloud@JumpCloud ~ % _`}</pre>
                       ) : null}
                     </div>
 
-                    <div className="sim-runtime-terminal">
-                      <div className="sim-preview-terminal-head">
-                        <span className="dot red" />
-                        <span className="dot yellow" />
-                        <span className="dot green" />
-                        <strong>Helpdesk Terminal</strong>
+                    {modulePreviewSurface === "windows-os" ? (
+                      <div className="sim-runtime-windows-os-preview">
+                        <img src={windowsOsPreviewImg} alt="Windows 11 simulation preview" />
+                        <div className="sim-runtime-windows-os-shade" />
+                        <div className="sim-runtime-windows-os-card">
+                          <span className="sim-runtime-windows-os-badge">Windows 11 · Private EC2 workspace</span>
+                          <h4>Ready to test this Windows OS simulation?</h4>
+                          <p>Testing launches one isolated Windows workspace for your administrator account. It does not start automatically when viewing the module.</p>
+                          <button
+                            type="button"
+                            className="btn-sm create-user-btn"
+                            disabled={!modulePreviewModuleId}
+                            onClick={() => setAdminWindowsOsTest({ id: modulePreviewModuleId, title: modulePreview.title, steps: previewSteps })}
+                          >
+                            Test Windows Simulation
+                          </button>
+                        </div>
                       </div>
-                      <TerminalEmulator
-                        className="sim-runtime-terminal-body"
-                        initialMessage="Windows Terminal simulation ready. Type 'help' for available commands."
-                        username="student"
-                        hostname="DESKTOP-SIM"
-                        initialPath="C:\\Users\\student"
-                        onCommand={handleAdminRuntimeTerminalCommand}
-                      />
-                    </div>
+                    ) : (
+                      <div className="sim-runtime-terminal">
+                        <div className="sim-preview-terminal-head">
+                          <span className="dot red" />
+                          <span className="dot yellow" />
+                          <span className="dot green" />
+                          <strong>{modulePreviewSurface === "mac-terminal" ? "Mac Terminal" : "Windows Terminal"}</strong>
+                        </div>
+                        <TerminalEmulator
+                          className="sim-runtime-terminal-body"
+                          initialMessage={`${modulePreviewSurface === "mac-terminal" ? "Mac" : "Windows"} Terminal simulation ready. Type 'help' for available commands.`}
+                          username="student"
+                          hostname="DESKTOP-SIM"
+                          initialPath="C:\\Users\\student"
+                          onCommand={handleAdminRuntimeTerminalCommand}
+                        />
+                      </div>
+                    )}
                   </section>
                 </div>
 
@@ -2263,6 +2322,100 @@ jumpcloud@JumpCloud ~ % _`}</pre>
               </>
             )}
           </div>
+        </div>
+      ) : null}
+
+      {selectedPolicyEvent ? (
+        <div className="admin-modal-overlay policy-event-modal-overlay" onClick={() => setSelectedPolicyEvent(null)}>
+          <section className="policy-event-modal" role="dialog" aria-modal="true" aria-labelledby="policy-event-modal-title" onClick={(event) => event.stopPropagation()}>
+            <header className="policy-event-modal-head">
+              <div>
+                <span className="policy-event-modal-kicker">Policy decision details</span>
+                <h3 id="policy-event-modal-title">{selectedPolicyEvent.blocked ? "Blocked request" : "Allowed request"}</h3>
+              </div>
+              <button type="button" className="account-modal-close" onClick={() => setSelectedPolicyEvent(null)} aria-label="Close policy event details">×</button>
+            </header>
+
+            <div className="policy-event-modal-meta">
+              <span className={`badge ${selectedPolicyEvent.blocked ? "badge-blocked" : "badge-allowed"}`}>{selectedPolicyEvent.blocked ? "Blocked" : "Allowed"}</span>
+              <span>{selectedPolicyEvent.code || "UNKNOWN"}</span>
+              <span>{formatDateTime(selectedPolicyEvent.at)}</span>
+            </div>
+
+            <div className="policy-event-modal-section">
+              <span>User</span>
+              <strong>{selectedPolicyEvent.userEmail || "Unknown user"}</strong>
+            </div>
+            <div className="policy-event-modal-section">
+              <span>Prompt</span>
+              <p>{selectedPolicyEvent.message || "No prompt recorded."}</p>
+            </div>
+            <div className="policy-event-modal-section">
+              <span>Policy reason</span>
+              <p>{selectedPolicyEvent.reason || "No reason recorded."}</p>
+            </div>
+            {selectedPolicyEvent.hasHistory ? <div className="policy-event-history-note">This decision was evaluated with relevant conversation history.</div> : null}
+          </section>
+        </div>
+      ) : null}
+
+      {adminWindowsOsTest ? (
+        <WindowsOsSimulation
+          api={api}
+          moduleId={adminWindowsOsTest.id}
+          title={adminWindowsOsTest.title}
+          steps={adminWindowsOsTest.steps}
+          onEnded={() => setAdminWindowsOsTest(null)}
+        />
+      ) : null}
+
+      {userActionNotice ? (
+        <div className="admin-success-notice-overlay" role="status" aria-live="polite">
+          <div className="admin-success-notice-card">
+            <div className="admin-success-notice-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="m5 12 4.2 4.2L19 6.5" /></svg>
+            </div>
+            <div>
+              <strong>Success</strong>
+              <p>{userActionNotice}</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {userActionErrorNotice ? (
+        <div className="admin-success-notice-overlay admin-error-notice-overlay" role="alert" aria-live="assertive">
+          <div className="admin-success-notice-card admin-error-notice-card">
+            <div className="admin-success-notice-icon admin-error-notice-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 8v4M12 16h.01M10 3.8 2.8 16.2A2 2 0 0 0 4.5 19h15a2 2 0 0 0 1.7-2.8L14 3.8a2.3 2.3 0 0 0-4 0Z" /></svg>
+            </div>
+            <div>
+              <strong>Account update failed</strong>
+              <p>{userActionErrorNotice}</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {userPendingDeletion ? (
+        <div className="admin-modal-overlay admin-delete-confirm-overlay" onClick={() => setUserPendingDeletion(null)}>
+          <section className="admin-delete-confirm-card" role="dialog" aria-modal="true" aria-labelledby="delete-user-title" onClick={(event) => event.stopPropagation()}>
+            <div className="admin-delete-confirm-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" /></svg>
+            </div>
+            <div>
+              <h3 id="delete-user-title">Delete user account?</h3>
+              <p>
+                You are about to permanently delete <strong>{userPendingDeletion.email}</strong>. This action cannot be undone.
+              </p>
+            </div>
+            <div className="admin-delete-confirm-actions">
+              <button type="button" className="btn-sm" onClick={() => setUserPendingDeletion(null)} disabled={pendingKey === `user-delete-${userPendingDeletion.id}`}>Cancel</button>
+              <button type="button" className="btn-sm admin-delete-confirm-button" onClick={() => deleteUserAccount(userPendingDeletion)} disabled={pendingKey === `user-delete-${userPendingDeletion.id}`}>
+                {pendingKey === `user-delete-${userPendingDeletion.id}` ? "Deleting..." : "Delete Account"}
+              </button>
+            </div>
+          </section>
         </div>
       ) : null}
 
