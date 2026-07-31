@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
+import helpdeskLogo from "../../IMG/HELPDESKAI.png";
 
 function parseError(error) {
   if (!error.response) {
@@ -63,7 +64,7 @@ export default function LoginPage() {
       <div className="login-grid">
         <section className="login-brand">
           <div className="login-logo">
-            <span className="login-logo-mark">HS</span>
+            <img className="login-logo-mark" src={helpdeskLogo} alt="HelpDesk AI" />
             <div>
               <h2>HELPDESK SIMULATION</h2>
               <p>IT Support Platform</p>

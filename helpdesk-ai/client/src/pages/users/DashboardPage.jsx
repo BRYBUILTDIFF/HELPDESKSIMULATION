@@ -4,6 +4,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { useAxios } from "../../hooks/useAxios";
 import TerminalEmulator from "./Modules/TerminalEmulator";
 import WindowsOsSimulation from "./Modules/WindowsOsSimulation";
+import helpdeskLogo from "../../IMG/HELPDESKAI.png";
 import { simulations } from "./helpdeskData";
 import "./dashboard.css";
 
@@ -113,7 +114,8 @@ const QUESTION_VARIANTS_BY_TITLE = {
   ]
 };
 
-const THEME_STORAGE_KEY = "helpdesk_simulation_theme";
+// Versioned so the former dark default does not override the new light default.
+const THEME_STORAGE_KEY = "helpdesk_simulation_theme_v2";
 const SIDEBAR_GROUP_PREFS_PREFIX = "helpdesk_sidebar_group_prefs_";
 const MAX_COMPOSER_HEIGHT = 280;
 const PASSWORD_REQUIREMENTS = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
@@ -1339,7 +1341,7 @@ export default function DashboardPage() {
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordVisibility, setPasswordVisibility] = useState({ current: false, next: false, confirm: false });
   const [openSessionMenuId, setOpenSessionMenuId] = useState(null);
-  const [theme, setTheme] = useState("dark");
+  const [theme, setTheme] = useState("light");
   const [showSimulationCatalog, setShowSimulationCatalog] = useState(false);
   const [pendingSimulationCreation, setPendingSimulationCreation] = useState(false);
   const [mobileView, setMobileView] = useState(false);
@@ -2864,7 +2866,10 @@ export default function DashboardPage() {
       lines.find((line) => !isStepLine(line)) || "Please follow the guided steps below.";
       "Please follow the guided steps below.";
 
-    const stepQuestionCount = steps.filter((step) => /\?\s*$/.test(step)).length;
+    const isQuestionStep = (step) => /\?\s*$/.test(String(step || "").trim());
+    const stepQuestionCount = steps.filter(isQuestionStep).length;
+    const leadingQuestionCount = steps.findIndex((step) => !isQuestionStep(step));
+    const isQuestionLedStepList = steps.length > 0 && (leadingQuestionCount === -1 || leadingQuestionCount > 0);
     const hasOnlyQuestionSteps = steps.length > 0 && stepQuestionCount === steps.length;
     const isQuestionHeavyStepList = steps.length > 0 && stepQuestionCount / steps.length >= 0.6;
     const asksForUserInput =
@@ -2907,6 +2912,7 @@ export default function DashboardPage() {
         ),
       hasOnlyQuestionSteps,
       isQuestionHeavyStepList,
+      isQuestionLedStepList,
       asksForUserInput,
       hasTroubleshootingIntent,
       isNonTroubleshootingGuide,
@@ -2928,6 +2934,12 @@ export default function DashboardPage() {
       return false;
     }
     if (parsed.hasOnlyQuestionSteps) {
+      return false;
+    }
+    // A reply that begins by asking for details is a conversation turn, not a
+    // checklist. This also covers AI replies that mistakenly mix questions
+    // with a few preliminary actions.
+    if (parsed.isQuestionLedStepList) {
       return false;
     }
     if (parsed.isQuestionHeavyStepList && parsed.asksForUserInput) {
@@ -3196,7 +3208,7 @@ export default function DashboardPage() {
                       title={completion[idx] ? "Completed" : "Mark complete"}
                     >
                       <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M5 13l4 4L19 7" />
+                        {completion[idx] ? <path d="M5 13l4 4L19 7" /> : null}
                       </svg>
                     </button>
                   </li>
@@ -3611,7 +3623,7 @@ export default function DashboardPage() {
         <div className={`hd-sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
           <div className="hd-sidebar-header">
             <div className="sidebar-logo">
-              <div className="sidebar-logo-icon">HS</div>
+              <div className="sidebar-logo-icon"><img src={helpdeskLogo} alt="HelpDesk AI" /></div>
               <div className="sidebar-logo-text">
                 Helpdesk <span>Simulation</span>
               </div>
@@ -3762,17 +3774,17 @@ export default function DashboardPage() {
                 <div className="avatar-popover-name">{user?.firstName || ""} {user?.lastName || ""}</div>
                 <div className="avatar-popover-email">{user?.email || ""}</div>
                 <div className="avatar-theme-row">
-                  <span className="avatar-theme-label">Light Mode</span>
+                  <span className="avatar-theme-label">Dark Mode</span>
                   <button
-                    className={`avatar-theme-switch hd-btn-reset ${theme === "light" ? "is-on" : ""}`}
+                    className={`avatar-theme-switch hd-btn-reset ${theme === "dark" ? "is-on" : ""}`}
                     onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
-                    aria-label="Toggle light mode"
-                    aria-pressed={theme === "light"}
+                    aria-label="Toggle dark mode"
+                    aria-pressed={theme === "dark"}
                   >
                     <span className="avatar-theme-track">
                       <span className="avatar-theme-thumb" />
                     </span>
-                    <span className="avatar-theme-state">{theme === "light" ? "On" : "Off"}</span>
+                    <span className="avatar-theme-state">{theme === "dark" ? "On" : "Off"}</span>
                   </button>
                 </div>
                 <button className="avatar-popover-btn hd-btn-reset" onClick={openAccountSettings}>
@@ -3797,8 +3809,6 @@ export default function DashboardPage() {
               <span className="toggle-icon">&lt;</span>
             </button>
             <div className="topbar-title">{topbarSessionTitle}</div>
-            <div className="status-dot" />
-            <span className="status-text">System Online</span>
             {denied ? <span className="denied-pill">Access denied</span> : null}
             {user?.role === "ADMIN" ? (
               <Link to="/admin" className="top-btn">
@@ -4075,7 +4085,7 @@ export default function DashboardPage() {
                     </>
                   ) : (
                     <>
-                      <div className="avatar ai-avatar">HD</div>
+                      <div className="avatar ai-avatar"><img src={helpdeskLogo} alt="HelpDesk AI" /></div>
                       <div className="ai-content">
                         <div className="ai-label">
                           <span aria-hidden="true" />
@@ -4092,7 +4102,7 @@ export default function DashboardPage() {
 
             {!showSimulationCatalog && typing ? (
               <div className="typing-wrap ai-block">
-                <div className="avatar ai-avatar">HD</div>
+                <div className="avatar ai-avatar"><img src={helpdeskLogo} alt="HelpDesk AI" /></div>
                 <div className="typing-bubble">
                   <span />
                   <span />

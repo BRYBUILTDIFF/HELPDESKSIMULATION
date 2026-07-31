@@ -24,11 +24,11 @@
   box-shadow: none;
 }
 
-.windows-os-header { min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 16px; border-bottom: 1px solid rgba(148, 163, 184, 0.2); }
+.windows-os-header { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border-bottom: 1px solid rgba(148, 163, 184, 0.2); }
 .windows-os-header h2 { margin: 2px 0 0; font-size: 16px; color: var(--text); }
 .windows-os-kicker { color: #38bdf8; text-transform: uppercase; font: 10px var(--mono); letter-spacing: .09em; }
 .windows-os-controls { display: flex; align-items: center; gap: 12px; color: var(--text3); font-size: 12px; }
-.windows-os-controls .btn-sm { height: 34px; margin: 0; padding: 0 14px; border-radius: 7px; font-size: 12px; font-weight: 600; }
+.windows-os-controls .btn-sm { height: 38px; margin: 0; padding: 0 15px; border-radius: 7px; font-size: 12px; font-weight: 600; }
 .windows-os-status { flex: 1; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 32px; text-align: center; color: var(--text2); }
 .windows-os-status h3 { margin: 0; color: var(--text); font-size: 18px; }
 .windows-os-status p { margin: 0; max-width: 450px; line-height: 1.55; }
@@ -205,18 +205,18 @@
 }
 
 .sidebar-logo-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  border: 1px solid var(--cyan2);
-  background: color-mix(in srgb, var(--cyan-dim) 70%, transparent);
-  color: var(--cyan);
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 700;
-  display: grid;
-  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
   flex-shrink: 0;
+}
+
+.sidebar-logo-icon img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
 }
 
 .sidebar-logo-text {
@@ -2052,10 +2052,18 @@
 }
 
 .avatar.ai-avatar {
-  background: rgba(0, 174, 255, 0.12);
-  color: #38bdf8;
-  border: 1px solid #0ea5e9;
-  box-shadow: 0 0 18px rgba(14, 165, 233, 0.15);
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.avatar.ai-avatar img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
 }
 
 .user-bubble {
@@ -2591,8 +2599,50 @@
 }
 
 .helpdesk-root.theme-light .check-item {
-  background: #f7fbff;
-  border-color: #dbe7f3;
+  background: #ffffff;
+  border-color: #d7e2ef;
+}
+
+.helpdesk-root.theme-light .check-item.is-active {
+  border-color: #38bdf8;
+  background: #effaff;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.12), 0 8px 20px rgba(14, 165, 233, 0.1);
+  animation: none;
+}
+
+.helpdesk-root.theme-light .check-item.is-complete {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.helpdesk-root.theme-light .check-number {
+  color: #0369a1;
+  border-color: #7dd3fc;
+  background: #e0f2fe;
+}
+
+.helpdesk-root.theme-light .check-number.is-complete {
+  color: #166534;
+  border-color: #86efac;
+  background: #dcfce7;
+}
+
+.helpdesk-root.theme-light .check-toggle-btn {
+  color: #0284c7;
+  border-color: #7dd3fc;
+  background: #ffffff;
+}
+
+.helpdesk-root.theme-light .check-toggle-btn.is-active,
+.helpdesk-root.theme-light .check-toggle-btn:hover {
+  border-color: #0284c7;
+  background: #e0f2fe;
+}
+
+.helpdesk-root.theme-light .check-toggle-btn.is-complete {
+  color: #ffffff;
+  border-color: #16a34a;
+  background: #16a34a;
 }
 
 .helpdesk-root.theme-light .progress-track {
@@ -2879,9 +2929,9 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  min-height: 44px;
-  height: 44px;
-  padding: 0 14px;
+  min-height: 60px;
+  height: auto;
+  padding: 10px 14px;
   border-bottom: 0.5px solid rgba(255, 255, 255, 0.08);
   background: #18191c;
   gap: 10px;
@@ -4800,6 +4850,40 @@
   background: #dcfce7;
 }
 
+.helpdesk-root.theme-light .step-modal-item.active .step-modal-item-subtext {
+  color: #475569;
+}
+
+.helpdesk-root.theme-light .step-modal-item.completed .step-modal-item-subtext {
+  color: #166534;
+}
+
+.helpdesk-root.theme-light .step-modal-current {
+  border-color: #bae6fd;
+  background: #ffffff;
+}
+
+.helpdesk-root.theme-light .step-modal-current-label,
+.helpdesk-root.theme-light .step-modal-current-subtext {
+  color: #64748b;
+}
+
+.helpdesk-root.theme-light .step-modal-current-title,
+.helpdesk-root.theme-light .step-modal-current-text {
+  color: #0f172a;
+}
+
+.helpdesk-root.theme-light .step-modal-current-num {
+  color: #0369a1;
+  border-color: #7dd3fc;
+  background: #e0f2fe;
+}
+
+.helpdesk-root.theme-light .step-modal-canvas {
+  border-color: #cbd5e1;
+  background: #eaf0f7;
+}
+
 .helpdesk-root.theme-light .sim-runtime-terminal {
   border-color: #94a3b8;
 }
@@ -4812,6 +4896,23 @@
 .helpdesk-root.theme-light .sim-runtime-footer {
   border-top-color: #d5deeb;
   background: #f8fafc;
+}
+
+.helpdesk-root.theme-light .step-modal-footer {
+  border-top-color: #cbd5e1;
+  background: #ffffff;
+}
+
+.helpdesk-root.theme-light .step-modal-footer-nav {
+  color: #64748b;
+}
+
+.helpdesk-root.theme-light .step-modal-step-dot {
+  background: #cbd5e1;
+}
+
+.helpdesk-root.theme-light .step-modal-step-dot.todo {
+  background: #cbd5e1;
 }
 
 .helpdesk-root.theme-light .sim-preview-footer-nav {
@@ -4889,6 +4990,17 @@
   color: #334155;
   border-color: #cbd5e1;
   background: #f8fafc;
+}
+
+.helpdesk-root.theme-light .terminal-simulation-nav.is-next {
+  color: #ffffff;
+  border-color: #2563eb;
+  background: #2563eb;
+}
+
+.helpdesk-root.theme-light .terminal-simulation-nav.is-next:hover:not(:disabled) {
+  border-color: #1d4ed8;
+  background: #1d4ed8;
 }
 
 .helpdesk-root.theme-light .windows-os-footer-progress {

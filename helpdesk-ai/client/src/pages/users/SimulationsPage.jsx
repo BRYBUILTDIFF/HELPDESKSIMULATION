@@ -4,10 +4,11 @@ import { useAuth } from "../../hooks/useAuth";
 import { useAxios } from "../../hooks/useAxios";
 import TerminalEmulator from "./Modules/TerminalEmulator";
 import WindowsOsSimulation from "./Modules/WindowsOsSimulation";
+import helpdeskLogo from "../../IMG/HELPDESKAI.png";
 import { simulations } from "./helpdeskData";
 import "./dashboard.css";
 
-const THEME_STORAGE_KEY = "helpdesk_simulation_theme";
+const THEME_STORAGE_KEY = "helpdesk_simulation_theme_v2";
 
 function formatDateTime(isoString) {
   const date = new Date(isoString);
@@ -85,7 +86,7 @@ export default function SimulationsPage() {
   const accountMenuRef = useRef(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
-  const [theme, setTheme] = useState("dark");
+  const [theme, setTheme] = useState("light");
   const [activeSimId, setActiveSimId] = useState(null);
   const [activeSimLabel, setActiveSimLabel] = useState("Simulation");
   const [simStep, setSimStep] = useState(0);
@@ -364,7 +365,7 @@ export default function SimulationsPage() {
         <div className={`hd-sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
           <div className="hd-sidebar-header">
             <div className="sidebar-logo">
-              <div className="sidebar-logo-icon">HS</div>
+              <div className="sidebar-logo-icon"><img src={helpdeskLogo} alt="HelpDesk AI" /></div>
               <div className="sidebar-logo-text">
                 Helpdesk <span>Simulation</span>
               </div>
@@ -473,17 +474,17 @@ export default function SimulationsPage() {
                 <div className="avatar-popover-name">{user?.firstName || ""} {user?.lastName || ""}</div>
                 <div className="avatar-popover-email">{user?.email || ""}</div>
                 <div className="avatar-theme-row">
-                  <span className="avatar-theme-label">Light Mode</span>
+                  <span className="avatar-theme-label">Dark Mode</span>
                   <button
-                    className={`avatar-theme-switch hd-btn-reset ${theme === "light" ? "is-on" : ""}`}
+                    className={`avatar-theme-switch hd-btn-reset ${theme === "dark" ? "is-on" : ""}`}
                     onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
-                    aria-label="Toggle light mode"
-                    aria-pressed={theme === "light"}
+                    aria-label="Toggle dark mode"
+                    aria-pressed={theme === "dark"}
                   >
                     <span className="avatar-theme-track">
                       <span className="avatar-theme-thumb" />
                     </span>
-                    <span className="avatar-theme-state">{theme === "light" ? "On" : "Off"}</span>
+                    <span className="avatar-theme-state">{theme === "dark" ? "On" : "Off"}</span>
                   </button>
                 </div>
                 <button className="avatar-popover-btn danger hd-btn-reset" onClick={logout}>

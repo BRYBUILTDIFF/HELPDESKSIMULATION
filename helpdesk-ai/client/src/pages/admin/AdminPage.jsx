@@ -16,6 +16,7 @@ import TerminalEmulator from "../users/Modules/TerminalEmulator";
 import WindowsOsSimulation from "../users/Modules/WindowsOsSimulation";
 import macOsPreviewImg from "../../IMG/MAC.jpg";
 import windowsOsPreviewImg from "../../IMG/WIN 11.webp";
+import helpdeskLogo from "../../IMG/HELPDESKAI.png";
 import "./admin.css";
 
 const PAGE_META = {
@@ -35,7 +36,7 @@ const POLICY_LIST_META = {
   outOfScopeKeywords: "Out-of-Scope Keywords",
   inScopeIntentPatterns: "In-Scope Intent Patterns"
 };
-const THEME_STORAGE_KEY = "helpdesk_simulation_theme";
+const THEME_STORAGE_KEY = "helpdesk_simulation_theme_v2";
 
 ChartJS.register(
   CategoryScale,
@@ -338,7 +339,7 @@ export default function AdminPage() {
   const userActionErrorTimerRef = useRef(null);
 
   const [activePage, setActivePage] = useState("overview");
-  const [theme, setTheme] = useState("dark");
+  const [theme, setTheme] = useState("light");
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
   const [accountPasswordForm, setAccountPasswordForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
@@ -364,6 +365,8 @@ export default function AdminPage() {
   const [policyStatusFilter, setPolicyStatusFilter] = useState("ALL");
   const [policyTimeFilter, setPolicyTimeFilter] = useState("ALL");
   const [policyWorkspaceTab, setPolicyWorkspaceTab] = useState("decisions");
+  const [policyConfigTab, setPolicyConfigTab] = useState("rules");
+  const [policyConfigListKey, setPolicyConfigListKey] = useState("greetingPatterns");
   const [policyConfig, setPolicyConfig] = useState({
     greetingPatterns: [],
     inScopeKeywords: [],
@@ -374,13 +377,6 @@ export default function AdminPage() {
   const [policyConfigDraft, setPolicyConfigDraft] = useState({});
   const [policyEditorError, setPolicyEditorError] = useState("");
   const [policyEditorListInput, setPolicyEditorListInput] = useState({});
-  const [policyConfigOpenMap, setPolicyConfigOpenMap] = useState({
-    greetingPatterns: true,
-    inScopeKeywords: true,
-    outOfScopeKeywords: true,
-    inScopeIntentPatterns: true,
-    messages: true
-  });
   const [policyConfigSearchMap, setPolicyConfigSearchMap] = useState({});
 
   const [policyQuery, setPolicyQuery] = useState("");
@@ -793,6 +789,14 @@ export default function AdminPage() {
     const draft = JSON.stringify(policyConfigDraft || {});
     return current !== draft;
   }, [policyConfig.messages, policyConfigDraft]);
+
+  const selectedPolicyListKey = POLICY_LIST_META[policyConfigListKey] ? policyConfigListKey : "greetingPatterns";
+  const selectedPolicyListLabel = POLICY_LIST_META[selectedPolicyListKey];
+  const selectedPolicyListEntries = policyConfig[selectedPolicyListKey] || [];
+  const selectedPolicyListQuery = String(policyConfigSearchMap[selectedPolicyListKey] || "").trim().toLowerCase();
+  const selectedPolicyListEntriesFiltered = selectedPolicyListEntries
+    .map((entry, index) => ({ entry, index }))
+    .filter((item) => String(item.entry || "").toLowerCase().includes(selectedPolicyListQuery));
 
   const showUserActionNotice = (message) => {
     if (userActionNoticeTimerRef.current) {
@@ -1339,10 +1343,10 @@ export default function AdminPage() {
         <aside className="sidebar">
           <div className="sidebar-header">
             <div className="admin-brand">
-              <div className="admin-brand-icon">HS</div>
+              <div className="admin-brand-icon"><img src={helpdeskLogo} alt="HelpDesk AI" /></div>
               <div className="admin-brand-text">
                 Help Desk
-                <span>Support</span>
+                <span>Simulation</span>
               </div>
             </div>
           </div>
@@ -1382,18 +1386,18 @@ export default function AdminPage() {
               <div className="profile-menu" role="menu">
                 <div className="profile-menu-label">Preferences</div>
                 <div className="profile-menu-row">
-                  <span>Light Mode</span>
+                  <span>Dark Mode</span>
                   <button
                     type="button"
-                    className={`profile-theme-switch ${theme === "light" ? "is-on" : ""}`}
+                    className={`profile-theme-switch ${theme === "dark" ? "is-on" : ""}`}
                     onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
-                    aria-label="Toggle light mode"
-                    aria-pressed={theme === "light"}
+                    aria-label="Toggle dark mode"
+                    aria-pressed={theme === "dark"}
                   >
                     <span className="profile-theme-track">
                       <span className="profile-theme-thumb" />
                     </span>
-                    <span className="profile-theme-state">{theme === "light" ? "On" : "Off"}</span>
+                    <span className="profile-theme-state">{theme === "dark" ? "On" : "Off"}</span>
                   </button>
                 </div>
                 <button type="button" className="profile-account-btn" onClick={openAccountSettings}>Account settings</button>
@@ -1739,104 +1743,116 @@ export default function AdminPage() {
                     <div className="policy-editor policy-editor-full">
                       <div className="policy-editor-head">
                         <h3>Policy Configuration (Runtime)</h3>
-                        <span className="policy-editor-hint">Use collapsible sections for large rule sets</span>
+                        <span className="policy-editor-hint">Changes apply to new prompts immediately</span>
                       </div>
 
                       {policyEditorError ? <div className="admin-alert error">{policyEditorError}</div> : null}
 
-                      <div className="policy-config-grid">
-                        {Object.entries(POLICY_LIST_META).map(([listKey, label]) => {
-                          const listEntries = policyConfig[listKey] || [];
-                          const query = String(policyConfigSearchMap[listKey] || "").trim().toLowerCase();
-                          const filteredEntries = listEntries
-                            .map((entry, index) => ({ entry, index }))
-                            .filter((item) => String(item.entry || "").toLowerCase().includes(query));
-                          const isOpen = policyConfigOpenMap[listKey] !== false;
-                          return (
-                            <div className="policy-list-block" key={listKey}>
-                              <button
-                                type="button"
-                                className="policy-list-head"
-                                onClick={() => setPolicyConfigOpenMap((prev) => ({ ...prev, [listKey]: !isOpen }))}
-                                aria-expanded={isOpen}
-                              >
-                                <div className="policy-list-title">{label}</div>
-                                <div className="policy-list-head-right">
-                                  <span className="policy-list-count">{listEntries.length}</span>
-                                  <span className="policy-list-caret">{isOpen ? "v" : ">"}</span>
-                                </div>
-                              </button>
-                              {isOpen ? (
-                                <>
-                                  <div className="policy-list-add">
-                                    <input
-                                      value={policyEditorListInput[listKey] || ""}
-                                      onChange={(event) =>
-                                        setPolicyEditorListInput((prev) => ({ ...prev, [listKey]: event.target.value }))
-                                      }
-                                      placeholder={`Add ${label.toLowerCase()} entry`}
-                                    />
-                                    <button
-                                      type="button"
-                                      className="btn-sm create-user-btn"
-                                      disabled={pendingKey === `policy-add-${listKey}`}
-                                      onClick={() => addPolicyEntry(listKey)}
-                                    >
-                                      Add
-                                    </button>
-                                  </div>
-                                  <input
-                                    className="policy-list-search"
-                                    value={policyConfigSearchMap[listKey] || ""}
-                                    onChange={(event) =>
-                                      setPolicyConfigSearchMap((prev) => ({ ...prev, [listKey]: event.target.value }))
-                                    }
-                                    placeholder={`Search ${label.toLowerCase()}`}
-                                  />
-                                  <div className="policy-list-items">
-                                    {filteredEntries.map(({ entry, index }) => (
-                                      <div className="policy-item-row" key={`${listKey}-${index}-${entry}`}>
-                                        <div className="policy-item-text">{entry}</div>
-                                        <div className="policy-item-actions">
-                                          <button type="button" className="btn-sm" onClick={() => editPolicyEntry(listKey, index, entry)}>
-                                            Edit
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="btn-sm btn-danger"
-                                            onClick={() => deletePolicyEntry(listKey, index)}
-                                          >
-                                            Delete
-                                          </button>
-                                        </div>
-                                      </div>
-                                    ))}
-                                    {listEntries.length === 0 ? <div className="muted-cell">No entries.</div> : null}
-                                    {listEntries.length > 0 && filteredEntries.length === 0 ? (
-                                      <div className="muted-cell">No matching entries.</div>
-                                    ) : null}
-                                  </div>
-                                </>
-                              ) : null}
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <div className="policy-list-block">
+                      <div className="policy-config-tabs" role="tablist" aria-label="Policy configuration">
                         <button
                           type="button"
-                          className="policy-list-head"
-                          onClick={() => setPolicyConfigOpenMap((prev) => ({ ...prev, messages: !prev.messages }))}
-                          aria-expanded={policyConfigOpenMap.messages !== false}
+                          className={`policy-config-tab ${policyConfigTab === "rules" ? "active" : ""}`}
+                          role="tab"
+                          aria-selected={policyConfigTab === "rules"}
+                          onClick={() => setPolicyConfigTab("rules")}
                         >
-                          <div className="policy-list-title">Policy Messages</div>
-                          <div className="policy-list-head-right">
-                            <span className="policy-list-count">{Object.keys(policyConfigDraft || {}).length}</span>
-                            <span className="policy-list-caret">{policyConfigOpenMap.messages !== false ? "v" : ">"}</span>
-                          </div>
+                          Rules
                         </button>
-                        {policyConfigOpenMap.messages !== false ? (
+                        <button
+                          type="button"
+                          className={`policy-config-tab ${policyConfigTab === "messages" ? "active" : ""}`}
+                          role="tab"
+                          aria-selected={policyConfigTab === "messages"}
+                          onClick={() => setPolicyConfigTab("messages")}
+                        >
+                          Messages
+                        </button>
+                      </div>
+
+                      {policyConfigTab === "rules" ? <div className="policy-rule-workspace">
+                        <nav className="policy-rule-nav" aria-label="Policy rule sets">
+                          <span className="policy-rule-nav-label">Rule sets</span>
+                          {Object.entries(POLICY_LIST_META).map(([listKey, label]) => {
+                            const isActive = selectedPolicyListKey === listKey;
+                            return <button
+                              key={listKey}
+                              type="button"
+                              className={`policy-rule-nav-item ${isActive ? "active" : ""}`}
+                              onClick={() => setPolicyConfigListKey(listKey)}
+                            >
+                              <span>{label}</span>
+                              <small>{(policyConfig[listKey] || []).length}</small>
+                            </button>;
+                          })}
+                        </nav>
+
+                        <section className="policy-rule-editor">
+                          <div className="policy-rule-editor-head">
+                            <div>
+                              <h4>{selectedPolicyListLabel}</h4>
+                              <p>{selectedPolicyListEntries.length} active entries evaluated by the policy engine.</p>
+                            </div>
+                          </div>
+                          <div className="policy-list-add">
+                            <input
+                              value={policyEditorListInput[selectedPolicyListKey] || ""}
+                              onChange={(event) =>
+                                setPolicyEditorListInput((prev) => ({ ...prev, [selectedPolicyListKey]: event.target.value }))
+                              }
+                              placeholder={`Add ${selectedPolicyListLabel.toLowerCase()} entry`}
+                            />
+                            <button
+                              type="button"
+                              className="btn-sm create-user-btn"
+                              disabled={pendingKey === `policy-add-${selectedPolicyListKey}`}
+                              onClick={() => addPolicyEntry(selectedPolicyListKey)}
+                            >
+                              Add entry
+                            </button>
+                          </div>
+                          <input
+                            className="policy-list-search"
+                            value={policyConfigSearchMap[selectedPolicyListKey] || ""}
+                            onChange={(event) =>
+                              setPolicyConfigSearchMap((prev) => ({ ...prev, [selectedPolicyListKey]: event.target.value }))
+                            }
+                            placeholder={`Search ${selectedPolicyListLabel.toLowerCase()}`}
+                          />
+                          <div className="policy-list-items policy-rule-items">
+                            {selectedPolicyListEntriesFiltered.map(({ entry, index }) => (
+                              <div className="policy-item-row" key={`${selectedPolicyListKey}-${index}-${entry}`}>
+                                <div className="policy-item-text">{entry}</div>
+                                <div className="policy-item-actions">
+                                  <button type="button" className="btn-sm" onClick={() => editPolicyEntry(selectedPolicyListKey, index, entry)}>
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-sm btn-danger"
+                                    onClick={() => deletePolicyEntry(selectedPolicyListKey, index)}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                            {selectedPolicyListEntries.length === 0 ? <div className="muted-cell">No entries.</div> : null}
+                            {selectedPolicyListEntries.length > 0 && selectedPolicyListEntriesFiltered.length === 0 ? (
+                              <div className="muted-cell">No matching entries.</div>
+                            ) : null}
+                          </div>
+                        </section>
+                      </div> : null}
+
+                      {policyConfigTab === "messages" ? (
+                        <section className="policy-messages-pane">
+                          <div className="policy-messages-head">
+                            <div>
+                              <h4>Policy Messages</h4>
+                              <p>Responses shown when a prompt is blocked, unclear, or invalid.</p>
+                            </div>
+                            <span className="policy-list-count">{Object.keys(policyConfigDraft || {}).length}</span>
+                          </div>
                           <div className="policy-message-grid">
                             {Object.entries(policyConfigDraft || {}).map(([key, value]) => (
                               <label key={key} className="policy-message-field">
@@ -1851,22 +1867,6 @@ export default function AdminPage() {
                               </label>
                             ))}
                           </div>
-                        ) : null}
-                      </div>
-
-                      <div className="policy-sticky-bar">
-                        <div className={`policy-sticky-state ${policyMessagesDirty ? "dirty" : ""}`}>
-                          {policyMessagesDirty ? "Unsaved message changes" : "All message changes saved"}
-                        </div>
-                        <div className="policy-sticky-actions">
-                          <button
-                            type="button"
-                            className="btn-sm btn-danger"
-                            disabled={pendingKey === "policy-reset"}
-                            onClick={resetPolicyConfigToDefault}
-                          >
-                            {pendingKey === "policy-reset" ? "Resetting..." : "Reset Default"}
-                          </button>
                           <button
                             type="button"
                             className="btn-sm create-user-btn"
@@ -1875,7 +1875,22 @@ export default function AdminPage() {
                           >
                             {pendingKey === "policy-save-messages" ? "Saving..." : "Save Messages"}
                           </button>
+                        </section>
+                      ) : null}
+
+                      <div className="policy-danger-zone">
+                        <div>
+                          <strong>Reset configuration</strong>
+                          <span>Restore all policy rules and messages to the system defaults.</span>
                         </div>
+                        <button
+                          type="button"
+                          className="btn-sm btn-danger"
+                          disabled={pendingKey === "policy-reset"}
+                          onClick={resetPolicyConfigToDefault}
+                        >
+                          {pendingKey === "policy-reset" ? "Resetting..." : "Reset Default"}
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1999,7 +2014,6 @@ export default function AdminPage() {
 
                             <div className="sim-stats">
                               <div className="sim-stat"><strong>{completions}</strong> completions</div>
-                              <div className="sim-stat"><strong>{Number(module.passRate || 0)}%</strong> pass rate</div>
                               <div className="sim-stat"><strong>{Number(module.avgSteps || 0).toFixed(1)}</strong> avg steps</div>
                             </div>
 
