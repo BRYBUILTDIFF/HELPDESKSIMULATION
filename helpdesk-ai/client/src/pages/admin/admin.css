@@ -2696,7 +2696,54 @@
 
 .sim-preview-btn-row {
   display: flex;
+  margin-left: auto;
   gap: 8px;
+}
+
+.sim-preview-discard {
+  color: #fecaca;
+  border-color: #b54555;
+  background: rgba(127, 36, 52, 0.26);
+}
+
+.sim-preview-discard:hover:not(:disabled) {
+  color: #fff1f2;
+  border-color: #f87171;
+  background: rgba(153, 27, 27, 0.46);
+}
+
+.sim-preview-approve {
+  color: #ecfdf5;
+  border-color: #22c55e;
+  background: #15803d;
+}
+
+.sim-preview-approve:hover:not(:disabled) {
+  border-color: #4ade80;
+  background: #166534;
+}
+
+.admin-console-root.theme-light .sim-preview-discard {
+  color: #b91c1c;
+  border-color: #fda4af;
+  background: #fff1f2;
+}
+
+.admin-console-root.theme-light .sim-preview-discard:hover:not(:disabled) {
+  color: #991b1b;
+  border-color: #ef4444;
+  background: #ffe4e6;
+}
+
+.admin-console-root.theme-light .sim-preview-approve {
+  color: #ffffff;
+  border-color: #16a34a;
+  background: #16a34a;
+}
+
+.admin-console-root.theme-light .sim-preview-approve:hover:not(:disabled) {
+  border-color: #15803d;
+  background: #15803d;
 }
 
 .sim-runtime-body {

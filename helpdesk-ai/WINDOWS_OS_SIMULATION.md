@@ -17,7 +17,7 @@ AWS_SIMULATION_LAUNCH_TEMPLATE_ID=
 SIMULATION_TTL_MINUTES=20
 SIMULATION_MAX_PER_USER=1
 SIMULATION_GLOBAL_MAX=1
-WINDOWS_LAB_USERNAME=
+WINDOWS_LAB_USERNAME=labuser
 WINDOWS_LAB_PASSWORD=
 GUACAMOLE_BASE_URL=https://guacamole.example.com/guacamole
 GUAC_JSON_SECRET=
@@ -27,12 +27,15 @@ GUAC_JSON_SECRET=
 
 ## Manual AWS setup required
 
-1. Create a private Windows Server 2022 AMI for the labs. Do not include production data or credentials.
-2. Create an EC2 Launch Template with `t3.small`, 30 GB encrypted gp3, CPU credits set to Standard, IMDSv2 required, a private subnet, **no public IPv4**, and `helpdesk-windows-sg`. The application only supplies this template ID; it cannot override these settings.
-3. The Windows security group must allow inbound TCP 3389 only from the Guacamole security group. Never allow public RDP. With no NAT Gateway, do not depend on unrestricted Windows internet access for the lab workflow.
-4. Run Guacamole on a separate Ubuntu 24.04 `t3.micro` in a public subnet, behind Nginx and HTTPS, using Docker and `guacd`. It reaches Windows through VPC private IPv4 only.
-5. Give the backend runtime IAM role least-privilege permission to run, describe, tag, and terminate only your simulation Launch Template/instances.
-6. Configure a budget, global instance quota, and AWS-side EventBridge/Lambda cleanup for instances tagged `Project=HelpDeskAI` and `Purpose=UserSimulation`. Do not add a NAT Gateway, ALB, ECS/Fargate, or RDS for this proof of concept.
+1. Launch **Microsoft Windows Server 2025 Base** and configure it as the temporary master lab instance.
+2. Configure RDP and Windows Firewall, create the local `labuser` account, add it to **Remote Desktop Users**, and verify that `TermService` is running and TCP 3389 is listening. Test the account over RDP before creating the image. Do not include production data or credentials.
+3. Create the custom AMI, for example `helpdesk-windows-server-2025-v1`.
+4. Create a new version of the existing `helpdesk-windows-simulation` Launch Template using that AMI. Keep `t3.small`, 30 GB encrypted gp3, delete-on-termination, Standard CPU credits, IMDSv2 required, a private subnet, **no public IPv4**, and `helpdesk-windows-sg`. The application only supplies this template ID; it cannot override these settings.
+5. Set the new Launch Template version as the default. The backend launches it with `Version: "$Default"`; it never contains an AMI ID or a fixed template version.
+6. The Windows security group must allow inbound TCP 3389 only from `helpdesk-guacamole-sg`. Never allow public RDP. With no NAT Gateway, do not depend on unrestricted Windows internet access for the lab workflow.
+7. Run Guacamole on a separate Ubuntu 24.04 `t3.micro` in a public subnet, behind Nginx and HTTPS, using Docker and `guacd`. It reaches Windows through VPC private IPv4 only. Verify Guacamole connectivity, remove any temporary public RDP access, then terminate the master instance.
+8. Give the backend runtime IAM role least-privilege permission to run, describe, tag, and terminate only your simulation Launch Template/instances.
+9. Configure a budget, global instance quota, and AWS-side EventBridge/Lambda cleanup for instances tagged `Project=HelpDeskAI` and `Purpose=UserSimulation`. Do not add a NAT Gateway, ALB, ECS/Fargate, or RDS for this proof of concept.
 
 ## Manual Guacamole setup required
 

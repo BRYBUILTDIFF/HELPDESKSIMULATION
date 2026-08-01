@@ -75,7 +75,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
   return <div className="windows-os-overlay" aria-label="Windows OS simulation">
     <section className="windows-os-shell">
       <header className="windows-os-header"><div><span className="windows-os-kicker">Windows OS Simulation</span><h2>{title}</h2></div><div className="windows-os-controls">{remainingMinutes !== null ? <span>{remainingMinutes} min remaining</span> : null}<button type="button" className="windows-os-end-btn btn-sm" onClick={end}>End Simulation</button><button type="button" className="windows-os-complete-btn btn-sm" onClick={complete} disabled={completing} title="Complete simulation">✓ <span>{completing ? "Completing..." : "Complete Simulation"}</span></button></div></header>
-      {["IDLE", "PROVISIONING", "READY", "TERMINATING"].includes(status) ? <div className="windows-os-status"><div className="windows-os-spinner" aria-hidden="true" /><h3>{status === "TERMINATING" ? "Ending your Windows workspace..." : "Preparing your Windows workspace..."}</h3><p>Your private simulation environment is being prepared. This usually takes a few minutes.</p></div> : null}
+      {["IDLE", "PROVISIONING", "READY", "TERMINATING"].includes(status) ? <div className="windows-os-status"><div className="windows-os-spinner" aria-hidden="true" /><h3>{status === "TERMINATING" ? "Ending your Windows Server 2025 workspace..." : "Preparing your Windows Server 2025 workspace..."}</h3><p>Your private simulation environment is being prepared. This usually takes a few minutes.</p></div> : null}
       {status === "ACTIVE" && session?.guacamoleUrl ? <div className="windows-os-workspace">
         <aside className="windows-os-guide" aria-label="Simulation steps">
           <div className="windows-os-guide-heading"><span>Simulation Steps</span><small>{guidedSteps.length ? `${activeStep + 1} of ${guidedSteps.length}` : "No steps"}</small></div>
@@ -93,7 +93,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
             <h3>{currentStep.title || `Step ${activeStep + 1}`}</h3>
             <p>{plainText(currentStep.instruction || currentStep.action || currentStep.description) || "Complete this task in the Windows workspace."}</p>
           </div> : null}
-          <iframe className="windows-os-frame" title="Windows Help Desk Lab" src={session.guacamoleUrl} allow="clipboard-read; clipboard-write; fullscreen" referrerPolicy="no-referrer" />
+          <iframe className="windows-os-frame" title="Windows Server 2025 Help Desk Lab" src={session.guacamoleUrl} allow="clipboard-read; clipboard-write; fullscreen" referrerPolicy="no-referrer" />
         </section>
       </div> : null}
       {status === "ACTIVE" && session?.guacamoleUrl ? <footer className="windows-os-footer">

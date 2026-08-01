@@ -68,6 +68,33 @@ AI_MODEL=deepseek-chat
 
 Note: `AI_API_KEY` is preferred. `OPENAI_API_KEY` / `OPENAI_MODEL` are still supported as fallback.
 
+### Windows Server 2025 simulation
+
+The `windows-os` surface is the browser-based simulator category. It launches a private
+**Microsoft Windows Server 2025 Base** workspace through Apache Guacamole; it is not
+Windows 11. The backend runs the default version of the manually managed
+`helpdesk-windows-simulation` Launch Template using `AWS_SIMULATION_LAUNCH_TEMPLATE_ID`.
+
+The application does not store an AMI ID, instance type, subnet, security group, or Launch
+Template version. Configure those in AWS: use the custom AMI (for example
+`helpdesk-windows-server-2025-v1`), `t3.small`, private networking with no public IPv4,
+and RDP 3389 only from `helpdesk-guacamole-sg`. Guacamole remains a separate Ubuntu 24.04
+`t3.micro` gateway.
+
+Set these backend-only values in `server/.env`:
+
+```env
+AWS_REGION=ap-southeast-1
+AWS_SIMULATION_LAUNCH_TEMPLATE_ID=
+SIMULATION_TTL_MINUTES=20
+SIMULATION_MAX_PER_USER=1
+SIMULATION_GLOBAL_MAX=1
+WINDOWS_LAB_USERNAME=labuser
+WINDOWS_LAB_PASSWORD=
+GUACAMOLE_BASE_URL=
+GUAC_JSON_SECRET=
+```
+
 ## 3. Optional PostgreSQL via Docker
 
 From `helpdesk-ai/`:

@@ -2225,12 +2225,12 @@ jumpcloud@JumpCloud ~ % _`}</pre>
                     <span className="sim-preview-footer-nav">Step {previewTotalSteps === 0 ? 0 : previewSafeStep + 1} of {previewTotalSteps}</span>
                   </div>
                   <div className="sim-preview-btn-row">
-                    <button type="button" className="btn-sm" onClick={closeModulePreview}>
+                    <button type="button" className="btn-sm sim-preview-discard" onClick={closeModulePreview}>
                       Discard Draft
                     </button>
                     <button
                       type="button"
-                      className="btn-sm create-user-btn"
+                      className="btn-sm sim-preview-approve"
                       disabled={pendingKey === "module-save-draft"}
                       onClick={saveModuleDraft}
                     >
@@ -2283,10 +2283,10 @@ jumpcloud@JumpCloud ~ % _`}</pre>
 
                     {modulePreviewSurface === "windows-os" ? (
                       <div className="sim-runtime-windows-os-preview">
-                        <img src={windowsOsPreviewImg} alt="Windows 11 simulation preview" />
+                        <img src={windowsOsPreviewImg} alt="Windows Server 2025 simulation preview" />
                         <div className="sim-runtime-windows-os-shade" />
                         <div className="sim-runtime-windows-os-card">
-                          <span className="sim-runtime-windows-os-badge">Windows 11 · Private EC2 workspace</span>
+                          <span className="sim-runtime-windows-os-badge">Windows Server 2025 · Private EC2 workspace</span>
                           <h4>Ready to test this Windows OS simulation?</h4>
                           <p>Testing launches one isolated Windows workspace for your administrator account. It does not start automatically when viewing the module.</p>
                           <button
