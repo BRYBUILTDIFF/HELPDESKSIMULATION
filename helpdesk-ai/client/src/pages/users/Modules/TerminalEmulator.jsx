@@ -118,7 +118,8 @@ export default function TerminalEmulator({
   initialPath = "C:\\Users\\student",
   queuedCommand = null,
   onCommand,
-  resolveUnknownCommand
+  resolveUnknownCommand,
+  autoFocus = true
 }) {
   const containerRef = useRef(null);
   const inputBufferRef = useRef("");
@@ -185,7 +186,9 @@ export default function TerminalEmulator({
     term.loadAddon(webLinksAddon);
     term.open(container);
     fitAddon.fit();
-    term.focus();
+    if (autoFocus) {
+      term.focus();
+    }
 
     const writePrompt = () => {
       term.write(`${currentPathRef.current}> `);
@@ -950,7 +953,7 @@ export default function TerminalEmulator({
       disposable.dispose();
       term.dispose();
     };
-  }, [hostname, initialMessage, initialPath, username]);
+  }, [autoFocus, hostname, initialMessage, initialPath, username]);
 
   useEffect(() => {
     if (!queuedCommand || !runQueuedCommandRef.current) {

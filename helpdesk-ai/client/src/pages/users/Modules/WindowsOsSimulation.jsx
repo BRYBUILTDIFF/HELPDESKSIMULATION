@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import SimulationWalkthrough from "./SimulationWalkthrough";
 
 function messageFrom(error, fallback) {
   return error?.response?.data?.message || fallback;
@@ -14,6 +15,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
   const [error, setError] = useState("");
   const [activeStep, setActiveStep] = useState(0);
   const [completing, setCompleting] = useState(false);
+  const [showWalkthrough, setShowWalkthrough] = useState(true);
   const startedRef = useRef(false);
   const guidedSteps = Array.isArray(steps) ? steps : [];
   const currentStep = guidedSteps[activeStep];
@@ -103,6 +105,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
       </footer> : null}
       {status === "FAILED" ? <div className="windows-os-status is-error"><h3>Windows workspace unavailable</h3><p>{error || "The workspace could not be started."}</p><div className="windows-os-error-actions"><button type="button" className="btn-sm" onClick={retry}>Try Again</button><button type="button" className="btn-sm" onClick={onEnded}>Return to Modules</button></div></div> : null}
       {error && status === "ACTIVE" ? <div className="windows-os-completion-error" role="alert">{error}</div> : null}
+      {status === "ACTIVE" && session?.guacamoleUrl && showWalkthrough ? <SimulationWalkthrough type="windows" onDone={() => setShowWalkthrough(false)} /> : null}
     </section>
   </div>;
 }

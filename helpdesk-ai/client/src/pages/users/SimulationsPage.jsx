@@ -4,6 +4,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { useAxios } from "../../hooks/useAxios";
 import TerminalEmulator from "./Modules/TerminalEmulator";
 import WindowsOsSimulation from "./Modules/WindowsOsSimulation";
+import SimulationWalkthrough from "./Modules/SimulationWalkthrough";
 import helpdeskLogo from "../../IMG/HELPDESKAI.png";
 import { simulations } from "./helpdeskData";
 import "./dashboard.css";
@@ -93,6 +94,7 @@ export default function SimulationsPage() {
   const [sessions, setSessions] = useState([]);
   const [mobileView, setMobileView] = useState(false);
   const [serverModules, setServerModules] = useState([]);
+  const [showWalkthrough, setShowWalkthrough] = useState(false);
 
   const simulationMap = useMemo(() => {
     const map = { ...simulations };
@@ -193,6 +195,14 @@ export default function SimulationsPage() {
     return () => media.removeListener(syncLayout);
   }, []);
 
+  // Always start a fresh walkthrough whenever a simulation becomes active.
+  // This also covers simulations opened through restored or alternate UI state.
+  useEffect(() => {
+    if (activeSimId) {
+      setShowWalkthrough(true);
+    }
+  }, [activeSimId]);
+
   useEffect(() => {
     if (!user?.id) {
       setSessions([]);
@@ -239,11 +249,13 @@ export default function SimulationsPage() {
     setActiveSimId(card.simId);
     setActiveSimLabel(card.label);
     setSimStep(0);
+    setShowWalkthrough(true);
   };
 
   const closeSimulation = () => {
     setActiveSimId(null);
     setSimStep(0);
+    setShowWalkthrough(false);
   };
 
   const moveStep = (delta) => {
@@ -255,6 +267,14 @@ export default function SimulationsPage() {
 
   return (
     <div className={`helpdesk-root ${theme === "light" ? "theme-light" : ""}`}>
+      {currentSim && currentSim.surface !== "windows-os" && showWalkthrough ? (
+        <SimulationWalkthrough
+          key={activeSimId}
+          type="terminal"
+          onDone={() => setShowWalkthrough(false)}
+        />
+      ) : null}
+
       {currentSim?.surface === "windows-os" ? (
           <WindowsOsSimulation api={api} moduleId={activeSimId} title={activeSimLabel} steps={currentSim?.steps || []} onEnded={closeSimulation} />
       ) : null}
@@ -333,6 +353,7 @@ export default function SimulationsPage() {
                     hostname="DESKTOP-SIM"
                     initialPath="C:\\Users\\student"
                     onCommand={() => {}}
+                    autoFocus={!showWalkthrough}
                   />
                 </div>
               </section>

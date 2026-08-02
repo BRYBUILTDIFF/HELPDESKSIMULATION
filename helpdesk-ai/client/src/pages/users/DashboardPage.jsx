@@ -4,6 +4,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { useAxios } from "../../hooks/useAxios";
 import TerminalEmulator from "./Modules/TerminalEmulator";
 import WindowsOsSimulation from "./Modules/WindowsOsSimulation";
+import SimulationWalkthrough from "./Modules/SimulationWalkthrough";
 import helpdeskLogo from "../../IMG/HELPDESKAI.png";
 import { simulations } from "./helpdeskData";
 import "./dashboard.css";
@@ -1324,6 +1325,7 @@ export default function DashboardPage() {
   const [copiedMessageId, setCopiedMessageId] = useState("");
 
   const [stepModalOpen, setStepModalOpen] = useState(false);
+  const [showSimulationWalkthrough, setShowSimulationWalkthrough] = useState(true);
   const [modalSteps, setModalSteps] = useState([]);
   const [modalStepDetails, setModalStepDetails] = useState([]);
   const [modalSourceTitle, setModalSourceTitle] = useState("AI Response");
@@ -1338,6 +1340,12 @@ export default function DashboardPage() {
   const [passwordForm, setPasswordForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState("");
+
+  useEffect(() => {
+    if (stepModalOpen && modalCanvasState?.simulationId) {
+      setShowSimulationWalkthrough(true);
+    }
+  }, [stepModalOpen, modalCanvasState?.simulationId]);
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordVisibility, setPasswordVisibility] = useState({ current: false, next: false, confirm: false });
   const [openSessionMenuId, setOpenSessionMenuId] = useState(null);
@@ -2441,6 +2449,12 @@ export default function DashboardPage() {
     setModalCanvasState(canvasState);
     setModalSourceTitle(sourceTitle);
     setTerminalQueuedCommand(null);
+    if (canvasState?.simulationId || canvasState?.terminalType || String(sourceTitle || "").toLowerCase().includes("terminal")) {
+      setShowSimulationWalkthrough(true);
+    }
+    // The walkthrough is enabled by the effect below once the terminal canvas
+    // has finished loading. Do not set it from this initial payload because
+    // restored simulations may briefly arrive without their final metadata.
     setStepModalOpen(!isSimulationSession);
   };
 
@@ -3367,6 +3381,13 @@ export default function DashboardPage() {
 
   return (
     <div className={`helpdesk-root ${theme === "light" ? "theme-light" : ""}`}>
+      {(stepModalOpen || (isSimulationSession && !showSimulationCatalog && !activeWindowsOsModule)) && modalCanvasState && showSimulationWalkthrough ? (
+        <SimulationWalkthrough
+          key={modalMessageId || modalSourceTitle}
+          type="dashboard-terminal"
+          onDone={() => setShowSimulationWalkthrough(false)}
+        />
+      ) : null}
       {stepModalOpen && !isSimulationSession ? (
         <div className="step-modal-overlay" onClick={closeStepModal}>
           <div className="step-modal" onClick={(e) => e.stopPropagation()}>
@@ -3474,6 +3495,7 @@ export default function DashboardPage() {
                     </div>
                     <TerminalEmulator
                       className="terminal-body"
+                      autoFocus={!showSimulationWalkthrough}
                       initialMessage={modalTerminalProfile.initialMessage}
                       username={modalTerminalProfile.username}
                       hostname={modalTerminalProfile.hostname}
@@ -3950,7 +3972,8 @@ export default function DashboardPage() {
                               <span>{(modalCanvasState?.scenarioType || "general").toUpperCase()} MODE</span>
                             </div>
                             <TerminalEmulator
-                              className="terminal-body"
+                            className="terminal-body"
+                            autoFocus={!showSimulationWalkthrough}
                               initialMessage={modalTerminalProfile.initialMessage}
                               username={modalTerminalProfile.username}
                               hostname={modalTerminalProfile.hostname}
