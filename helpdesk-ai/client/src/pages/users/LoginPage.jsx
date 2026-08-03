@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import helpdeskLogo from "../../IMG/HELPDESKAI.png";
+import workspaceHero from "../../IMG/login-workspace-hero.png";
 
 function parseError(error) {
   if (!error.response) {
@@ -51,7 +52,10 @@ export default function LoginPage() {
     setError("");
     try {
       const loggedInUser = await login({ email: form.email.trim(), password: form.password });
-      navigate(loggedInUser?.role === "ADMIN" ? "/admin" : "/dashboard", { replace: true });
+      navigate(loggedInUser?.role === "ADMIN" ? "/admin" : "/dashboard", {
+        replace: true,
+        state: loggedInUser?.role === "ADMIN" ? undefined : { startNewChat: true }
+      });
     } catch (err) {
       setError(parseError(err));
     } finally {
@@ -75,15 +79,16 @@ export default function LoginPage() {
             Manage support sessions, run guided simulations, and resolve technical issues with policy-aware AI guidance.
           </p>
           <div className="login-brand-points">
-            <span>Role-based access</span>
-            <span>Session history</span>
-            <span>Simulation workflow</span>
+            <span>◈&nbsp; Role-based access</span>
+            <span>◷&nbsp; Session history</span>
+            <span>♧&nbsp; Simulation workflow</span>
           </div>
+          <img className="login-workspace-hero" src={workspaceHero} alt="IT support workspace with laptop and headset" />
           <div className="demo-credentials">
-            <div className="demo-credentials-title">Demo Credentials</div>
+            <div className="demo-credentials-title"><span>♙</span> Demo accounts <small>Use the credentials below to explore the platform.</small></div>
             <div className="demo-credentials-grid">
               <div className="demo-cred-item">
-                <div className="demo-cred-role">ADMIN</div>
+                <div className="demo-cred-role"><span>♛</span> Admin</div>
                 <div className="demo-cred-row">
                   <span>Email:</span> <code>admin@helpdesk.com</code>
                 </div>
@@ -92,7 +97,7 @@ export default function LoginPage() {
                 </div>
               </div>
               <div className="demo-cred-item">
-                <div className="demo-cred-role">USER</div>
+                <div className="demo-cred-role user"><span>♙</span> User</div>
                 <div className="demo-cred-row">
                   <span>Email:</span> <code>user@helpdesk.com</code>
                 </div>
@@ -105,8 +110,12 @@ export default function LoginPage() {
         </section>
 
         <form className="login-card" onSubmit={onSubmit}>
-          <h3>Sign in</h3>
-          <p>Use your account credentials to continue.</p>
+          <div className="login-form-heading">
+            <span className="login-lock-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /><path d="M12 14v2" /></svg>
+            </span>
+            <div><h3>Sign in</h3><p>Use your account credentials to continue.</p></div>
+          </div>
 
           {error ? <p className="global-error">{error}</p> : null}
 
@@ -117,6 +126,7 @@ export default function LoginPage() {
               name="email"
               type="email"
               autoComplete="email"
+              placeholder="Enter your email"
               value={form.email}
               onChange={onChange}
             />
@@ -130,6 +140,7 @@ export default function LoginPage() {
                 name="password"
                 type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
+                placeholder="Enter your password"
                 value={form.password}
                 onChange={onChange}
               />
@@ -161,13 +172,15 @@ export default function LoginPage() {
             <label className="login-remember">
               <input name="remember" type="checkbox" checked={form.remember} onChange={onChange} /> Remember me
             </label>
+            <a className="login-forgot" href="mailto:support@helpdesk.com">Forgot password?</a>
           </div>
 
           <button className="btn login-submit" type="submit" disabled={!canSubmit || loading}>
             {loading ? "Signing in..." : "Login"}
           </button>
 
-          <p className="auth-footer login-footer">Account creation is managed by administrators.</p>
+          <div className="login-divider"><span>or</span></div>
+          <p className="auth-footer login-footer">♢&nbsp; Account creation is managed by administrators.</p>
         </form>
       </div>
     </div>

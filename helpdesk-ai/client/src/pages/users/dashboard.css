@@ -54,6 +54,24 @@
 .windows-os-instruction h3 { margin: 5px 0 3px; color: var(--text); font-size: 14px; }
 .windows-os-instruction p { margin: 8px 0 0; color: var(--text2); font-size: 12px; line-height: 1.45; }
 .windows-os-frame { width: 100%; flex: 1; min-height: 0; border: 0; background: #050505; }
+.windows-os-frame.is-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.windows-os-connect-choice,
+.windows-os-guided-mode { flex: 1; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 36px; text-align: center; color: var(--text2); }
+.windows-os-connect-choice > span,
+.windows-os-guided-mode > span { color: #38bdf8; font: 10px var(--mono); letter-spacing: .1em; }
+.windows-os-connect-choice h3,
+.windows-os-guided-mode h3 { margin: 0; color: var(--text); font-size: 20px; }
+.windows-os-connect-choice p,
+.windows-os-guided-mode p { max-width: 490px; margin: 0; line-height: 1.55; }
+.windows-os-connect-choice > div { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 10px; }
+.windows-os-connect-choice .btn-sm,
+.windows-os-guided-mode .btn-sm { width: auto; margin: 0; padding: 0 15px; border: 1px solid #334155; border-radius: 8px; color: #d8e1ef; background: #172236; font-weight: 600; }
+.windows-os-connect-choice .btn-sm.is-primary { border-color: #2f6cf4; background: #2f6cf4; color: #fff; }
+.windows-os-guided-icon { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 16px; color: #7dd3fc; background: rgba(14, 165, 233, .13); font-size: 28px; }
+.windows-os-guided-preview { width: min(380px, 100%); display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 14px; border: 1px solid rgba(56, 189, 248, .28); border-radius: 10px; background: #111d32; text-align: left; }
+.windows-os-guided-preview i { grid-column: span 3; height: 8px; border-radius: 99px; background: #2563eb; }
+.windows-os-guided-preview b,
+.windows-os-guided-preview em { padding: 9px; border-radius: 6px; background: #1c2b45; color: #d8e1ef; font-size: 11px; font-style: normal; }
 .windows-os-footer { min-height: 56px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 8px 20px; border-top: 1px solid rgba(148, 163, 184, .2); background: #0d1628; }
 .windows-os-footer-actions { display: flex; align-items: center; justify-content: flex-end; gap: 18px; }
 .windows-os-footer .btn-sm { height: 36px; margin: 0; padding: 0 16px; border: 1px solid #334155; border-radius: 8px; color: #d8e1ef; background: #172236; font-size: 13px; font-weight: 600; line-height: 1; box-shadow: none; }

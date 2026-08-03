@@ -15,7 +15,13 @@ function getGuacamoleConfig() {
 function createGuacamoleUrl(session) {
   if (!session?.privateIp) throw new SimulationServiceError("Windows workspace is still starting. Please wait a moment.", 409);
   const { baseUrl, secret, username, password } = getGuacamoleConfig();
-  const expires = Date.now() + 2 * 60 * 1000;
+  // The Guacamole invitation must remain usable for the whole lab session.
+  // A two-minute invitation could leave a learner at Guacamole's empty
+  // connection page while their 20-minute Windows session was still active.
+  const sessionExpiresAt = new Date(session.expiresAt).getTime();
+  const expires = Number.isFinite(sessionExpiresAt) && sessionExpiresAt > Date.now()
+    ? sessionExpiresAt
+    : Date.now() + 20 * 60 * 1000;
   const payload = JSON.stringify({
     username: `helpdesk-${session.userId}-${session.id}`,
     expires,
