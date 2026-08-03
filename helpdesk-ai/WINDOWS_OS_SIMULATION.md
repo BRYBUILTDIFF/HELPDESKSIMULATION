@@ -20,7 +20,9 @@ SIMULATION_GLOBAL_MAX=1
 WINDOWS_LAB_USERNAME=labuser
 WINDOWS_LAB_PASSWORD=
 GUACAMOLE_BASE_URL=https://guacamole.example.com/guacamole
+GUACAMOLE_LAUNCH_URL=https://guacamole.example.com/guac-launch.html
 GUAC_JSON_SECRET=
+GUAC_URL_TTL_SECONDS=300
 ```
 
 `GUAC_JSON_SECRET` must be exactly 32 hexadecimal characters (128 bits) and must match Guacamole's `JSON_SECRET_KEY` / `json-secret-key`. Keep all of these values only in the server environment or a secrets manager.
@@ -44,6 +46,13 @@ GUAC_JSON_SECRET=
 3. Configure `JSON_ENABLED=true` and `JSON_SECRET_KEY` for Docker, or `json-secret-key` for a native deployment.
 4. Ensure Guacamole can reach only the Windows lab security group on TCP 3389.
 5. Set `GUACAMOLE_BASE_URL` to the HTTPS Guacamole application URL. It must permit browser iframe use from the Help Desk application; configure CSP/frame ancestors deliberately.
+6. Copy `infrastructure/guacamole/guac-launch.html` to the same web origin as Guacamole (for example `/var/www/html/guac-launch.html`), then run `sudo nginx -t` and `sudo systemctl reload nginx`. Set `GUACAMOLE_LAUNCH_URL` to that HTTPS launcher URL. The launcher clears only `GUAC_*` browser storage before redirecting to the fixed `/guacamole/` path, preventing an old Guacamole login from hiding the fresh session connection.
+
+## Connection lifecycle
+
+`POST /api/simulation-sessions` provisions the EC2 workspace. `GET /api/simulation-sessions/:id` reports only the session status and never generates a Guacamole URL. Once status is `READY`, the client calls `POST /api/simulation-sessions/:id/connect` once. That ownership-checked endpoint creates one short-lived encrypted URL and changes the database session to `ACTIVE`. The iframe mounts only after that URL is returned, and is removed immediately when the simulation ends.
+
+For local HTTP development, configure the launcher on the Guacamole EC2 host manually. Use HTTPS before production.
 
 ## Database deployment
 

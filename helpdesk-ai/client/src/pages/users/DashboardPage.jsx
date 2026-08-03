@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useAxios } from "../../hooks/useAxios";
 import TerminalEmulator from "./Modules/TerminalEmulator";
@@ -1307,14 +1307,12 @@ export default function DashboardPage() {
   const { user, logout, refreshAccessToken } = useAuth();
   const api = useAxios();
   const location = useLocation();
-  const navigate = useNavigate();
   const chatWrapRef = useRef(null);
   const textareaRef = useRef(null);
   const editTextareaRef = useRef(null);
   const accountMenuRef = useRef(null);
   const autoAdvanceTimeoutRef = useRef(null);
   const sessionsSaveTimerRef = useRef(null);
-  const newLoginChatStartedRef = useRef(false);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sessions, setSessions] = useState([]);
@@ -1590,24 +1588,13 @@ export default function DashboardPage() {
           return;
         }
 
-        if (source.length > 0) {
-          const normalized = source.map((session, idx) => normalizeLoadedSession(session, idx));
-          setSessions(normalized);
-          // Never resume a Windows lab just because the browser was refreshed.
-          // Prefer the most recent normal chat; create one only for accounts
-          // that have simulation history but no chat history yet.
-          const firstChat = normalized.find((session) => !session.isSimulationSession);
-          if (firstChat) {
-            setActiveSessionId((prev) => prev || firstChat.id);
-          } else {
-            const freshChat = createSession();
-            setSessions([freshChat, ...normalized]);
-            setActiveSessionId(freshChat.id);
-          }
-        } else {
-          setSessions([]);
-          setActiveSessionId("");
-        }
+        const normalized = source.map((session, idx) => normalizeLoadedSession(session, idx));
+        // Always enter the Help Desk through a blank conversation. Existing
+        // chats and simulations remain in the sidebar but are never restored
+        // automatically on login or a dashboard reload.
+        const freshChat = createSession();
+        setSessions([freshChat, ...normalized]);
+        setActiveSessionId(freshChat.id);
       } catch (_err) {
         if (!cancelled) {
           setSessions([]);
@@ -1651,22 +1638,6 @@ export default function DashboardPage() {
       }
     };
   }, [api, sessions, sessionsHydrated, user?.id]);
-
-  useEffect(() => {
-    if (!location.state?.startNewChat || !sessionsHydrated || newLoginChatStartedRef.current) {
-      return;
-    }
-
-    newLoginChatStartedRef.current = true;
-    const freshChat = createSession();
-    setSessions((previous) => [freshChat, ...previous]);
-    setActiveSessionId(freshChat.id);
-    setShowSimulationCatalog(false);
-    setActiveWindowsOsModule(null);
-    // Consume the one-time login instruction so a browser refresh preserves
-    // the newly created session instead of creating another one.
-    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
-  }, [location.pathname, location.search, location.state, navigate, sessionsHydrated]);
 
   useEffect(() => {
     if (!sessionsHydrated || !requestedSessionId) {

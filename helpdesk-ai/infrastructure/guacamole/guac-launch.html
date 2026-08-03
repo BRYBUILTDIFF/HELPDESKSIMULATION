@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <title>Connecting to Windows workspace</title>
+    <style>body{margin:0;display:grid;min-height:100vh;place-items:center;background:#0f172a;color:#e2e8f0;font:16px system-ui,sans-serif}p{color:#94a3b8}</style>
+  </head>
+  <body><main><strong>Connecting to your Windows workspace…</strong><p id="message">Please wait.</p></main>
+    <script>
+      (() => {
+        const data = new URLSearchParams(location.search).get("data");
+        const message = document.getElementById("message");
+        if (!data) { message.textContent = "A secure connection link was not provided."; return; }
+        for (const store of [localStorage, sessionStorage]) {
+          for (let index = store.length - 1; index >= 0; index -= 1) {
+            const key = store.key(index);
+            if (key && key.startsWith("GUAC_")) store.removeItem(key);
+          }
+        }
+        location.replace(`/guacamole/?data=${encodeURIComponent(data)}&fresh=${Date.now()}`);
+      })();
+    </script>
+  </body>
+</html>

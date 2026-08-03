@@ -75,20 +75,34 @@ async function getSimulationSession(req, res, next) {
     } else if (session.status === "PROVISIONING") {
       session = await refreshWindowsSimulationSession(session);
     }
-    let guacamoleUrl;
-    if (["READY", "ACTIVE"].includes(session.status)) {
-      try {
-        guacamoleUrl = createGuacamoleUrl(session);
-        if (session.status === "READY") {
-          session = await prisma.simulationSession.update({ where: { id: session.id }, data: { status: "ACTIVE" } });
-        }
-      } catch (error) {
-        if (error instanceof SimulationServiceError) return res.status(error.status).json({ message: error.message });
-        throw error;
-      }
+    return res.status(200).json(safeSession(session));
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function connectSimulationSession(req, res, next) {
+  try {
+    let session = await prisma.simulationSession.findFirst({ where: { id: String(req.params.id || ""), userId: req.user.id } });
+    if (!session) return res.status(404).json({ message: "Simulation session not found." });
+    if (session.expiresAt < new Date()) {
+      await terminateWindowsSimulationSession(session).catch(() => null);
+      return res.status(409).json({ message: "This Windows workspace has expired. Start a new simulation." });
     }
+    if (session.status === "PROVISIONING") {
+      session = await refreshWindowsSimulationSession(session);
+    }
+    if (!["READY", "ACTIVE"].includes(session.status) || !session.privateIp) {
+      return res.status(409).json({ message: "Windows workspace is not ready to connect yet." });
+    }
+    const guacamoleUrl = createGuacamoleUrl(session);
+    if (session.status === "READY") {
+      session = await prisma.simulationSession.update({ where: { id: session.id }, data: { status: "ACTIVE" } });
+    }
+    console.info("Windows simulation connection URL issued", { sessionId: session.id, userId: req.user.id });
     return res.status(200).json(safeSession(session, guacamoleUrl));
   } catch (error) {
+    if (error instanceof SimulationServiceError) return res.status(error.status).json({ message: error.message });
     return next(error);
   }
 }
@@ -105,4 +119,4 @@ async function endSimulationSession(req, res, next) {
   }
 }
 
-module.exports = { createSimulationSession, getSimulationSession, endSimulationSession };
+module.exports = { createSimulationSession, getSimulationSession, connectSimulationSession, endSimulationSession };
