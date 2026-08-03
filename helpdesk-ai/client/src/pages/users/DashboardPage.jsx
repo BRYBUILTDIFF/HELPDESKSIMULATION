@@ -817,6 +817,9 @@ function normalizeLoadedSession(session, idx) {
             moduleId: String(session.windowsOsSimulation.moduleId),
             title: String(session.windowsOsSimulation.title || incomingTitle || "Windows OS Simulation"),
             steps: Array.isArray(session.windowsOsSimulation.steps) ? session.windowsOsSimulation.steps : [],
+            completedStepIndexes: Array.isArray(session.windowsOsSimulation.completedStepIndexes)
+              ? session.windowsOsSimulation.completedStepIndexes.filter((index) => Number.isInteger(index) && index >= 0)
+              : [],
             lastEndedAt: session.windowsOsSimulation.lastEndedAt || null
           }
         : null,
@@ -2173,6 +2176,7 @@ export default function DashboardPage() {
                   moduleId: simulationId,
                   title: sim.title || suggestion?.title || "Windows OS Simulation",
                   steps: sim.steps || [],
+                  completedStepIndexes: [],
                   lastEndedAt: null
                 }
               }
@@ -2328,6 +2332,7 @@ export default function DashboardPage() {
         id: session.windowsOsSimulation.moduleId,
         title: session.windowsOsSimulation.title || session.title || "Windows OS Simulation",
         steps: Array.isArray(session.windowsOsSimulation.steps) ? session.windowsOsSimulation.steps : [],
+        completedStepIndexes: Array.isArray(session.windowsOsSimulation.completedStepIndexes) ? session.windowsOsSimulation.completedStepIndexes : [],
         sessionId: session.id
       });
       setShowSimulationCatalog(false);
@@ -3852,12 +3857,32 @@ export default function DashboardPage() {
                 moduleId={activeWindowsOsModule.id}
                 title={activeWindowsOsModule.title}
                 steps={activeWindowsOsModule.steps}
+                completedStepIndexes={activeWindowsOsModule.completedStepIndexes || []}
                 onSessionReady={(simulationSession) => {
                   setActiveWindowsOsModule((current) => (
                     current?.sessionId === activeWindowsOsModule.sessionId
                       ? { ...current, simulationSessionId: simulationSession.id }
                       : current
                   ));
+                }}
+                onStepProgress={(completedStepIndexes) => {
+                  setActiveWindowsOsModule((current) => (
+                    current?.sessionId === activeWindowsOsModule.sessionId
+                      ? { ...current, completedStepIndexes }
+                      : current
+                  ));
+                  setSessions((currentSessions) => currentSessions.map((session) => (
+                    session.id === activeWindowsOsModule.sessionId
+                      ? {
+                          ...session,
+                          updatedAt: new Date().toISOString(),
+                          windowsOsSimulation: {
+                            ...session.windowsOsSimulation,
+                            completedStepIndexes
+                          }
+                        }
+                      : session
+                  )));
                 }}
                 onEnded={() => finishWindowsOsWorkspace(activeWindowsOsModule, true)}
               />

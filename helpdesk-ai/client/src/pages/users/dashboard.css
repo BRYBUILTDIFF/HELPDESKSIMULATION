@@ -42,6 +42,8 @@
 .windows-os-step { width: 100%; display: grid; grid-template-columns: 27px minmax(0, 1fr); align-items: start; gap: 9px; padding: 10px; color: var(--text2); text-align: left; border: 1px solid rgba(71, 85, 105, .55); border-radius: 9px; background: transparent; cursor: pointer; }
 .windows-os-step:hover { border-color: rgba(56, 189, 248, .65); }
 .windows-os-step.is-active { color: #e0f2fe; border-color: #0ea5e9; background: rgba(14, 165, 233, .13); }
+.windows-os-step.is-complete { border-color: rgba(34, 197, 94, .6); background: rgba(34, 197, 94, .1); }
+.windows-os-step.is-complete .windows-os-step-number { color: #bbf7d0; border-color: #22c55e; background: rgba(34, 197, 94, .18); }
 .windows-os-step-number { display: grid; place-items: center; width: 24px; height: 24px; color: #7dd3fc; border: 1px solid currentColor; border-radius: 50%; font: 11px var(--mono); }
 .windows-os-step strong { display: block; color: inherit; font-size: 13px; line-height: 1.25; }
 .windows-os-step small { display: -webkit-box; margin-top: 4px; overflow: hidden; color: var(--text3); font-size: 11px; line-height: 1.35; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
@@ -49,10 +51,13 @@
 .windows-os-help-card { display: grid; gap: 7px; margin-top: auto; padding: 13px; border: 1px solid rgba(71, 85, 105, .55); border-radius: 9px; color: var(--text3); background: rgba(15, 23, 42, .42); font-size: 11px; line-height: 1.45; }
 .windows-os-help-card strong { color: #7dd3fc; font-size: 12px; }
 .windows-os-desktop { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 12px; gap: 10px; background: #080d17; }
-.windows-os-instruction { padding: 13px 15px; border: 1px solid rgba(56, 189, 248, .28); border-radius: 9px; background: rgba(15, 23, 42, .9); }
+.windows-os-instruction { position: relative; min-height: 96px; padding: 13px 170px 13px 15px; border: 1px solid rgba(56, 189, 248, .72); border-radius: 9px; background: rgba(14, 165, 233, .14); }
 .windows-os-instruction span { color: #38bdf8; font: 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
 .windows-os-instruction h3 { margin: 5px 0 3px; color: var(--text); font-size: 14px; }
 .windows-os-instruction p { margin: 8px 0 0; color: var(--text2); font-size: 12px; line-height: 1.45; }
+.windows-os-mark-step { position: absolute; right: 15px; bottom: 15px; width: auto; min-height: 34px; margin: 0; padding: 0 14px; border: 1px solid #16a34a; border-radius: 7px; background: #16a34a; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
+.windows-os-mark-step:hover:not(:disabled) { border-color: #22c55e; background: #22c55e; }
+.windows-os-mark-step:disabled { border-color: #334155; background: #172236; color: #94a3b8; cursor: default; }
 .windows-os-frame { width: 100%; flex: 1; min-height: 0; border: 0; background: #050505; }
 .windows-os-frame.is-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .windows-os-connect-choice,
@@ -4994,8 +4999,8 @@
 }
 
 .helpdesk-root.theme-light .windows-os-instruction {
-  border-color: #bae6fd;
-  background: #ffffff;
+  border-color: #7dd3fc;
+  background: #e0f2fe;
 }
 
 .helpdesk-root.theme-light .windows-os-footer {

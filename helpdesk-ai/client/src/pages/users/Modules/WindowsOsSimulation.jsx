@@ -9,13 +9,14 @@ function plainText(value) {
   return String(value || "").replace(/<[^>]+>/g, "").trim();
 }
 
-export default function WindowsOsSimulation({ api, moduleId, title, steps = [], onEnded, onSessionReady }) {
+export default function WindowsOsSimulation({ api, moduleId, title, steps = [], completedStepIndexes = [], onEnded, onSessionReady, onStepProgress }) {
   const [session, setSession] = useState(null);
   const [status, setStatus] = useState("IDLE");
   const [guacamoleUrl, setGuacamoleUrl] = useState("");
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [error, setError] = useState("");
   const [activeStep, setActiveStep] = useState(0);
+  const [completedSteps, setCompletedSteps] = useState(() => new Set(completedStepIndexes));
   const [completing, setCompleting] = useState(false);
   const [showWalkthrough, setShowWalkthrough] = useState(true);
   const startedRef = useRef(false);
@@ -72,6 +73,23 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
     setActiveStep((current) => Math.min(current, Math.max(guidedSteps.length - 1, 0)));
   }, [guidedSteps.length]);
 
+  useEffect(() => {
+    setCompletedSteps(new Set(completedStepIndexes));
+  }, [completedStepIndexes]);
+
+  const markCurrentStepComplete = () => {
+    if (!currentStep) return;
+    setCompletedSteps((previous) => {
+      const next = new Set(previous);
+      next.add(activeStep);
+      onStepProgress?.(Array.from(next).sort((a, b) => a - b));
+      return next;
+    });
+    if (activeStep < guidedSteps.length - 1) {
+      setActiveStep((step) => step + 1);
+    }
+  };
+
   const end = useCallback(async () => {
     setGuacamoleUrl("");
     setStatus("TERMINATING");
@@ -107,8 +125,8 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
         <aside className="windows-os-guide" aria-label="Simulation steps">
           <div className="windows-os-guide-heading"><span>Simulation Steps</span><small>{guidedSteps.length ? `${activeStep + 1} of ${guidedSteps.length}` : "No steps"}</small></div>
           {guidedSteps.length ? <div className="windows-os-step-list">
-            {guidedSteps.map((step, index) => <button type="button" key={`${step?.id || step?.title || "step"}-${index}`} className={`windows-os-step${index === activeStep ? " is-active" : ""}`} onClick={() => setActiveStep(index)}>
-              <span className="windows-os-step-number">{index + 1}</span>
+            {guidedSteps.map((step, index) => <button type="button" key={`${step?.id || step?.title || "step"}-${index}`} className={`windows-os-step${index === activeStep ? " is-active" : ""}${completedSteps.has(index) ? " is-complete" : ""}`} onClick={() => setActiveStep(index)}>
+              <span className="windows-os-step-number">{completedSteps.has(index) ? "✓" : index + 1}</span>
               <span><strong>{step?.title || `Step ${index + 1}`}</strong><small>{plainText(step?.instruction || step?.action || step?.description) || "Follow the task instructions."}</small></span>
             </button>)}
           </div> : <p className="windows-os-no-steps">This module does not include guided steps yet.</p>}
@@ -119,13 +137,16 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
             <span>Current Step</span>
             <h3>{currentStep.title || `Step ${activeStep + 1}`}</h3>
             <p>{plainText(currentStep.instruction || currentStep.action || currentStep.description) || "Complete this task in the Windows workspace."}</p>
+            <button type="button" className="windows-os-mark-step btn-sm" onClick={markCurrentStepComplete} disabled={completedSteps.has(activeStep)}>
+              {completedSteps.has(activeStep) ? "Completed" : activeStep === guidedSteps.length - 1 ? "Complete final step" : "Complete step"}
+            </button>
           </div> : null}
           <iframe key={`${session.id}-${connectionAttempt}`} className="windows-os-frame" title="Windows Server 2025 Help Desk Lab" src={guacamoleUrl} onLoad={() => setStatus("ACTIVE")} allow="clipboard-read; clipboard-write; fullscreen" referrerPolicy="no-referrer" />
         </section>
       </div> : null}
       {["CONNECTING", "ACTIVE"].includes(status) && guacamoleUrl ? <footer className="windows-os-footer">
         <button type="button" className="windows-os-nav-btn btn-sm" disabled={!currentStep || activeStep === 0} onClick={() => setActiveStep((step) => step - 1)}>← <span>Previous Step</span></button>
-        <div className="windows-os-footer-progress"><span>Step {guidedSteps.length ? activeStep + 1 : 0} of {guidedSteps.length}</span><div className="windows-os-progress-line">{guidedSteps.map((_, index) => <i key={index} className={index < activeStep ? "done" : index === activeStep ? "active" : ""} />)}</div></div>
+        <div className="windows-os-footer-progress"><span>{completedSteps.size} of {guidedSteps.length} complete</span><div className="windows-os-progress-line">{guidedSteps.map((_, index) => <i key={index} className={completedSteps.has(index) ? "done" : index === activeStep ? "active" : ""} />)}</div></div>
         <button type="button" className="windows-os-nav-btn is-next btn-sm" disabled={!currentStep || activeStep === guidedSteps.length - 1} onClick={() => setActiveStep((step) => step + 1)}><span>Next Step</span> →</button>
       </footer> : null}
       {status === "FAILED" ? <div className="windows-os-status is-error"><h3>We could not start the live Windows lab</h3><p>Please try starting the Windows workspace again.</p><div className="windows-os-error-actions"><button type="button" className="btn-sm" onClick={retry}>Try Again</button><button type="button" className="btn-sm" onClick={onEnded}>Return to Modules</button></div></div> : null}
