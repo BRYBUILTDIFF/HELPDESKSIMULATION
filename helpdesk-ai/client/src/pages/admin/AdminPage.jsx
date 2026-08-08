@@ -31,10 +31,22 @@ const DEFAULT_USER_PASSWORD = "password123";
 const USERS_PER_PAGE = 8;
 const POLICY_EVENTS_PER_PAGE = 10;
 const POLICY_LIST_META = {
-  greetingPatterns: "Greeting Patterns",
+  greetingPatterns: "Greeting Phrases",
   inScopeKeywords: "In-Scope Keywords",
   outOfScopeKeywords: "Out-of-Scope Keywords",
-  inScopeIntentPatterns: "In-Scope Intent Patterns"
+  inScopeIntentPatterns: "In-Scope Intent Phrases"
+};
+const POLICY_LIST_HELP = {
+  greetingPatterns: "Add a normal greeting such as hello or good morning. No special pattern symbols are needed.",
+  inScopeKeywords: "Add one IT-related word or short phrase, such as printer or password reset.",
+  outOfScopeKeywords: "Add one unsupported topic, such as recipe or gambling.",
+  inScopeIntentPatterns: "Add one troubleshooting phrase, such as can't connect or steps to reset. Use plain English only."
+};
+const POLICY_LIST_PLACEHOLDERS = {
+  greetingPatterns: "Example: good morning",
+  inScopeKeywords: "Example: network adapter",
+  outOfScopeKeywords: "Example: restaurant recommendation",
+  inScopeIntentPatterns: "Example: unable to connect"
 };
 const THEME_STORAGE_KEY = "helpdesk_simulation_theme_v2";
 
@@ -404,6 +416,9 @@ export default function AdminPage() {
   const [policyEditorError, setPolicyEditorError] = useState("");
   const [policyEditorListInput, setPolicyEditorListInput] = useState({});
   const [policyConfigSearchMap, setPolicyConfigSearchMap] = useState({});
+  const [policyActionSuccess, setPolicyActionSuccess] = useState(null);
+  const [policyEntryEditor, setPolicyEntryEditor] = useState(null);
+  const [policyActionConfirmation, setPolicyActionConfirmation] = useState(null);
 
   const [policyQuery, setPolicyQuery] = useState("");
   const [policyCodeFilter, setPolicyCodeFilter] = useState("ALL");
@@ -516,6 +531,9 @@ export default function AdminPage() {
         setProfileMenuOpen(false);
         setAccountSettingsOpen(false);
         setSelectedPolicyEvent(null);
+        setPolicyActionSuccess(null);
+        setPolicyEntryEditor(null);
+        setPolicyActionConfirmation(null);
       }
     };
     document.addEventListener("mousedown", onPointerDown);
@@ -821,11 +839,17 @@ export default function AdminPage() {
 
   const selectedPolicyListKey = POLICY_LIST_META[policyConfigListKey] ? policyConfigListKey : "greetingPatterns";
   const selectedPolicyListLabel = POLICY_LIST_META[selectedPolicyListKey];
+  const selectedPolicyListHelp = POLICY_LIST_HELP[selectedPolicyListKey];
   const selectedPolicyListEntries = policyConfig[selectedPolicyListKey] || [];
   const selectedPolicyListQuery = String(policyConfigSearchMap[selectedPolicyListKey] || "").trim().toLowerCase();
   const selectedPolicyListEntriesFiltered = selectedPolicyListEntries
     .map((entry, index) => ({ entry, index }))
     .filter((item) => String(item.entry || "").toLowerCase().includes(selectedPolicyListQuery));
+  const policyConfirmationPendingKey = policyActionConfirmation
+    ? policyActionConfirmation.action === "add"
+      ? `policy-add-${policyActionConfirmation.listKey}`
+      : `policy-del-${policyActionConfirmation.listKey}-${policyActionConfirmation.index}`
+    : "";
 
   const showUserActionNotice = (message) => {
     if (userActionNoticeTimerRef.current) {
@@ -1041,31 +1065,43 @@ export default function AdminPage() {
     setPolicyConfigDraft(nextConfig.messages || {});
   };
 
-  const addPolicyEntry = async (listKey) => {
+  const showPolicyActionSuccess = (action, listKey, value) => {
+    const actionLabels = {
+      added: "Entry added successfully",
+      edited: "Entry edited successfully",
+      deleted: "Entry deleted successfully"
+    };
+    setPolicyActionSuccess({
+      title: actionLabels[action] || "Policy configuration updated",
+      listLabel: POLICY_LIST_META[listKey] || "Policy rules",
+      value
+    });
+  };
+
+  const addPolicyEntry = (listKey) => {
     const value = String(policyEditorListInput[listKey] || "").trim();
     if (!value) {
       return;
     }
-    setPendingKey(`policy-add-${listKey}`);
     setPolicyEditorError("");
-    try {
-      await api.post(`/api/admin/policy/config/${listKey}`, { value });
-      await refreshPolicyConfigOnly();
-      setPolicyEditorListInput((prev) => ({ ...prev, [listKey]: "" }));
-    } catch (err) {
-      setPolicyEditorError(safeError(err));
-    } finally {
-      setPendingKey("");
-    }
+    setPolicyActionConfirmation({ action: "add", listKey, value, error: "" });
   };
 
-  const editPolicyEntry = async (listKey, index, oldValue) => {
-    const replacement = window.prompt("Edit policy entry", oldValue);
-    if (replacement === null) {
+  const editPolicyEntry = (listKey, index, oldValue) => {
+    setPolicyEditorError("");
+    setPolicyEntryEditor({ listKey, index, value: oldValue, error: "" });
+  };
+
+  const savePolicyEntryEdit = async (event) => {
+    event.preventDefault();
+    if (!policyEntryEditor) {
       return;
     }
-    const value = replacement.trim();
+
+    const { listKey, index } = policyEntryEditor;
+    const value = String(policyEntryEditor.value || "").trim();
     if (!value) {
+      setPolicyEntryEditor((prev) => ({ ...prev, error: "Enter a word or phrase before saving." }));
       return;
     }
 
@@ -1074,21 +1110,44 @@ export default function AdminPage() {
     try {
       await api.patch(`/api/admin/policy/config/${listKey}/${index}`, { value });
       await refreshPolicyConfigOnly();
+      setPolicyEntryEditor(null);
+      showPolicyActionSuccess("edited", listKey, value);
     } catch (err) {
-      setPolicyEditorError(safeError(err));
+      setPolicyEntryEditor((prev) => (prev ? { ...prev, error: safeError(err) } : prev));
     } finally {
       setPendingKey("");
     }
   };
 
-  const deletePolicyEntry = async (listKey, index) => {
-    setPendingKey(`policy-del-${listKey}-${index}`);
+  const deletePolicyEntry = (listKey, index) => {
+    const value = policyConfig[listKey]?.[index] || "Policy entry";
+    setPolicyEditorError("");
+    setPolicyActionConfirmation({ action: "delete", listKey, index, value, error: "" });
+  };
+
+  const confirmPolicyAction = async () => {
+    if (!policyActionConfirmation) {
+      return;
+    }
+
+    const { action, listKey, index, value } = policyActionConfirmation;
+    const requestKey = action === "add" ? `policy-add-${listKey}` : `policy-del-${listKey}-${index}`;
+    setPendingKey(requestKey);
     setPolicyEditorError("");
     try {
-      await api.delete(`/api/admin/policy/config/${listKey}/${index}`);
+      if (action === "add") {
+        await api.post(`/api/admin/policy/config/${listKey}`, { value });
+      } else {
+        await api.delete(`/api/admin/policy/config/${listKey}/${index}`);
+      }
       await refreshPolicyConfigOnly();
+      if (action === "add") {
+        setPolicyEditorListInput((prev) => ({ ...prev, [listKey]: "" }));
+      }
+      setPolicyActionConfirmation(null);
+      showPolicyActionSuccess(action === "add" ? "added" : "deleted", listKey, value);
     } catch (err) {
-      setPolicyEditorError(safeError(err));
+      setPolicyActionConfirmation((prev) => (prev ? { ...prev, error: safeError(err) } : prev));
     } finally {
       setPendingKey("");
     }
@@ -1829,7 +1888,7 @@ export default function AdminPage() {
                           <div className="policy-rule-editor-head">
                             <div>
                               <h4>{selectedPolicyListLabel}</h4>
-                              <p>{selectedPolicyListEntries.length} active entries evaluated by the policy engine.</p>
+                              <p>{selectedPolicyListHelp}</p>
                             </div>
                           </div>
                           <div className="policy-list-add">
@@ -1838,7 +1897,7 @@ export default function AdminPage() {
                               onChange={(event) =>
                                 setPolicyEditorListInput((prev) => ({ ...prev, [selectedPolicyListKey]: event.target.value }))
                               }
-                              placeholder={`Add ${selectedPolicyListLabel.toLowerCase()} entry`}
+                              placeholder={POLICY_LIST_PLACEHOLDERS[selectedPolicyListKey]}
                             />
                             <button
                               type="button"
@@ -2420,6 +2479,110 @@ jumpcloud@JumpCloud ~ % _`}</pre>
               <p>{selectedPolicyEvent.reason || "No reason recorded."}</p>
             </div>
             {selectedPolicyEvent.hasHistory ? <div className="policy-event-history-note">This decision was evaluated with relevant conversation history.</div> : null}
+          </section>
+        </div>
+      ) : null}
+
+      {policyActionConfirmation ? (
+        <div
+          className="admin-modal-overlay policy-confirm-overlay"
+          onClick={() => pendingKey !== policyConfirmationPendingKey && setPolicyActionConfirmation(null)}
+        >
+          <section
+            className={`policy-confirm-modal ${policyActionConfirmation.action === "delete" ? "is-delete" : "is-add"}`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="policy-confirm-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="policy-confirm-icon" aria-hidden="true">
+              {policyActionConfirmation.action === "delete" ? (
+                <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" /></svg>
+              ) : (
+                <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+              )}
+            </div>
+            <span className="policy-confirm-kicker">Policy configuration</span>
+            <h3 id="policy-confirm-title">{policyActionConfirmation.action === "delete" ? "Delete this policy entry?" : "Add this policy entry?"}</h3>
+            <p>
+              {policyActionConfirmation.action === "delete"
+                ? "This entry will be permanently removed from"
+                : "This entry will be added to"}{" "}
+              <strong>{POLICY_LIST_META[policyActionConfirmation.listKey] || "Policy rules"}</strong>.
+            </p>
+            <div className="policy-confirm-value">{policyActionConfirmation.value}</div>
+            {policyActionConfirmation.error ? <div className="policy-confirm-error" role="alert">{policyActionConfirmation.error}</div> : null}
+            <div className="policy-confirm-actions">
+              <button type="button" className="btn-sm" onClick={() => setPolicyActionConfirmation(null)} disabled={pendingKey === policyConfirmationPendingKey}>Cancel</button>
+              <button
+                type="button"
+                className={`btn-sm policy-confirm-submit ${policyActionConfirmation.action === "delete" ? "is-delete" : "is-add"}`}
+                onClick={confirmPolicyAction}
+                disabled={pendingKey === policyConfirmationPendingKey}
+              >
+                {pendingKey === policyConfirmationPendingKey
+                  ? policyActionConfirmation.action === "delete" ? "Deleting..." : "Adding..."
+                  : policyActionConfirmation.action === "delete" ? "Delete entry" : "Add entry"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {policyEntryEditor ? (
+        <div className="admin-modal-overlay policy-entry-edit-overlay" onClick={() => setPolicyEntryEditor(null)}>
+          <form className="policy-entry-edit-modal" role="dialog" aria-modal="true" aria-labelledby="policy-entry-edit-title" onSubmit={savePolicyEntryEdit} onClick={(event) => event.stopPropagation()}>
+            <header className="policy-entry-edit-head">
+              <div>
+                <span>Policy configuration</span>
+                <h3 id="policy-entry-edit-title">Edit policy entry</h3>
+              </div>
+              <button type="button" className="policy-entry-edit-close" onClick={() => setPolicyEntryEditor(null)} aria-label="Close edit policy entry">×</button>
+            </header>
+
+            <div className="policy-entry-edit-body">
+              <div className="policy-entry-edit-context">
+                <span>Rule set</span>
+                <strong>{POLICY_LIST_META[policyEntryEditor.listKey] || "Policy rules"}</strong>
+              </div>
+              <label className="policy-entry-edit-field" htmlFor="policy-entry-edit-value">
+                <span>Word or phrase</span>
+                <input
+                  id="policy-entry-edit-value"
+                  autoFocus
+                  value={policyEntryEditor.value}
+                  onChange={(event) => setPolicyEntryEditor((prev) => ({ ...prev, value: event.target.value, error: "" }))}
+                  placeholder="Enter a word or phrase"
+                  aria-invalid={Boolean(policyEntryEditor.error)}
+                  aria-describedby="policy-entry-edit-help"
+                />
+              </label>
+              <p id="policy-entry-edit-help" className="policy-entry-edit-help">Use normal English words or phrases. Special pattern characters are not required.</p>
+              {policyEntryEditor.error ? <div className="policy-entry-edit-error" role="alert">{policyEntryEditor.error}</div> : null}
+            </div>
+
+            <footer className="policy-entry-edit-actions">
+              <button type="button" className="btn-sm" onClick={() => setPolicyEntryEditor(null)} disabled={pendingKey === `policy-edit-${policyEntryEditor.listKey}-${policyEntryEditor.index}`}>Cancel</button>
+              <button type="submit" className="btn-sm policy-entry-edit-save" disabled={pendingKey === `policy-edit-${policyEntryEditor.listKey}-${policyEntryEditor.index}`}>
+                {pendingKey === `policy-edit-${policyEntryEditor.listKey}-${policyEntryEditor.index}` ? "Saving..." : "Save changes"}
+              </button>
+            </footer>
+          </form>
+        </div>
+      ) : null}
+
+      {policyActionSuccess ? (
+        <div className="admin-modal-overlay policy-success-modal-overlay" onClick={() => setPolicyActionSuccess(null)}>
+          <section className="policy-success-modal" role="dialog" aria-modal="true" aria-labelledby="policy-success-modal-title" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="policy-success-modal-close" onClick={() => setPolicyActionSuccess(null)} aria-label="Close success message">×</button>
+            <div className="policy-success-modal-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="m5 12 4.2 4.2L19 6.5" /></svg>
+            </div>
+            <span className="policy-success-modal-kicker">Policy configuration</span>
+            <h3 id="policy-success-modal-title">{policyActionSuccess.title}</h3>
+            <p>The change is saved in <strong>{policyActionSuccess.listLabel}</strong> and applies to new prompts immediately.</p>
+            <div className="policy-success-modal-value">{policyActionSuccess.value}</div>
+            <button type="button" className="btn-sm policy-success-modal-done" onClick={() => setPolicyActionSuccess(null)}>Done</button>
           </section>
         </div>
       ) : null}

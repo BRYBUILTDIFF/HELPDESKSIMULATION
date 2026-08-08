@@ -533,7 +533,7 @@ async function getPolicySummaryAdmin(_req, res, next) {
 
 async function getPolicyConfigAdmin(_req, res, next) {
   try {
-    const config = getPolicyConfig();
+    const config = await getPolicyConfig();
     return res.status(200).json({ config });
   } catch (err) {
     return next(err);
@@ -542,7 +542,7 @@ async function getPolicyConfigAdmin(_req, res, next) {
 
 async function replacePolicyConfigAdmin(req, res, next) {
   try {
-    const config = replacePolicyConfig(req.body || {});
+    const config = await replacePolicyConfig(req.body || {}, req.user?.id);
     return res.status(200).json({ config });
   } catch (err) {
     return next(err);
@@ -553,7 +553,7 @@ async function addPolicyListEntryAdmin(req, res, next) {
   try {
     const listName = String(req.params.listName || "");
     const value = String(req.body?.value || "");
-    const config = addPolicyListEntry(listName, value);
+    const config = await addPolicyListEntry(listName, value, req.user?.id);
     if (!config) {
       return res.status(400).json({ message: "Invalid list or entry value" });
     }
@@ -568,7 +568,7 @@ async function updatePolicyListEntryAdmin(req, res, next) {
     const listName = String(req.params.listName || "");
     const index = Number(req.params.index);
     const value = String(req.body?.value || "");
-    const config = updatePolicyListEntry(listName, index, value);
+    const config = await updatePolicyListEntry(listName, index, value, req.user?.id);
     if (!config) {
       return res.status(400).json({ message: "Invalid list, index, or entry value" });
     }
@@ -582,7 +582,7 @@ async function deletePolicyListEntryAdmin(req, res, next) {
   try {
     const listName = String(req.params.listName || "");
     const index = Number(req.params.index);
-    const config = deletePolicyListEntry(listName, index);
+    const config = await deletePolicyListEntry(listName, index, req.user?.id);
     if (!config) {
       return res.status(400).json({ message: "Invalid list or index" });
     }
@@ -592,9 +592,9 @@ async function deletePolicyListEntryAdmin(req, res, next) {
   }
 }
 
-async function resetPolicyConfigAdmin(_req, res, next) {
+async function resetPolicyConfigAdmin(req, res, next) {
   try {
-    const config = resetPolicyConfig();
+    const config = await resetPolicyConfig(req.user?.id);
     return res.status(200).json({ config });
   } catch (err) {
     return next(err);

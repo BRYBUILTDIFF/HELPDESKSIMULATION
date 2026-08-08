@@ -1934,6 +1934,13 @@
   color: var(--text3);
 }
 
+.composer-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 28px; margin-top: 7px; padding: 0 4px; }
+.composer-limit-label { color: var(--text3); font: 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.composer-character-count { flex: 0 0 auto; padding: 5px 9px; border: 1px solid var(--border); border-radius: 999px; color: var(--text2); background: var(--bg2); font: 11px var(--mono); line-height: 1.2; box-shadow: 0 3px 10px rgba(0, 0, 0, .08); }
+.composer-character-count strong { color: var(--text); font-size: 12px; }
+.composer-character-count.is-near-limit { color: #fbbf24; border-color: rgba(245, 158, 11, .55); background: rgba(245, 158, 11, .1); }
+.composer-character-count.is-near-limit strong { color: #fbbf24; }
+
 .welcome-related-label {
   margin: 12px 0 10px;
   font-size: 11px;
@@ -2057,7 +2064,9 @@
   flex-direction: column;
   align-items: flex-end;
   gap: 7px;
-  max-width: min(440px, 100%);
+  width: min(680px, 78%);
+  max-width: calc(100% - 46px);
+  min-width: 0;
 }
 
 .user-bubble-wrap.is-editing {
@@ -2113,17 +2122,24 @@
 }
 
 .user-bubble {
+  width: fit-content;
   max-width: 100%;
+  min-width: 0;
   padding: 15px 18px;
   background: linear-gradient(135deg, #006cff, #009dff);
   color: #fff;
   border-radius: 18px 18px 4px 18px;
   font-size: 14px;
   line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   box-shadow: 0 12px 30px rgba(0, 108, 255, 0.25);
 }
 
 .user-bubble-block {
+  width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -2918,8 +2934,8 @@
 }
 
 .input-hint {
-  margin-top: 7px;
-  text-align: center;
+  margin: 0;
+  text-align: left;
   font-size: 10px;
   color: var(--text3);
   font-family: var(--mono);
@@ -5274,7 +5290,7 @@
 .simulation-walkthrough { position: fixed; inset: 0; z-index: 10060; pointer-events: auto; }
 .simulation-walkthrough-backdrop { position: absolute; inset: 0; background: rgba(15, 23, 42, .28); }
 .simulation-walkthrough-spotlight { position: fixed; z-index: 1; pointer-events: none; border: 2px solid #0ea5e9; border-radius: 12px; box-shadow: 0 0 0 6px rgba(14,165,233,.14), 0 0 20px rgba(14,165,233,.45); }
-.simulation-walkthrough-callout { position: fixed; z-index: 2; width: min(310px, calc(100vw - 36px)); padding: 17px 18px; border: 1px solid #0ea5e9; border-radius: 12px; color: #0f172a; background: #ffffff; box-shadow: 0 12px 30px rgba(15,23,42,.2); }
+.simulation-walkthrough-callout { position: fixed; z-index: 2; width: min(370px, calc(100vw - 36px)); padding: 17px 18px; border: 1px solid #0ea5e9; border-radius: 12px; color: #0f172a; background: #ffffff; box-shadow: 0 12px 30px rgba(15,23,42,.2); }
 .simulation-walkthrough-callout::before { content: ""; position: absolute; top: -8px; left: 25px; width: 14px; height: 14px; border-top: 1px solid #0ea5e9; border-left: 1px solid #0ea5e9; background: #ffffff; transform: rotate(45deg); }
 .simulation-walkthrough-kicker { color: #38bdf8; font: 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
 .simulation-walkthrough-callout h2 { margin: 8px 0 6px; font-size: 16px; }
@@ -5283,9 +5299,11 @@
 .simulation-walkthrough-progress i { width: 28px; height: 3px; border-radius: 3px; background: #334155; }
 .simulation-walkthrough-progress i.active { background: #38bdf8; }
 .simulation-walkthrough-actions { display: flex; justify-content: space-between; gap: 10px; }
-.simulation-walkthrough-actions .btn-sm { min-width: 110px; margin: 0; }
+.simulation-walkthrough-actions .btn-sm { min-width: 0; margin: 0; padding-inline: 12px; }
+.simulation-walkthrough-actions .simulation-walkthrough-skip { margin-right: auto; color: #475569; border-color: #cbd5e1; background: #f8fafc; }
+.simulation-walkthrough-actions .simulation-walkthrough-skip:hover { color: #0f172a; border-color: #94a3b8; background: #f1f5f9; }
 .simulation-walkthrough-actions .is-primary { color: #03121c; border-color: #38bdf8; background: #38bdf8; }
-@media (max-width: 620px) { .simulation-walkthrough-callout { padding: 14px; } }
+@media (max-width: 620px) { .simulation-walkthrough-callout { padding: 14px; } .simulation-walkthrough-actions { gap: 7px; } .simulation-walkthrough-actions .btn-sm { padding-inline: 9px; font-size: 10px; } }
 
 /* Phone-specific layout guardrails. These complement the tablet breakpoint
    above and keep interactive controls reachable with the on-screen keyboard. */
@@ -5370,7 +5388,7 @@
   .user-bubble-wrap,
   .user-bubble-wrap.is-editing {
     max-width: calc(100vw - 56px);
-    width: auto;
+    width: min(100%, calc(100vw - 56px));
   }
 
   .input-box textarea,
@@ -5379,6 +5397,10 @@
     padding: 13px 56px 13px 15px;
     font-size: 16px;
   }
+
+  .composer-meta { min-height: 30px; margin-top: 6px; padding: 0 2px; }
+  .composer-character-count { margin-left: auto; padding: 6px 9px; font-size: 10px; }
+  .composer-character-count strong { font-size: 11px; }
 
   .quick-card {
     min-height: 76px;

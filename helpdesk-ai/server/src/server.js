@@ -14,6 +14,7 @@ const sessionRoutes = require("./routes/session.routes");
 const simulationRoutes = require("./routes/simulation.routes");
 const simulationSessionRoutes = require("./routes/simulationSession.routes");
 const { cleanupExpiredWindowsSimulationSessions } = require("./services/windowsSimulationService");
+const { initializePolicyConfig } = require("./store/policyConfigStore");
 
 const app = express();
 const allowedOrigins = [
@@ -122,6 +123,7 @@ app.use((err, _req, res, _next) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  initializePolicyConfig().catch((error) => console.error("Policy configuration initialization failed", error?.message));
   cleanupExpiredWindowsSimulationSessions().catch((error) => console.error("Simulation cleanup startup pass failed", error?.message));
   setInterval(() => {
     cleanupExpiredWindowsSimulationSessions().catch((error) => console.error("Simulation cleanup pass failed", error?.message));

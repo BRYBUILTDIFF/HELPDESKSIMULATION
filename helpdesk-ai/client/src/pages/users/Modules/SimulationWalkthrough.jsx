@@ -41,12 +41,13 @@ export default function SimulationWalkthrough({ type = "terminal", onDone }) {
   const walkthrough = <div className="simulation-walkthrough" role="dialog" aria-modal="true" aria-label="Simulation walkthrough">
     <div className="simulation-walkthrough-backdrop" />
     {target ? <div className="simulation-walkthrough-spotlight" style={{ top: target.top - 8, left: target.left - 8, width: target.width + 16, height: target.height + 16 }} /> : null}
-    <div className="simulation-walkthrough-callout" style={target ? { top: Math.min(window.innerHeight - 190, Math.max(18, target.bottom + 18)), left: Math.min(window.innerWidth - 330, Math.max(18, target.left)) } : undefined}>
+    <div className="simulation-walkthrough-callout" style={target ? { top: Math.min(window.innerHeight - 190, Math.max(18, target.bottom + 18)), left: Math.max(18, Math.min(window.innerWidth - 388, target.left)) } : undefined}>
       <div className="simulation-walkthrough-kicker">Guide · {step + 1} of {items.length}</div>
       <h2>{items[step][1]}</h2>
       <p>{items[step][2]}</p>
       <div className="simulation-walkthrough-progress">{items.map((_, index) => <i key={index} className={index <= step ? "active" : ""} />)}</div>
       <div className="simulation-walkthrough-actions">
+        <button type="button" className="btn-sm simulation-walkthrough-skip" onClick={() => onDone?.()}>Skip all</button>
         <button type="button" className="btn-sm" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step === 0}>← Previous</button>
         <button type="button" className="btn-sm is-primary" onClick={() => last ? onDone?.() : setStep((current) => current + 1)}>{last ? "Start Simulation" : "Next →"}</button>
       </div>

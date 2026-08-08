@@ -23,8 +23,16 @@ const {
 } = require("../controllers/adminController");
 const { verifyToken, requireAdmin } = require("../middleware/authMiddleware");
 const validateRequest = require("../middleware/validateRequest");
+const { isPlainLanguagePolicyEntry } = require("../store/policyConfigStore");
 
 const router = express.Router();
+
+function validatePlainLanguageRule(value, { req }) {
+  if (!isPlainLanguagePolicyEntry(String(req.params.listName || ""), value)) {
+    throw new Error("Use plain English without regular-expression symbols such as \\b, ^, |, parentheses, or *");
+  }
+  return true;
+}
 
 router.use(verifyToken, requireAdmin);
 
@@ -78,13 +86,14 @@ router.get("/policy/events", getPolicyEvents);
 router.get("/policy/summary", getPolicySummaryAdmin);
 router.get("/policy/config", getPolicyConfigAdmin);
 router.put("/policy/config", replacePolicyConfigAdmin);
+router.post("/policy/config/reset", resetPolicyConfigAdmin);
 router.post(
   "/policy/config/:listName",
   [
     param("listName")
       .isIn(["greetingPatterns", "inScopeKeywords", "outOfScopeKeywords", "inScopeIntentPatterns"])
       .withMessage("Invalid policy list"),
-    body("value").isString().trim().notEmpty().withMessage("value is required")
+    body("value").isString().trim().notEmpty().withMessage("value is required").custom(validatePlainLanguageRule)
   ],
   validateRequest,
   addPolicyListEntryAdmin
@@ -96,7 +105,7 @@ router.patch(
       .isIn(["greetingPatterns", "inScopeKeywords", "outOfScopeKeywords", "inScopeIntentPatterns"])
       .withMessage("Invalid policy list"),
     param("index").isInt({ min: 0 }).withMessage("index must be a valid number"),
-    body("value").isString().trim().notEmpty().withMessage("value is required")
+    body("value").isString().trim().notEmpty().withMessage("value is required").custom(validatePlainLanguageRule)
   ],
   validateRequest,
   updatePolicyListEntryAdmin
@@ -112,7 +121,6 @@ router.delete(
   validateRequest,
   deletePolicyListEntryAdmin
 );
-router.post("/policy/config/reset", resetPolicyConfigAdmin);
 router.get("/simulation-modules", getSimulationModules);
 router.get("/simulation-modules/prompt-insights", getSimulationPromptInsights);
 router.post(

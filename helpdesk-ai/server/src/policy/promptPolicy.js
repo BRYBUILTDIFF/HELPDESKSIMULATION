@@ -270,7 +270,7 @@ async function classifyWithDeepSeek(message, history, policy) {
  * @returns {Promise<{allowed: boolean, code: string, reason: string, userMessage?: string, directReply?: string}>}
  */
 async function evaluatePromptPolicy(message, history = [], context = {}) {
-  const policy = getPolicyRuntimeConfig();
+  const policy = await getPolicyRuntimeConfig();
   const input = String(message || "").trim();
   const safeHistory = sanitizeHistory(history);
 

@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const prisma = require("../prisma");
 
 const POLICY_LIST_KEYS = [
   "greetingPatterns",
@@ -21,15 +22,15 @@ const POLICY_MESSAGES_KEYS = [
 
 const DEFAULT_POLICY_CONFIG = {
   greetingPatterns: [
-    "^hi\\b",
-    "^hello\\b",
-    "^hey\\b",
-    "^good morning\\b",
-    "^good afternoon\\b",
-    "^good evening\\b",
-    "^yo\\b",
-    "^hi there\\b",
-    "^hello there\\b"
+    "hi",
+    "hello",
+    "hey",
+    "good morning",
+    "good afternoon",
+    "good evening",
+    "yo",
+    "hi there",
+    "hello there"
   ],
   inScopeKeywords: [
     "computer", "laptop", "desktop", "pc", "workstation",
@@ -73,13 +74,20 @@ const DEFAULT_POLICY_CONFIG = {
     "incident", "ticket"
   ],
   inScopeIntentPatterns: [
-    "\\b(not working|won't work|doesn't work|stopped working)\\b",
-    "\\b(can't connect|cannot connect|unable to connect|connection (failed|dropped|lost))\\b",
-    "\\b(error|failed|failure|fault|malfunction|corrupted|crash(ed|ing)?)\\b",
-    "\\b(how (do i|to) (fix|reset|configure|set up|setup|install|uninstall|update|enable|disable|unlock|recover))\\b",
-    "\\b(steps to (fix|resolve|troubleshoot|reset|configure))\\b",
-    "\\b(reset|unlock|recover|configure|setup|set up)\\b.*\\b(password|account|network|device|printer|computer|laptop|email|vpn|wifi)\\b",
-    "\\b(troubleshoot|diagnose|fix|resolve)\\b.*\\b(issue|problem|error|fault)\\b"
+    "not working", "won't work", "doesn't work", "stopped working",
+    "can't connect", "cannot connect", "unable to connect",
+    "connection failed", "connection dropped", "connection lost",
+    "error", "failed", "failure", "fault", "malfunction", "corrupted",
+    "crash", "crashed", "crashing",
+    "how do i fix", "how to fix", "how do i reset", "how to reset",
+    "how do i configure", "how to configure", "how do i set up", "how to set up",
+    "how do i install", "how to install", "how do i uninstall", "how to uninstall",
+    "how do i update", "how to update", "how do i enable", "how to enable",
+    "how do i disable", "how to disable", "how do i unlock", "how to unlock",
+    "how do i recover", "how to recover",
+    "steps to fix", "steps to resolve", "steps to troubleshoot", "steps to reset", "steps to configure",
+    "reset password", "unlock account", "recover account", "configure network", "set up printer",
+    "troubleshoot issue", "diagnose problem", "fix error", "resolve fault"
   ],
   outOfScopeKeywords: [
     "dating", "relationship", "boyfriend", "girlfriend", "marriage",
@@ -124,17 +132,29 @@ const DEFAULT_POLICY_CONFIG = {
 
 const DATA_DIR = path.resolve(__dirname, "../../data");
 const POLICY_CONFIG_PATH = path.join(DATA_DIR, "policy-config.json");
+const POLICY_RULE_TYPES = {
+  greetingPatterns: "GREETING_PATTERN",
+  inScopeKeywords: "IN_SCOPE_KEYWORD",
+  outOfScopeKeywords: "OUT_OF_SCOPE_KEYWORD",
+  inScopeIntentPatterns: "IN_SCOPE_INTENT"
+};
+const PLAIN_LANGUAGE_LISTS = new Set(["greetingPatterns", "inScopeIntentPatterns"]);
+const REGEX_CONTROL_CHARACTER_PATTERN = /[\\^$|()[\]{}*?]/;
+const LEGACY_INTENT_PATTERNS = {
+  "\\b(not working|won't work|doesn't work|stopped working)\\b": ["not working", "won't work", "doesn't work", "stopped working"],
+  "\\b(can't connect|cannot connect|unable to connect|connection (failed|dropped|lost))\\b": ["can't connect", "cannot connect", "unable to connect", "connection failed", "connection dropped", "connection lost"],
+  "\\b(error|failed|failure|fault|malfunction|corrupted|crash(ed|ing)?)\\b": ["error", "failed", "failure", "fault", "malfunction", "corrupted", "crash", "crashed", "crashing"],
+  "\\b(how (do i|to) (fix|reset|configure|set up|setup|install|uninstall|update|enable|disable|unlock|recover))\\b": DEFAULT_POLICY_CONFIG.inScopeIntentPatterns.slice(19, 41),
+  "\\b(steps to (fix|resolve|troubleshoot|reset|configure))\\b": ["steps to fix", "steps to resolve", "steps to troubleshoot", "steps to reset", "steps to configure"],
+  "\\b(reset|unlock|recover|configure|setup|set up)\\b.*\\b(password|account|network|device|printer|computer|laptop|email|vpn|wifi)\\b": ["reset password", "unlock account", "recover account", "configure network", "set up printer"],
+  "\\b(troubleshoot|diagnose|fix|resolve)\\b.*\\b(issue|problem|error|fault)\\b": ["troubleshoot issue", "diagnose problem", "fix error", "resolve fault"]
+};
 
-let cachedConfig = clone(DEFAULT_POLICY_CONFIG);
+let cachedConfig = null;
+let initializationPromise = null;
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
-}
-
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
 }
 
 function normalizeStringArray(input, { lower = false } = {}) {
@@ -148,6 +168,22 @@ function normalizeStringArray(input, { lower = false } = {}) {
     .map((entry) => (lower ? entry.toLowerCase() : entry));
 
   return Array.from(new Set(normalized));
+}
+
+function isPlainLanguagePolicyEntry(listName, value) {
+  return !PLAIN_LANGUAGE_LISTS.has(listName) || !REGEX_CONTROL_CHARACTER_PATTERN.test(String(value || ""));
+}
+
+function upgradeLegacyPolicyConfig(config) {
+  const greetingPatterns = Array.isArray(config.greetingPatterns) ? config.greetingPatterns : DEFAULT_POLICY_CONFIG.greetingPatterns;
+  const inScopeIntentPatterns = Array.isArray(config.inScopeIntentPatterns) ? config.inScopeIntentPatterns : DEFAULT_POLICY_CONFIG.inScopeIntentPatterns;
+  return {
+    ...config,
+    greetingPatterns: greetingPatterns.map((entry) =>
+      String(entry).replace(/^\^/, "").replace(/\\b$/, "")
+    ),
+    inScopeIntentPatterns: Array.from(new Set(inScopeIntentPatterns.flatMap((entry) => LEGACY_INTENT_PATTERNS[entry] || [entry])))
+  };
 }
 
 function sanitizeMessages(messages) {
@@ -168,50 +204,103 @@ function sanitizePolicyConfig(rawConfig) {
   const source = rawConfig && typeof rawConfig === "object" ? rawConfig : {};
 
   return {
-    greetingPatterns: normalizeStringArray(source.greetingPatterns),
+    greetingPatterns: normalizeStringArray(source.greetingPatterns).filter((value) => isPlainLanguagePolicyEntry("greetingPatterns", value)),
     inScopeKeywords: normalizeStringArray(source.inScopeKeywords, { lower: true }),
     outOfScopeKeywords: normalizeStringArray(source.outOfScopeKeywords, { lower: true }),
-    inScopeIntentPatterns: normalizeStringArray(source.inScopeIntentPatterns),
+    inScopeIntentPatterns: normalizeStringArray(source.inScopeIntentPatterns).filter((value) => isPlainLanguagePolicyEntry("inScopeIntentPatterns", value)),
     messages: sanitizeMessages(source.messages)
   };
 }
 
-function saveConfigToDisk() {
-  ensureDataDir();
-  fs.writeFileSync(POLICY_CONFIG_PATH, JSON.stringify(cachedConfig, null, 2), "utf8");
-}
-
-function loadConfigFromDisk() {
+function loadLegacyConfig() {
   try {
     if (!fs.existsSync(POLICY_CONFIG_PATH)) {
-      cachedConfig = clone(DEFAULT_POLICY_CONFIG);
-      saveConfigToDisk();
-      return;
+      return clone(DEFAULT_POLICY_CONFIG);
     }
 
     const raw = fs.readFileSync(POLICY_CONFIG_PATH, "utf8");
     const parsed = JSON.parse(raw);
-    cachedConfig = sanitizePolicyConfig({
+    return sanitizePolicyConfig(upgradeLegacyPolicyConfig({
       ...DEFAULT_POLICY_CONFIG,
       ...parsed,
       messages: { ...DEFAULT_POLICY_CONFIG.messages, ...(parsed?.messages || {}) }
-    });
+    }));
   } catch (_err) {
-    cachedConfig = clone(DEFAULT_POLICY_CONFIG);
-    saveConfigToDisk();
+    return clone(DEFAULT_POLICY_CONFIG);
   }
 }
 
-function toRegExpList(patterns) {
-  return patterns
-    .map((pattern) => {
-      try {
-        return new RegExp(pattern, "i");
-      } catch (_err) {
-        return null;
-      }
-    })
-    .filter(Boolean);
+function ruleRowsForConfig(config, createdById = null) {
+  return POLICY_LIST_KEYS.flatMap((listName) =>
+    config[listName].map((value, position) => ({
+      type: POLICY_RULE_TYPES[listName],
+      value,
+      position,
+      enabled: true,
+      createdById
+    }))
+  );
+}
+
+function configFromRows(configRow, rules) {
+  const config = {
+    greetingPatterns: [],
+    inScopeKeywords: [],
+    outOfScopeKeywords: [],
+    inScopeIntentPatterns: [],
+    messages: sanitizeMessages(configRow?.messages)
+  };
+
+  for (const listName of POLICY_LIST_KEYS) {
+    config[listName] = rules
+      .filter((rule) => rule.enabled && rule.type === POLICY_RULE_TYPES[listName])
+      .sort((a, b) => a.position - b.position || a.createdAt - b.createdAt)
+      .map((rule) => rule.value);
+  }
+
+  return sanitizePolicyConfig(config);
+}
+
+async function readConfigFromDb(client = prisma) {
+  const [configRow, rules] = await Promise.all([
+    client.policyConfig.findUnique({ where: { id: 1 } }),
+    client.policyRule.findMany({ orderBy: [{ position: "asc" }, { createdAt: "asc" }] })
+  ]);
+  return configFromRows(configRow, rules);
+}
+
+async function initializePolicyConfig() {
+  if (cachedConfig) {
+    return clone(cachedConfig);
+  }
+  if (initializationPromise) {
+    return initializationPromise;
+  }
+
+  initializationPromise = (async () => {
+    const existing = await prisma.policyConfig.findUnique({ where: { id: 1 } });
+    if (!existing) {
+      const initialConfig = loadLegacyConfig();
+      await prisma.$transaction(async (tx) => {
+        await tx.policyConfig.upsert({
+          where: { id: 1 },
+          update: {},
+          create: { id: 1, messages: initialConfig.messages }
+        });
+        await tx.policyRule.createMany({
+          data: ruleRowsForConfig(initialConfig),
+          skipDuplicates: true
+        });
+      });
+    }
+
+    cachedConfig = await readConfigFromDb();
+    return clone(cachedConfig);
+  })().finally(() => {
+    initializationPromise = null;
+  });
+
+  return initializationPromise;
 }
 
 function toKeywordRegExpList(keywords) {
@@ -230,33 +319,53 @@ function toKeywordRegExpList(keywords) {
     .filter(Boolean);
 }
 
-function getPolicyConfig() {
-  return clone(cachedConfig);
+async function getPolicyConfig() {
+  try {
+    await initializePolicyConfig();
+    cachedConfig = await readConfigFromDb();
+    return clone(cachedConfig);
+  } catch (error) {
+    console.error("[PolicyConfig] Database unavailable; using read-only legacy configuration.", error?.message || error);
+    return loadLegacyConfig();
+  }
 }
 
-function getPolicyRuntimeConfig() {
+async function getPolicyRuntimeConfig() {
+  const config = await getPolicyConfig();
   return {
-    ...clone(cachedConfig),
-    greetingPatternRegex: toRegExpList(cachedConfig.greetingPatterns),
-    inScopeIntentRegex: toRegExpList(cachedConfig.inScopeIntentPatterns),
-    inScopeKeywordRegex: toKeywordRegExpList(cachedConfig.inScopeKeywords),
-    outOfScopeKeywordRegex: toKeywordRegExpList(cachedConfig.outOfScopeKeywords)
+    ...clone(config),
+    greetingPatternRegex: toKeywordRegExpList(config.greetingPatterns),
+    inScopeIntentRegex: toKeywordRegExpList(config.inScopeIntentPatterns),
+    inScopeKeywordRegex: toKeywordRegExpList(config.inScopeKeywords),
+    outOfScopeKeywordRegex: toKeywordRegExpList(config.outOfScopeKeywords)
   };
 }
 
-function replacePolicyConfig(nextConfig) {
-  cachedConfig = sanitizePolicyConfig(nextConfig);
-  saveConfigToDisk();
-  return getPolicyConfig();
+async function replacePolicyConfig(nextConfig, updatedById = null) {
+  const next = sanitizePolicyConfig(nextConfig);
+  const ruleRows = ruleRowsForConfig(next, updatedById);
+  await prisma.$transaction(async (tx) => {
+    await tx.policyRule.deleteMany();
+    await tx.policyConfig.upsert({
+      where: { id: 1 },
+      update: { messages: next.messages, version: { increment: 1 }, updatedById },
+      create: { id: 1, messages: next.messages, updatedById }
+    });
+    if (ruleRows.length > 0) {
+      await tx.policyRule.createMany({ data: ruleRows });
+    }
+  });
+  cachedConfig = next;
+  return clone(cachedConfig);
 }
 
-function addPolicyListEntry(listName, value) {
+async function addPolicyListEntry(listName, value, updatedById = null) {
   if (!POLICY_LIST_KEYS.includes(listName)) {
     return null;
   }
 
   const normalized = String(value || "").trim();
-  if (!normalized) {
+  if (!normalized || !isPlainLanguagePolicyEntry(listName, normalized)) {
     return null;
   }
 
@@ -265,65 +374,99 @@ function addPolicyListEntry(listName, value) {
       ? normalized.toLowerCase()
       : normalized;
 
-  if (!cachedConfig[listName].includes(storedValue)) {
-    cachedConfig[listName].push(storedValue);
-    saveConfigToDisk();
+  const current = await getPolicyConfig();
+  if (current[listName].includes(storedValue)) {
+    return current;
   }
 
-  return getPolicyConfig();
+  const type = POLICY_RULE_TYPES[listName];
+  await prisma.$transaction(async (tx) => {
+    const aggregate = await tx.policyRule.aggregate({ where: { type }, _max: { position: true } });
+    await tx.policyRule.create({
+      data: {
+        type,
+        value: storedValue,
+        position: (aggregate._max.position ?? -1) + 1,
+        createdById: updatedById
+      }
+    });
+    await tx.policyConfig.update({ where: { id: 1 }, data: { version: { increment: 1 }, updatedById } });
+  });
+  cachedConfig = await readConfigFromDb();
+  return clone(cachedConfig);
 }
 
-function updatePolicyListEntry(listName, index, value) {
+async function updatePolicyListEntry(listName, index, value, updatedById = null) {
   if (!POLICY_LIST_KEYS.includes(listName)) {
     return null;
   }
 
   const idx = Number(index);
-  if (!Number.isInteger(idx) || idx < 0 || idx >= cachedConfig[listName].length) {
+  if (!Number.isInteger(idx) || idx < 0) {
     return null;
   }
 
   const normalized = String(value || "").trim();
-  if (!normalized) {
+  if (!normalized || !isPlainLanguagePolicyEntry(listName, normalized)) {
     return null;
   }
 
-  cachedConfig[listName][idx] =
+  await initializePolicyConfig();
+  const storedValue =
     listName === "inScopeKeywords" || listName === "outOfScopeKeywords"
       ? normalized.toLowerCase()
       : normalized;
+  const type = POLICY_RULE_TYPES[listName];
+  const rules = await prisma.policyRule.findMany({ where: { type }, orderBy: [{ position: "asc" }, { createdAt: "asc" }] });
+  const target = rules[idx];
+  if (!target) return null;
 
-  cachedConfig[listName] = Array.from(new Set(cachedConfig[listName]));
-  saveConfigToDisk();
-  return getPolicyConfig();
+  await prisma.$transaction(async (tx) => {
+    const duplicate = await tx.policyRule.findFirst({ where: { type, value: storedValue, id: { not: target.id } } });
+    if (duplicate) {
+      await tx.policyRule.delete({ where: { id: target.id } });
+    } else {
+      await tx.policyRule.update({ where: { id: target.id }, data: { value: storedValue } });
+    }
+    await tx.policyConfig.update({ where: { id: 1 }, data: { version: { increment: 1 }, updatedById } });
+  });
+  cachedConfig = await readConfigFromDb();
+  return clone(cachedConfig);
 }
 
-function deletePolicyListEntry(listName, index) {
+async function deletePolicyListEntry(listName, index, updatedById = null) {
   if (!POLICY_LIST_KEYS.includes(listName)) {
     return null;
   }
 
   const idx = Number(index);
-  if (!Number.isInteger(idx) || idx < 0 || idx >= cachedConfig[listName].length) {
+  if (!Number.isInteger(idx) || idx < 0) {
     return null;
   }
 
-  cachedConfig[listName].splice(idx, 1);
-  saveConfigToDisk();
-  return getPolicyConfig();
+  await initializePolicyConfig();
+  const type = POLICY_RULE_TYPES[listName];
+  const rules = await prisma.policyRule.findMany({ where: { type }, orderBy: [{ position: "asc" }, { createdAt: "asc" }] });
+  const target = rules[idx];
+  if (!target) return null;
+
+  await prisma.$transaction([
+    prisma.policyRule.delete({ where: { id: target.id } }),
+    prisma.policyConfig.update({ where: { id: 1 }, data: { version: { increment: 1 }, updatedById } })
+  ]);
+  cachedConfig = await readConfigFromDb();
+  return clone(cachedConfig);
 }
 
-function resetPolicyConfig() {
-  cachedConfig = clone(DEFAULT_POLICY_CONFIG);
-  saveConfigToDisk();
-  return getPolicyConfig();
+async function resetPolicyConfig(updatedById = null) {
+  return replacePolicyConfig(DEFAULT_POLICY_CONFIG, updatedById);
 }
-
-loadConfigFromDisk();
 
 module.exports = {
   POLICY_LIST_KEYS,
   POLICY_MESSAGES_KEYS,
+  isPlainLanguagePolicyEntry,
+  initializePolicyConfig,
   getPolicyConfig,
   getPolicyRuntimeConfig,
   replacePolicyConfig,

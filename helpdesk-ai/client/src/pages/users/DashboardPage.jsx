@@ -9,6 +9,8 @@ import helpdeskLogo from "../../IMG/HELPDESKAI.png";
 import { simulations } from "./helpdeskData";
 import "./dashboard.css";
 
+const CHAT_CHARACTER_LIMIT = 4000;
+
 const QUESTION_BANK = [
   {
     label: "Network",
@@ -4148,6 +4150,8 @@ export default function DashboardPage() {
                       <textarea
                         ref={textareaRef}
                         value={input}
+                        maxLength={CHAT_CHARACTER_LIMIT}
+                        aria-describedby="welcome-chat-character-count"
                         onChange={(e) => {
                           setInput(e.target.value);
                           autoResize();
@@ -4169,6 +4173,16 @@ export default function DashboardPage() {
                       >
                         ↑
                       </button>
+                    </div>
+                    <div className="composer-meta">
+                      <span className="composer-limit-label">Message length</span>
+                      <span
+                        id="welcome-chat-character-count"
+                        className={`composer-character-count ${input.length >= CHAT_CHARACTER_LIMIT * 0.9 ? "is-near-limit" : ""}`}
+                        aria-live="polite"
+                      >
+                        <strong>{input.length.toLocaleString()}</strong> / {CHAT_CHARACTER_LIMIT.toLocaleString()} characters
+                      </span>
                     </div>
                   </div>
                   {!input.trim() && aiSuggestedTicketsLoading ? (
@@ -4243,6 +4257,8 @@ export default function DashboardPage() {
                   <textarea
                     ref={textareaRef}
                     value={input}
+                    maxLength={CHAT_CHARACTER_LIMIT}
+                    aria-describedby="chat-character-count"
                     onChange={(e) => {
                       setInput(e.target.value);
                       autoResize();
@@ -4265,7 +4281,16 @@ export default function DashboardPage() {
                     ↑
                   </button>
                 </div>
-                <div className="input-hint">Press Enter to send. Shift+Enter for newline.</div>
+                <div className="composer-meta">
+                  <span className="input-hint">Press Enter to send. Shift+Enter for newline.</span>
+                  <span
+                    id="chat-character-count"
+                    className={`composer-character-count ${input.length >= CHAT_CHARACTER_LIMIT * 0.9 ? "is-near-limit" : ""}`}
+                    aria-live="polite"
+                  >
+                    <strong>{input.length.toLocaleString()}</strong> / {CHAT_CHARACTER_LIMIT.toLocaleString()} characters
+                  </span>
+                </div>
               </div>
             </div>
           ) : null}
