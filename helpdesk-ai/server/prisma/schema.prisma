@@ -20,6 +20,7 @@ model User {
   refreshTokens RefreshToken[]
   sessionState  UserSessionState?
   policyEvents  PolicyEvent[]
+  policyConversations PolicyConversation[]
   simulationSessions SimulationSession[]
   simulationCompletions SimulationCompletion[]
 }
@@ -40,6 +41,20 @@ model UserSessionState {
   sessions  Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model PolicyConversation {
+  id        String   @id @default(cuid())
+  userId    Int
+  sessionId String
+  scope     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sessionId])
+  @@index([userId, updatedAt])
 }
 
 model SimulationModule {

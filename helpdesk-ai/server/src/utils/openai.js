@@ -2,6 +2,8 @@ const OpenAI = require("openai");
 
 let client = null;
 let clientSignature = "";
+let moderationClient = null;
+let moderationClientKey = "";
 
 function getAIProvider() {
   return (process.env.AI_PROVIDER || "openai").toLowerCase();
@@ -53,8 +55,21 @@ function getOpenAIClient() {
   return client;
 }
 
+function getOpenAIModerationClient() {
+  const provider = getAIProvider();
+  const apiKey = process.env.OPENAI_API_KEY || (provider === "openai" ? process.env.AI_API_KEY || "" : "");
+  if (!apiKey) return null;
+
+  if (!moderationClient || moderationClientKey !== apiKey.slice(0, 8)) {
+    moderationClient = new OpenAI({ apiKey });
+    moderationClientKey = apiKey.slice(0, 8);
+  }
+  return moderationClient;
+}
+
 module.exports = {
   getOpenAIClient,
+  getOpenAIModerationClient,
   getAIProvider,
   getDefaultModel
 };

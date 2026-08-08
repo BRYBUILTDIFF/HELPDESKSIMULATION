@@ -44,7 +44,8 @@ Backend filtering for insights:
   - `blocked === false`
   - `code` is in `["ALLOWED", "ALLOWED_RULE_MATCH"]`
   - message is non-empty
-- Prompts are normalized and grouped by repeated pattern.
+- Prompts are normalized and grouped by a conservative intent signature. Equivalent wording such as "I cannot connect to Wi-Fi" and "My Wi-Fi will not connect" is counted together when the support category, simulation surface, and issue terms match.
+- The matcher deliberately keeps different issues separate; for example, VPN connectivity and Wi-Fi connectivity do not become one suggestion merely because both are network problems.
 - Prompts outside simulation scope are excluded by alignment checks.
 
 This is why out-of-scope concerns like `how to cook adobo` no longer appear in suggestions.

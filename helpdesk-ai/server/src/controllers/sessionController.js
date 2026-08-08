@@ -1,4 +1,5 @@
 const prisma = require("../prisma");
+const { removeMissingConversationScopes } = require("../store/policyConversationStore");
 
 function normalizeSessions(raw) {
   if (!Array.isArray(raw)) {
@@ -36,6 +37,7 @@ async function saveMySessions(req, res, next) {
       },
       select: { sessions: true, updatedAt: true }
     });
+    await removeMissingConversationScopes(req.user.id, sessions.map((session) => session.id));
 
     return res.status(200).json({
       sessions: normalizeSessions(updated.sessions),

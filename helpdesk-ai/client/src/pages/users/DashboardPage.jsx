@@ -118,6 +118,7 @@ const QUESTION_VARIANTS_BY_TITLE = {
 // Versioned so the former dark default does not override the new light default.
 const THEME_STORAGE_KEY = "helpdesk_simulation_theme_v2";
 const SIDEBAR_GROUP_PREFS_PREFIX = "helpdesk_sidebar_group_prefs_";
+const ACTIVE_SESSION_STORAGE_PREFIX = "helpdesk_active_session_";
 const MAX_COMPOSER_HEIGHT = 280;
 const PASSWORD_REQUIREMENTS = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 const OPERATING_SYSTEM_PATTERN = /\b(windows|win\s?\d+|macos|mac\s?os|macintosh|linux|ubuntu|debian|fedora)\b/i;
@@ -1316,6 +1317,8 @@ export default function DashboardPage() {
   const accountMenuRef = useRef(null);
   const autoAdvanceTimeoutRef = useRef(null);
   const sessionsSaveTimerRef = useRef(null);
+  const initialStartNewChatRef = useRef(Boolean(location.state?.startNewChat));
+  const appliedUrlSessionIdRef = useRef("");
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sessions, setSessions] = useState([]);
@@ -1375,6 +1378,10 @@ export default function DashboardPage() {
   );
   const sidebarPrefsKey = useMemo(
     () => (user?.id ? `${SIDEBAR_GROUP_PREFS_PREFIX}${user.id}` : null),
+    [user?.id]
+  );
+  const activeSessionStorageKey = useMemo(
+    () => (user?.id ? `${ACTIVE_SESSION_STORAGE_PREFIX}${user.id}` : null),
     [user?.id]
   );
 
@@ -1592,12 +1599,23 @@ export default function DashboardPage() {
         }
 
         const normalized = source.map((session, idx) => normalizeLoadedSession(session, idx));
-        // Always enter the Help Desk through a blank conversation. Existing
-        // chats and simulations remain in the sidebar but are never restored
-        // automatically on login or a dashboard reload.
-        const freshChat = createSession();
-        setSessions([freshChat, ...normalized]);
-        setActiveSessionId(freshChat.id);
+        const savedActiveSessionId = activeSessionStorageKey
+          ? localStorage.getItem(activeSessionStorageKey)
+          : "";
+        const requestedExists = normalized.some((session) => session.id === requestedSessionId);
+        const savedExists = normalized.some((session) => session.id === savedActiveSessionId);
+
+        setSessions(normalized);
+        if (initialStartNewChatRef.current) {
+          setActiveSessionId("");
+          initialStartNewChatRef.current = false;
+        } else if (requestedExists) {
+          setActiveSessionId(requestedSessionId);
+        } else if (savedExists) {
+          setActiveSessionId(savedActiveSessionId);
+        } else {
+          setActiveSessionId(normalized[0]?.id || "");
+        }
       } catch (_err) {
         if (!cancelled) {
           setSessions([]);
@@ -1615,7 +1633,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [api, user?.id]);
+  }, [activeSessionStorageKey, api, user?.id]);
 
   useEffect(() => {
     if (!user?.id || !sessionsHydrated) {
@@ -1628,7 +1646,15 @@ export default function DashboardPage() {
 
     sessionsSaveTimerRef.current = window.setTimeout(async () => {
       try {
-        await api.put("/api/sessions", { sessions });
+        // The dashboard starts with an unsent blank chat. Keep it in the UI,
+        // but do not persist it or any legacy empty chat as a real session.
+        const sessionsToPersist = sessions.filter((session) => {
+          if (session?.isSimulationSession || session?.hasSimulation) {
+            return true;
+          }
+          return Array.isArray(session?.messages) && session.messages.length > 0;
+        });
+        await api.put("/api/sessions", { sessions: sessionsToPersist });
       } catch (_err) {
         // best-effort save
       }
@@ -1643,14 +1669,52 @@ export default function DashboardPage() {
   }, [api, sessions, sessionsHydrated, user?.id]);
 
   useEffect(() => {
-    if (!sessionsHydrated || !requestedSessionId) {
+    if (!sessionsHydrated) {
       return;
     }
+
+    if (!requestedSessionId) {
+      appliedUrlSessionIdRef.current = "";
+      return;
+    }
+
+    if (appliedUrlSessionIdRef.current === requestedSessionId) {
+      return;
+    }
+
     const exists = sessions.some((session) => session.id === requestedSessionId);
-    if (exists && activeSessionId !== requestedSessionId) {
+    if (exists) {
       setActiveSessionId(requestedSessionId);
     }
-  }, [sessionsHydrated, requestedSessionId, sessions, activeSessionId]);
+    appliedUrlSessionIdRef.current = requestedSessionId;
+  }, [sessionsHydrated, requestedSessionId, sessions]);
+
+  useEffect(() => {
+    if (!sessionsHydrated || !activeSessionStorageKey) {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const currentUrlSessionId = params.get("session") || "";
+
+    if (activeSessionId) {
+      localStorage.setItem(activeSessionStorageKey, activeSessionId);
+      if (currentUrlSessionId === activeSessionId) {
+        return;
+      }
+      params.set("session", activeSessionId);
+    } else {
+      localStorage.removeItem(activeSessionStorageKey);
+      if (!currentUrlSessionId) {
+        return;
+      }
+      params.delete("session");
+    }
+
+    const search = params.toString();
+    const nextUrl = `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`;
+    window.history.replaceState(window.history.state, "", nextUrl);
+  }, [activeSessionId, activeSessionStorageKey, sessionsHydrated]);
 
   useEffect(() => {
     if (!chatWrapRef.current) {
@@ -1913,7 +1977,8 @@ export default function DashboardPage() {
     try {
       const response = await api.post("/api/ai/chat", {
         message: nextText,
-        history: historyBeforeEdited
+        history: historyBeforeEdited,
+        sessionId
       });
       if (response.data?.policy?.blocked) {
         pushAiMessage(sessionId, response.data.reply || "Request blocked by policy.", "policy", {
@@ -2079,7 +2144,8 @@ export default function DashboardPage() {
       const history = normalizeForHistory(previousMessages);
       const response = await api.post("/api/ai/chat", {
         message: apiText,
-        history
+        history,
+        sessionId
       });
       if (response.data?.policy?.blocked) {
         pushAiMessage(sessionId, response.data.reply || "Request blocked by policy.", "policy", {
@@ -2298,10 +2364,12 @@ export default function DashboardPage() {
 
   const startNewSession = async () => {
     await endWindowsOsForNavigation();
+    const freshSession = createSession();
     setShowSimulationCatalog(false);
     setPendingSimulationCreation(false);
     setOpenSessionMenuId(null);
-    setActiveSessionId("");
+    setSessions((currentSessions) => [freshSession, ...currentSessions]);
+    setActiveSessionId(freshSession.id);
     setInput("");
     setTyping(false);
     setStepModalOpen(false);

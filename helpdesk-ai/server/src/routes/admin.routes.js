@@ -117,7 +117,10 @@ router.get("/simulation-modules", getSimulationModules);
 router.get("/simulation-modules/prompt-insights", getSimulationPromptInsights);
 router.post(
   "/simulation-modules/prompt-insights/disregard",
-  [body("sourcePrompt").isString().trim().notEmpty().withMessage("sourcePrompt is required")],
+  [
+    body("sourcePrompt").isString().trim().notEmpty().withMessage("sourcePrompt is required"),
+    body("insightKey").optional().isString().trim().isLength({ max: 500 })
+  ],
   validateRequest,
   disregardSimulationPromptInsight
 );

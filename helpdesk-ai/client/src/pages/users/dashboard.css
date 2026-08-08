@@ -11,6 +11,27 @@
   display: block;
 }
 
+.windows-os-modal-host {
+  position: fixed;
+  z-index: 10080;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(3px);
+}
+
+.windows-os-modal {
+  width: min(1480px, 100%);
+  height: min(920px, calc(100dvh - 48px));
+  overflow: hidden;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.32);
+}
+
 .windows-os-shell {
   position: relative;
   width: 100%;
@@ -55,6 +76,8 @@
 .windows-os-instruction span { color: #38bdf8; font: 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
 .windows-os-instruction h3 { margin: 5px 0 3px; color: var(--text); font-size: 14px; }
 .windows-os-instruction p { margin: 8px 0 0; color: var(--text2); font-size: 12px; line-height: 1.45; }
+.windows-os-instruction .windows-os-step-action { color: var(--text); font-weight: 600; }
+.windows-os-instruction .windows-os-step-description { max-width: 72ch; color: var(--text2); }
 .windows-os-mark-step { position: absolute; right: 15px; bottom: 15px; width: auto; min-height: 34px; margin: 0; padding: 0 14px; border: 1px solid #16a34a; border-radius: 7px; background: #16a34a; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
 .windows-os-mark-step:hover:not(:disabled) { border-color: #22c55e; background: #22c55e; }
 .windows-os-mark-step:disabled { border-color: #334155; background: #172236; color: #94a3b8; cursor: default; }
@@ -5214,6 +5237,17 @@
 }
 
 @media (max-width: 640px) {
+  .windows-os-modal-host {
+    padding: 0;
+  }
+
+  .windows-os-modal {
+    width: 100%;
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+
   .welcome h1 {
     font-size: 24px;
   }
@@ -5252,3 +5286,240 @@
 .simulation-walkthrough-actions .btn-sm { min-width: 110px; margin: 0; }
 .simulation-walkthrough-actions .is-primary { color: #03121c; border-color: #38bdf8; background: #38bdf8; }
 @media (max-width: 620px) { .simulation-walkthrough-callout { padding: 14px; } }
+
+/* Phone-specific layout guardrails. These complement the tablet breakpoint
+   above and keep interactive controls reachable with the on-screen keyboard. */
+@media (max-width: 640px) {
+  .helpdesk-root,
+  #helpdesk-app {
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+
+  .hd-topbar {
+    min-height: 52px;
+    padding: 8px 10px;
+  }
+
+  .toggle-sidebar {
+    width: 38px;
+    height: 38px;
+  }
+
+  .topbar-title {
+    min-width: 0;
+    font-size: 13px;
+  }
+
+  .denied-pill {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .chat-wrap {
+    padding: 12px 0 16px;
+  }
+
+  .chat-wrap.has-windows-os-simulation {
+    padding: 0;
+  }
+
+  .messages,
+  .typing-wrap,
+  .input-area {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .messages {
+    gap: 14px;
+  }
+
+  .messages-welcome {
+    min-height: calc(100dvh - 150px);
+  }
+
+  .welcome h1 {
+    font-size: 23px;
+  }
+
+  .welcome p {
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  .message-row,
+  .ai-block {
+    gap: 8px;
+  }
+
+  .avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 10px;
+  }
+
+  .response-card,
+  .msg-bubble {
+    width: min(100%, 100%);
+    padding: 14px;
+  }
+
+  .user-bubble-wrap,
+  .user-bubble-wrap.is-editing {
+    max-width: calc(100vw - 56px);
+    width: auto;
+  }
+
+  .input-box textarea,
+  .welcome-input-box textarea {
+    min-height: 54px;
+    padding: 13px 56px 13px 15px;
+    font-size: 16px;
+  }
+
+  .quick-card {
+    min-height: 76px;
+  }
+
+  .sidebar-backdrop {
+    touch-action: none;
+  }
+
+  .hd-sidebar {
+    width: min(88vw, 340px);
+    min-width: min(88vw, 340px);
+  }
+
+  .step-modal,
+  .step-modal.step-inline {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    border-radius: 0;
+  }
+
+  .step-modal-header,
+  .terminal-simulation-header-actions,
+  .step-modal-footer {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .step-modal-header {
+    padding: 10px 12px;
+  }
+
+  .step-modal-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .terminal-simulation-header-actions {
+    width: 100%;
+  }
+
+  .terminal-simulation-header-actions button,
+  .step-modal-footer > button {
+    flex: 1 1 130px;
+  }
+
+  .step-modal-canvas,
+  .terminal-shell,
+  .terminal-body {
+    min-height: 220px;
+  }
+
+  .windows-os-header {
+    min-height: 0;
+    padding: 10px 12px;
+  }
+
+  .windows-os-header h2 {
+    font-size: 14px;
+  }
+
+  .windows-os-controls {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .windows-os-instruction {
+    min-height: 0;
+    padding: 12px;
+  }
+
+  .windows-os-mark-step {
+    position: static;
+    width: 100%;
+    margin-top: 12px;
+  }
+
+  .windows-os-footer {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  }
+
+  .windows-os-footer-actions {
+    order: -1;
+  }
+
+  .windows-os-nav-btn,
+  .windows-os-nav-btn.is-next {
+    width: 100%;
+    justify-self: stretch;
+  }
+}
+
+/* The session surface owns scrolling. Keeping the composer outside that
+   scroll region makes it persist at the bottom while long conversations move. */
+@media (max-width: 880px) {
+  #helpdesk-app {
+    height: 100dvh;
+    min-height: 0;
+  }
+
+  .hd-main {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .chat-wrap {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable;
+  }
+
+  .input-area {
+    position: relative;
+    z-index: 2;
+    flex: 0 0 auto;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
+    border-top: 1px solid var(--border);
+  }
+}
+
+@media (max-width: 640px) {
+  .input-area {
+    padding-top: 8px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .input-hint {
+    display: none;
+  }
+
+  .input-box textarea {
+    max-height: 150px;
+  }
+}

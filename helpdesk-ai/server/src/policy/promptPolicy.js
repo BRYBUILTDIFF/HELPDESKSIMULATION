@@ -1,4 +1,5 @@
 const { getPolicyRuntimeConfig } = require("../store/policyConfigStore");
+const { evaluateContentSafety } = require("./contentSafety");
 
 const DEEPSEEK_URL = process.env.POLICY_CLASSIFIER_URL || "http://localhost:11434/api/chat";
 const DEEPSEEK_MODEL = process.env.POLICY_CLASSIFIER_MODEL || "deepseek-r1:7b";
@@ -46,6 +47,28 @@ function isLikelyFollowUpWithoutContext(input, history, signals) {
     return false;
   }
   return !signals.hasInScopeKeyword && !signals.hasInScopeIntent && !signals.hasOutOfScopeKeyword;
+}
+
+function outOfScopeRedirect(policy) {
+  return {
+    allowed: true,
+    code: "OUT_OF_SCOPE_REDIRECT",
+    reason: "Prompt is outside the HelpDesk AI product scope.",
+    directReply: policy.messages.outOfScopeMessage || policy.messages.defaultOutOfScopeMessage
+  };
+}
+
+function isEstablishedItConversationFollowUp(input, context, signals) {
+  if (String(context?.conversationScope || "") !== "it_support" || input.length > 500) {
+    return false;
+  }
+
+  // Explicit scope signals use their dedicated policy paths. This branch is
+  // for context-dependent responses such as "yes", "more detail", or "the C drive".
+  if (signals.hasInScopeKeyword || signals.hasInScopeIntent || signals.hasOutOfScopeKeyword) {
+    return false;
+  }
+  return true;
 }
 
 function getClassifierSystemPrompt(policy = {}) {
@@ -243,9 +266,10 @@ async function classifyWithDeepSeek(message, history, policy) {
  * Evaluates a prompt against IT helpdesk scope policy.
  * @param {string} message
  * @param {Array<{role: string, content: string}>} history
+ * @param {{conversationScope?: string}} context
  * @returns {Promise<{allowed: boolean, code: string, reason: string, userMessage?: string, directReply?: string}>}
  */
-async function evaluatePromptPolicy(message, history = []) {
+async function evaluatePromptPolicy(message, history = [], context = {}) {
   const policy = getPolicyRuntimeConfig();
   const input = String(message || "").trim();
   const safeHistory = sanitizeHistory(history);
@@ -268,20 +292,16 @@ async function evaluatePromptPolicy(message, history = []) {
     };
   }
 
+  const safetyBlock = await evaluateContentSafety(input);
+  if (safetyBlock) {
+    return { allowed: false, code: safetyBlock.code, reason: "Prompt failed the content-safety check.", userMessage: safetyBlock.message };
+  }
+
   const hasGreetingPattern = matchesAnyRegex(policy.greetingPatternRegex, input);
   const hasInScopeKeyword = matchesAnyRegex(policy.inScopeKeywordRegex, input);
   const hasOutOfScopeKeyword = matchesAnyRegex(policy.outOfScopeKeywordRegex, input);
   const hasInScopeIntent = matchesAnyRegex(policy.inScopeIntentRegex, input);
   const signals = { hasInScopeKeyword, hasOutOfScopeKeyword, hasInScopeIntent };
-
-  if (isLikelyFollowUpWithoutContext(input, safeHistory, signals)) {
-    return {
-      allowed: false,
-      code: "FOLLOW_UP_NO_CONTEXT",
-      reason: "Likely follow-up prompt without prior IT context.",
-      userMessage: policy.messages.followUpNoContextMessage
-    };
-  }
 
   if (hasGreetingPattern && !hasInScopeKeyword && !hasInScopeIntent && !hasOutOfScopeKeyword) {
     return {
@@ -293,21 +313,23 @@ async function evaluatePromptPolicy(message, history = []) {
   }
 
   if (hasOutOfScopeKeyword && !hasInScopeKeyword && !hasInScopeIntent) {
-    return {
-      allowed: false,
-      code: "OUT_OF_SCOPE_KEYWORD",
-      reason: "Matched out-of-scope keyword without IT scope signal.",
-      userMessage: policy.messages.outOfScopeMessage || policy.messages.defaultOutOfScopeMessage
-    };
+    return outOfScopeRedirect(policy);
   }
 
   if (hasOutOfScopeKeyword && (hasInScopeKeyword || hasInScopeIntent)) {
+    return outOfScopeRedirect(policy);
+  }
+
+  if (isEstablishedItConversationFollowUp(input, context, signals)) {
     return {
-      allowed: false,
-      code: "MIXED_SCOPE",
-      reason: "Prompt contains mixed in-scope and out-of-scope signals.",
-      userMessage: policy.messages.mixedScopeMessage
+      allowed: true,
+      code: "ALLOWED_CONVERSATION_FOLLOW_UP",
+      reason: "Contextual follow-up in a server-verified IT support conversation."
     };
+  }
+
+  if (isLikelyFollowUpWithoutContext(input, safeHistory, signals)) {
+    return outOfScopeRedirect(policy);
   }
 
   if ((hasInScopeKeyword || hasInScopeIntent) && !hasOutOfScopeKeyword) {
@@ -338,37 +360,23 @@ async function evaluatePromptPolicy(message, history = []) {
       };
     }
 
-    if ((hasInScopeKeyword || hasInScopeIntent) && classificationResult.confidence < 0.85) {
-      return {
-        allowed: false,
-        code: "CLARIFY",
-        reason: classificationResult.reason,
-        userMessage: policy.messages.clarifyMessage || CLARIFY_MESSAGE_FALLBACK
-      };
-    }
-
     if (classificationResult.confidence < 0.75) {
       return {
-        allowed: false,
-        code: "CLARIFY",
+        allowed: true,
+        code: "SCOPE_CLARIFICATION",
         reason: classificationResult.reason,
-        userMessage: policy.messages.clarifyMessage || CLARIFY_MESSAGE_FALLBACK
+        directReply: policy.messages.clarifyMessage || CLARIFY_MESSAGE_FALLBACK
       };
     }
 
-    return {
-      allowed: false,
-      code: "OUT_OF_SCOPE",
-      reason: classificationResult.reason,
-      userMessage: policy.messages.outOfScopeMessage || policy.messages.defaultOutOfScopeMessage
-    };
+    return outOfScopeRedirect(policy);
   } catch (err) {
     console.error("[PolicyClassifier]", err);
     return {
-      allowed: false,
-      code: "CLASSIFIER_ERROR",
-      reason: `Scope classifier unavailable; request safely blocked. ${err?.message || "Classifier error."}`,
-      userMessage: policy.messages.defaultOutOfScopeMessage || policy.messages.outOfScopeMessage
+      allowed: true,
+      code: "SCOPE_CLASSIFIER_UNAVAILABLE",
+      reason: `Scope classifier unavailable; response is redirected to HelpDesk scope. ${err?.message || "Classifier error."}`,
+      directReply: policy.messages.clarifyMessage || CLARIFY_MESSAGE_FALLBACK
     };
   }
 }

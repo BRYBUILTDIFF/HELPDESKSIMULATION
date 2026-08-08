@@ -23,6 +23,8 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
   const connectInFlightRef = useRef(false);
   const guidedSteps = Array.isArray(steps) ? steps : [];
   const currentStep = guidedSteps[activeStep];
+  const currentStepAction = plainText(currentStep?.action || currentStep?.instruction);
+  const currentStepDescription = plainText(currentStep?.desc || currentStep?.description);
 
   const start = useCallback(async () => {
     connectInFlightRef.current = false;
@@ -127,7 +129,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
           {guidedSteps.length ? <div className="windows-os-step-list">
             {guidedSteps.map((step, index) => <button type="button" key={`${step?.id || step?.title || "step"}-${index}`} className={`windows-os-step${index === activeStep ? " is-active" : ""}${completedSteps.has(index) ? " is-complete" : ""}`} onClick={() => setActiveStep(index)}>
               <span className="windows-os-step-number">{completedSteps.has(index) ? "✓" : index + 1}</span>
-              <span><strong>{step?.title || `Step ${index + 1}`}</strong><small>{plainText(step?.instruction || step?.action || step?.description) || "Follow the task instructions."}</small></span>
+              <span><strong>{step?.title || `Step ${index + 1}`}</strong><small>{plainText(step?.action || step?.instruction || step?.desc || step?.description) || "Follow the task instructions."}</small></span>
             </button>)}
           </div> : <p className="windows-os-no-steps">This module does not include guided steps yet.</p>}
           <div className="windows-os-help-card"><strong>◌&nbsp; Need Help?</strong><span>Follow each step carefully. You can navigate back and forth between steps at any time.</span></div>
@@ -136,7 +138,10 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
           {currentStep ? <div className="windows-os-instruction">
             <span>Current Step</span>
             <h3>{currentStep.title || `Step ${activeStep + 1}`}</h3>
-            <p>{plainText(currentStep.instruction || currentStep.action || currentStep.description) || "Complete this task in the Windows workspace."}</p>
+            <p className="windows-os-step-action">{currentStepAction || "Complete this task in the Windows workspace."}</p>
+            {currentStepDescription && currentStepDescription !== currentStepAction ? (
+              <p className="windows-os-step-description">{currentStepDescription}</p>
+            ) : null}
             <button type="button" className="windows-os-mark-step btn-sm" onClick={markCurrentStepComplete} disabled={completedSteps.has(activeStep)}>
               {completedSteps.has(activeStep) ? "Completed" : activeStep === guidedSteps.length - 1 ? "Complete final step" : "Complete step"}
             </button>

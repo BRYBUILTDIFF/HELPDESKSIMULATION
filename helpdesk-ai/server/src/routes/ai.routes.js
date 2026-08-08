@@ -26,7 +26,8 @@ router.post(
       .isString()
       .withMessage("History content must be a string")
       .isLength({ max: 4000 })
-      .withMessage("History content must be 4000 characters or less")
+      .withMessage("History content must be 4000 characters or less"),
+    body("sessionId").optional().isString().trim().isLength({ min: 1, max: 120 }).withMessage("sessionId must be between 1 and 120 characters")
   ],
   validateRequest,
   chat

@@ -1,12 +1,46 @@
 {
+  "greetingPatterns": [
+    "^\\s*(hi|hello|hey|good morning|good afternoon|good evening|yo)(\\s|!|,|$)",
+    "^\\s*hi there(\\s|!|,|$)",
+    "^\\s*hello there(\\s|!|,|$)"
+  ],
+  "inScopeKeywords": [
+    "windows", "windows 10", "windows 11", "macos", "mac os", "linux", "ubuntu",
+    "computer", "laptop", "desktop", "workstation", "pc",
+    "password", "passcode", "pin", "login", "log in", "sign in", "locked account", "unlock account", "authentication", "two factor authentication", "2fa", "mfa",
+    "active directory", "domain account", "user profile", "permissions", "shared drive", "mapped drive", "network drive",
+    "wifi", "wi-fi", "wireless", "internet", "ethernet", "network", "vpn", "dns", "dhcp", "ip address", "gateway", "proxy", "firewall",
+    "outlook", "email", "mailbox", "exchange", "smtp", "imap", "teams", "calendar",
+    "printer", "scanner", "print queue", "spooler", "webcam", "microphone", "headset", "keyboard", "mouse", "monitor",
+    "hard drive", "ssd", "hdd", "disk space", "storage", "ram", "memory", "cpu", "task manager", "device manager",
+    "blue screen", "bsod", "driver", "startup", "boot", "safe mode", "system restore", "recovery", "software", "application", "program", "install", "uninstall", "powershell", "command prompt", "terminal",
+    "malware", "virus", "ransomware", "phishing", "antivirus", "security alert", "suspicious email",
+    "remote desktop", "rdp", "ssh", "server", "virtual machine", "vm", "helpdesk", "service desk", "it support", "ticket"
+  ],
+  "inScopeIntentPatterns": [
+    "\\b(how (do i|to)|can you|please)\\b.*\\b(fix|troubleshoot|resolve|reset|configure|set up|install|uninstall|update|enable|disable|recover|unlock)\\b",
+    "\\b(not working|won't work|doesn't work|stopped working|keeps (crashing|freezing|disconnecting))\\b",
+    "\\b(cannot|can't|unable to)\\b.*\\b(connect|log in|sign in|print|send|receive|open|install|update|access)\\b",
+    "\\b(error|failed|failure|crash|crashed|freezing|slow|locked out|expired|corrupted)\\b",
+    "\\b(reset|unlock|recover)\\b.*\\b(password|account|pin|access)\\b",
+    "\\b(troubleshoot|diagnose|fix|resolve)\\b.*\\b(network|internet|wifi|vpn|printer|email|outlook|computer|laptop|windows|software)\\b"
+  ],
+  "outOfScopeKeywords": [
+    "anime", "manga", "movie", "film", "series", "netflix", "lyrics", "song", "music recommendation", "playlist", "video game", "game recommendation",
+    "recipe", "cooking", "food", "restaurant", "meal plan", "travel", "vacation", "itinerary", "hotel", "flight", "tourism",
+    "dating", "relationship", "boyfriend", "girlfriend", "marriage", "divorce", "breakup", "romance", "astrology", "zodiac", "horoscope", "tarot",
+    "fitness", "workout", "exercise", "diet", "weight loss", "nutrition", "gym", "yoga", "medical", "medicine", "doctor", "diagnosis", "prescription", "symptom", "disease", "treatment", "hospital",
+    "stocks", "crypto", "bitcoin", "ethereum", "trading", "investment", "forex", "tax", "accounting", "gambling", "casino", "poker", "lottery",
+    "politics", "election", "president", "government policy", "news", "current events", "essay", "homework", "thesis", "math problem", "physics", "chemistry", "biology", "literature"
+  ],
   "messages": {
-    "greetingReply": "Hello! I am HelpDesk AI. I can assist with IT issues such as login and account access, password resets, email and Outlook problems, network and VPN connectivity, hardware troubleshooting, software errors, printer issues, and security concerns. What can I help you with today?",
-    "outOfScopeMessage": "This system only supports IT helpdesk topics. Please ask about account access, hardware, network, software, email, security, or system troubleshooting.",
-    "mixedScopeMessage": "Your message appears to contain topics outside the scope of IT helpdesk support. Please focus your question on IT-related issues.",
-    "followUpNoContextMessage": "It looks like you're starting a new conversation. Please describe your IT support issue so I can assist you.",
-    "emptyPromptMessage": "Please enter your IT support question.",
-    "promptTooLongMessage": "Your prompt is too long. Please shorten it to continue.",
-    "defaultOutOfScopeMessage": "I can only assist with IT support topics such as account access, hardware issues, network problems, software errors, email, security, or server troubleshooting. Please rephrase your question.",
-    "clarifyMessage": "Could you clarify if this is an IT-related issue? I'm here to help with IT support topics."
+    "greetingReply": "Hello. I am HelpDesk AI and I can help with Windows and macOS issues, passwords and account access, email, network and VPN connectivity, printers, software, devices, and security concerns. What IT issue are you working on?",
+    "outOfScopeMessage": "I am configured for IT helpdesk support. I can help with devices, Windows or macOS, passwords and account access, email, network and VPN issues, software, printers, and security concerns.",
+    "mixedScopeMessage": "I can continue with the IT-related part of your request. Please describe the device, account, software, network, email, or security issue you need help with.",
+    "followUpNoContextMessage": "Please describe the IT issue, device, application, or error you need help with so I can assist.",
+    "emptyPromptMessage": "Please enter an IT support question.",
+    "promptTooLongMessage": "Your message is too long. Please shorten it and include the device, application, and error or symptom.",
+    "defaultOutOfScopeMessage": "I am configured for IT helpdesk support. Please ask about a device, account, email, software, network, printer, or security issue.",
+    "clarifyMessage": "Could you share the device, application, or error message involved so I can determine the right IT troubleshooting steps?"
   }
 }

@@ -1,6 +1,7 @@
 const prisma = require("../prisma");
 const { listPolicyEvents, getPolicySummary } = require("../store/policyEventStore");
 const { listModules, createModule, updateModule, deleteModule } = require("../store/simulationModuleStore");
+const { dismissPromptInsight, isPromptInsightDismissed } = require("../store/promptInsightDismissalStore");
 const { hashPassword } = require("../utils/password");
 const { getAIProvider, getDefaultModel, getOpenAIClient } = require("../utils/openai");
 const {
@@ -33,7 +34,24 @@ const SIMULATION_INTENT_PATTERN =
 const SIMULATION_DOMAIN_PATTERN =
   /\b(password|account|admin|login|signin|sign in|active directory|ad user|dns|vpn|network|internet|ip|gateway|service|process|event log|error|not working|failed|cannot|outlook|email|mailbox|printer|spooler|cpu|memory|disk|storage|malware|virus|permissions?)\b/;
 const SIMULATION_ELIGIBLE_POLICY_CODES = new Set(["ALLOWED", "ALLOWED_RULE_MATCH"]);
-const disregardedPromptInsightKeys = new Set();
+const PROMPT_SIGNATURE_STOP_WORDS = new Set([
+  "a", "an", "and", "are", "can", "could", "do", "for", "help", "how", "i", "im", "is", "it", "me", "my", "of", "on", "please", "the", "to", "what", "when", "with", "you", "your"
+]);
+const PROMPT_SIGNATURE_ALIASES = [
+  { canonical: "connectivity", pattern: /\b(connect|connection|connected|cannot connect|cant connect|unable to connect)\b/ },
+  { canonical: "disconnect", pattern: /\b(disconnect|disconnected|dropp?ing|keeps dropping|intermittent)\b/ },
+  { canonical: "credentials", pattern: /\b(password|passcode|credential|credentials)\b/ },
+  { canonical: "signin", pattern: /\b(login|log in|signin|sign in|locked out|unlock)\b/ },
+  { canonical: "email", pattern: /\b(email|mailbox|outlook|mail)\b/ },
+  { canonical: "local-network", pattern: /\b(wifi|wi fi|wireless|internet|network)\b/ },
+  { canonical: "vpn", pattern: /\bvpn\b/ },
+  { canonical: "dns", pattern: /\bdns\b/ },
+  { canonical: "send", pattern: /\b(send|sending|sent|outgoing)\b/ },
+  { canonical: "receive", pattern: /\b(receive|receiving|received|incoming)\b/ },
+  { canonical: "printing", pattern: /\b(printer|printing|print queue|spooler)\b/ },
+  { canonical: "performance", pattern: /\b(slow|lag|freeze|frozen|performance)\b/ },
+  { canonical: "software", pattern: /\b(app|application|software|program|install|update|crash)\b/ }
+];
 
 function isAllowedAdminUserPassword(password) {
   const candidate = String(password || "");
@@ -46,6 +64,22 @@ function normalizePrompt(text) {
     .replace(/\s+/g, " ")
     .replace(/[^\w\s]/g, "")
     .trim();
+}
+
+function getPromptIntentSignature(prompt, alignment) {
+  const normalized = normalizePrompt(prompt);
+  const aliases = PROMPT_SIGNATURE_ALIASES
+    .filter((item) => item.pattern.test(normalized))
+    .map((item) => item.canonical);
+  const keywords = normalized
+    .split(" ")
+    .filter((word) => word.length >= 4 && !PROMPT_SIGNATURE_STOP_WORDS.has(word))
+    .filter((word) => !PROMPT_SIGNATURE_ALIASES.some((item) => item.pattern.test(word)))
+    .slice(0, 4);
+
+  // Category and simulation surface prevent broad terms such as "not working" from merging unrelated tickets.
+  const intentTerms = aliases.length > 0 ? aliases : keywords;
+  return [inferCategory(normalized).toLowerCase(), alignment.surface, ...new Set(intentTerms)].join("|");
 }
 
 function titleFromPrompt(prompt) {
@@ -585,6 +619,14 @@ async function getSimulationPromptInsights(req, res, next) {
         .map((module) => normalizePrompt(module.sourcePrompt))
         .filter((normalized) => normalized && normalized.length >= 8)
     );
+    const createdIntentKeys = new Set(
+      existingModules
+        .map((module) => {
+          const alignment = evaluateSimulationPromptAlignment(module.sourcePrompt);
+          return alignment.allowed ? getPromptIntentSignature(module.sourcePrompt, alignment) : "";
+        })
+        .filter(Boolean)
+    );
     const events = (await listPolicyEvents(limit)).filter(
       (event) =>
         !event.blocked &&
@@ -598,33 +640,43 @@ async function getSimulationPromptInsights(req, res, next) {
       if (!normalized || normalized.length < 8) {
         continue;
       }
-      if (disregardedPromptInsightKeys.has(normalized) || createdPromptKeys.has(normalized)) {
-        continue;
-      }
       const alignment = evaluateSimulationPromptAlignment(event.message);
       if (!alignment.allowed) {
         continue;
       }
-      const current = grouped.get(normalized) || {
+      const intentSignature = getPromptIntentSignature(event.message, alignment);
+      if (
+        isPromptInsightDismissed(normalized, intentSignature) ||
+        createdPromptKeys.has(normalized) ||
+        createdIntentKeys.has(intentSignature)
+      ) {
+        continue;
+      }
+      const current = grouped.get(intentSignature) || {
+        intentSignature,
         normalized,
         samplePrompt: String(event.message || "").trim(),
         occurrences: 0,
         lastSeen: event.at,
         uniqueUsers: new Set(),
+        promptVariants: new Set(),
         recommendedSurface: alignment.surface,
         recommendedSurfaceLabel: alignment.surfaceLabel
       };
       current.occurrences += 1;
       current.lastSeen = current.lastSeen > event.at ? current.lastSeen : event.at;
       current.uniqueUsers.add(event.userEmail || "unknown");
-      grouped.set(normalized, current);
+      current.promptVariants.add(normalized);
+      grouped.set(intentSignature, current);
     }
 
     const insights = Array.from(grouped.values())
       .map((item) => ({
         normalized: item.normalized,
+        insightKey: item.intentSignature,
         samplePrompt: item.samplePrompt,
         occurrences: item.occurrences,
+        similarPromptVariants: item.promptVariants.size,
         uniqueUsers: item.uniqueUsers.size,
         lastSeen: item.lastSeen,
         suggestedCategory: inferCategory(item.samplePrompt),
@@ -649,8 +701,9 @@ async function disregardSimulationPromptInsight(req, res, next) {
     if (!normalized || normalized.length < 8) {
       return res.status(400).json({ message: "A valid sourcePrompt is required." });
     }
-    disregardedPromptInsightKeys.add(normalized);
-    return res.status(200).json({ disregarded: true, normalized });
+    const insightKey = String(req.body?.insightKey || "").trim();
+    dismissPromptInsight(normalized, insightKey);
+    return res.status(200).json({ disregarded: true, normalized, insightKey });
   } catch (err) {
     return next(err);
   }
@@ -782,6 +835,9 @@ async function deleteSimulationModule(req, res, next) {
     }
     return res.status(200).json({ module: removed });
   } catch (err) {
+    if (Number.isInteger(err?.status)) {
+      return res.status(err.status).json({ message: err.message || "Unable to end active Windows workspaces." });
+    }
     return next(err);
   }
 }

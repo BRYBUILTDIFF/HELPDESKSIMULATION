@@ -1,6 +1,8 @@
 const { getAIProvider, getDefaultModel, getOpenAIClient } = require("../utils/openai");
 const { evaluatePromptPolicy } = require("../policy/promptPolicy");
 const { recordPolicyEvent } = require("../store/policyEventStore");
+const { getConversationScope, markConversationScope } = require("../store/policyConversationStore");
+const { evaluateContentSafety } = require("../policy/contentSafety");
 
 const SYSTEM_PROMPT = `
 You are HelpDesk AI, an IT support assistant for internal users.
@@ -203,8 +205,10 @@ async function chat(req, res, next) {
   try {
     const message = String(req.body.message || "").trim();
     const history = Array.isArray(req.body.history) ? req.body.history : [];
+    const sessionId = String(req.body.sessionId || "").trim();
+    const conversationScope = sessionId ? await getConversationScope(req.user?.id, sessionId) : null;
 
-    const policyResult = await evaluatePromptPolicy(message, history);
+    const policyResult = await evaluatePromptPolicy(message, history, { conversationScope });
     if (policyResult.directReply) {
       await recordPolicyEvent({
         userId: req.user?.id,
@@ -279,22 +283,31 @@ async function chat(req, res, next) {
     if (!reply) {
       return res.status(500).json({ message: "AI did not return a response." });
     }
+    const outputSafety = await evaluateContentSafety(reply);
+    const safeReply = outputSafety
+      ? "I cannot provide that response. I can help with a safe IT support question instead."
+      : reply;
+    const responseCode = outputSafety ? "OUTPUT_SAFETY_FILTERED" : policyResult.code || "ALLOWED";
+    const responseReason = outputSafety ? "AI response failed the content-safety check." : policyResult.reason || "Allowed request.";
 
     await recordPolicyEvent({
       userId: req.user?.id,
       userEmail: req.user?.email,
       message,
       blocked: false,
-      code: policyResult.code || "ALLOWED",
-      reason: policyResult.reason || "Allowed request.",
+      code: responseCode,
+      reason: responseReason,
       hasHistory: history.length > 0
     });
+    if (sessionId && !outputSafety) {
+      await markConversationScope(req.user?.id, sessionId, "it_support");
+    }
 
     return res.status(200).json({
-      reply,
+      reply: safeReply,
       policy: {
         blocked: false,
-        code: policyResult.code || "ALLOWED"
+        code: responseCode
       }
     });
   } catch (err) {

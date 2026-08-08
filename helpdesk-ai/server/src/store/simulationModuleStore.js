@@ -1,4 +1,5 @@
 const prisma = require("../prisma");
+const { ACTIVE_STATUSES, terminateWindowsSimulationSession } = require("../services/windowsSimulationService");
 
 const DEFAULT_MODULES = [
   { id: "no-internet", title: "No Internet Connection", category: "Network", difficulty: "Easy", enabled: true, completions: 8, passRate: 92, avgSteps: 4.1 },
@@ -253,9 +254,18 @@ async function deleteModule(id) {
   const safeId = String(id || "");
   if (prisma?.simulationModule) {
     await ensureSeeded();
+    // Windows OS modules can have live EC2-backed sessions. End those before
+    // removing their records so the module is not held by a foreign key.
+    const relatedSessions = await prisma.simulationSession.findMany({ where: { moduleId: safeId } });
+    for (const session of relatedSessions) {
+      if (ACTIVE_STATUSES.includes(session.status)) {
+        await terminateWindowsSimulationSession(session);
+      }
+    }
     try {
-      const deleted = await prisma.simulationModule.delete({
-        where: { id: safeId }
+      const deleted = await prisma.$transaction(async (tx) => {
+        await tx.simulationSession.deleteMany({ where: { moduleId: safeId } });
+        return tx.simulationModule.delete({ where: { id: safeId } });
       });
       return mapDbModule(deleted);
     } catch (err) {

@@ -26,6 +26,8 @@ export default function LoginPage() {
     remember: false
   });
   const [showPassword, setShowPassword] = useState(false);
+  const [passwordHelpOpen, setPasswordHelpOpen] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -52,11 +54,14 @@ export default function LoginPage() {
     setError("");
     try {
       const loggedInUser = await login({ email: form.email.trim(), password: form.password });
+      setSigningIn(true);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
       navigate(loggedInUser?.role === "ADMIN" ? "/admin" : "/dashboard", {
         replace: true,
         state: loggedInUser?.role === "ADMIN" ? undefined : { startNewChat: true }
       });
     } catch (err) {
+      setSigningIn(false);
       setError(parseError(err));
     } finally {
       setLoading(false);
@@ -117,7 +122,7 @@ export default function LoginPage() {
             <div><h3>Sign in</h3><p>Use your account credentials to continue.</p></div>
           </div>
 
-          {error ? <p className="global-error">{error}</p> : null}
+          {error ? <p className="login-error" role="alert">{error}</p> : null}
 
           <div className="field">
             <label htmlFor="email">Email</label>
@@ -172,7 +177,7 @@ export default function LoginPage() {
             <label className="login-remember">
               <input name="remember" type="checkbox" checked={form.remember} onChange={onChange} /> Remember me
             </label>
-            <a className="login-forgot" href="mailto:support@helpdesk.com">Forgot password?</a>
+            <button className="login-forgot" type="button" onClick={() => setPasswordHelpOpen(true)}>Forgot password?</button>
           </div>
 
           <button className="btn login-submit" type="submit" disabled={!canSubmit || loading}>
@@ -180,9 +185,48 @@ export default function LoginPage() {
           </button>
 
           <div className="login-divider"><span>or</span></div>
+          <details className="mobile-demo-credentials">
+            <summary>View demo accounts</summary>
+            <div className="mobile-demo-account">
+              <strong>Administrator</strong>
+              <code>admin@helpdesk.com</code>
+              <code>Admin@1234</code>
+            </div>
+            <div className="mobile-demo-account">
+              <strong>User</strong>
+              <code>user@helpdesk.com</code>
+              <code>User@1234</code>
+            </div>
+          </details>
           <p className="auth-footer login-footer">♢&nbsp; Account creation is managed by administrators.</p>
         </form>
       </div>
+      {passwordHelpOpen ? (
+        <div className="password-help-overlay" onClick={() => setPasswordHelpOpen(false)}>
+          <section
+            className="password-help-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="password-help-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button className="password-help-close" type="button" onClick={() => setPasswordHelpOpen(false)} aria-label="Close password help">×</button>
+            <div className="password-help-icon" aria-hidden="true">?</div>
+            <h3 id="password-help-title">Forgot your password?</h3>
+            <p>Please contact your administrator to have your password reset.</p>
+            <button className="password-help-confirm" type="button" onClick={() => setPasswordHelpOpen(false)}>Got it</button>
+          </section>
+        </div>
+      ) : null}
+      {signingIn ? (
+        <div className="signin-loading-overlay" role="status" aria-live="polite">
+          <div className="signin-loading-card">
+            <span className="signin-spinner" aria-hidden="true" />
+            <strong>Signing you in...</strong>
+            <span>Preparing your workspace</span>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

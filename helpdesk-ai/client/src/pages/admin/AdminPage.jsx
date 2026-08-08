@@ -331,6 +331,32 @@ function PasswordVisibilityIcon({ visible }) {
   );
 }
 
+function SimulationEmptyState({ type, title, message }) {
+  const isQueue = type === "queue";
+  return (
+    <div className="simulation-empty-state">
+      <svg className="simulation-empty-illustration" viewBox="0 0 120 88" aria-hidden="true">
+        <rect x="20" y="18" width="80" height="52" rx="6" fill="none" stroke="currentColor" strokeWidth="2" />
+        {isQueue ? (
+          <>
+            <path d="M37 36h46M37 46h34M37 56h24" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+            <circle cx="88" cy="57" r="11" fill="var(--color-background-secondary)" stroke="currentColor" strokeWidth="2" />
+            <path d="M88 52v6M88 63h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </>
+        ) : (
+          <>
+            <path d="M36 31h48v27H36z" fill="none" stroke="currentColor" strokeWidth="2" />
+            <path d="M45 64h30M60 58v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M49 40h22M49 48h14" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+          </>
+        )}
+      </svg>
+      <strong>{title}</strong>
+      <span>{message}</span>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const { user, logout, refreshAccessToken } = useAuth();
   const api = useAxios();
@@ -388,8 +414,11 @@ export default function AdminPage() {
   const [promptInsightsError, setPromptInsightsError] = useState("");
   const [promptInsightQuery, setPromptInsightQuery] = useState("");
   const [moduleQuery, setModuleQuery] = useState("");
+  const [simulationView, setSimulationView] = useState("modules");
+  const [moduleStatusFilter, setModuleStatusFilter] = useState("all");
+  const [moduleCategoryFilter, setModuleCategoryFilter] = useState("all");
+  const [moduleSort, setModuleSort] = useState("recent");
   const [modulePreview, setModulePreview] = useState(null);
-  const [modulePreviewModuleId, setModulePreviewModuleId] = useState("");
   const [modulePreviewStep, setModulePreviewStep] = useState(0);
   const [modulePreviewSurface, setModulePreviewSurface] = useState("windows-terminal");
   const [moduleDraftMeta, setModuleDraftMeta] = useState(null);
@@ -1115,7 +1144,6 @@ export default function AdminPage() {
       return;
     }
     setModulePreview(preview);
-    setModulePreviewModuleId(options?.moduleId || "");
     setModulePreviewStep(0);
     setModulePreviewSurface(normalizeSurface(options?.surface || preview?.surface, preview?.terminalType));
     setModuleDraftMeta(options?.draftMeta || null);
@@ -1124,7 +1152,6 @@ export default function AdminPage() {
 
   const closeModulePreview = () => {
     setModulePreview(null);
-    setModulePreviewModuleId("");
     setModulePreviewStep(0);
     setModulePreviewSurface("windows-terminal");
     setModuleDraftMeta(null);
@@ -1174,7 +1201,8 @@ export default function AdminPage() {
     setPendingKey(key);
     try {
       await api.post("/api/admin/simulation-modules/prompt-insights/disregard", {
-        sourcePrompt: prompt
+        sourcePrompt: prompt,
+        insightKey: insight.insightKey
       });
       setPromptInsights((prev) =>
         prev.filter((item) => item.normalized !== insight.normalized && item.samplePrompt !== prompt)
@@ -1274,16 +1302,27 @@ export default function AdminPage() {
     });
   }, [promptInsightFeed, promptInsightQuery]);
 
+  const moduleCategories = useMemo(
+    () => Array.from(new Set(modules.map((module) => String(module.category || "General")).filter(Boolean))).sort(),
+    [modules]
+  );
+
   const filteredModules = useMemo(() => {
     const query = moduleQuery.trim().toLowerCase();
-    if (!query) {
-      return modules;
-    }
-    return modules.filter((module) =>
-      [module.title, module.category, module.difficulty, module.enabled ? "enabled" : "disabled"]
-        .some((value) => String(value || "").toLowerCase().includes(query))
-    );
-  }, [moduleQuery, modules]);
+    const matchingModules = modules.filter((module) => {
+      const matchesQuery = !query || [module.title, module.category, module.difficulty, module.enabled ? "enabled" : "disabled"]
+        .some((value) => String(value || "").toLowerCase().includes(query));
+      const matchesStatus = moduleStatusFilter === "all" || (moduleStatusFilter === "enabled" ? module.enabled : !module.enabled);
+      const matchesCategory = moduleCategoryFilter === "all" || String(module.category || "General") === moduleCategoryFilter;
+      return matchesQuery && matchesStatus && matchesCategory;
+    });
+
+    return matchingModules.sort((a, b) => {
+      if (moduleSort === "usage") return Number(b.completions || 0) - Number(a.completions || 0);
+      if (moduleSort === "title") return String(a.title || "").localeCompare(String(b.title || ""));
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+  }, [moduleCategoryFilter, moduleQuery, moduleSort, moduleStatusFilter, modules]);
 
   const previewSteps = Array.isArray(modulePreview?.steps) ? modulePreview.steps : [];
   const previewTotalSteps = previewSteps.length;
@@ -1849,7 +1888,7 @@ export default function AdminPage() {
                           <div className="policy-messages-head">
                             <div>
                               <h4>Policy Messages</h4>
-                              <p>Responses shown when a prompt is blocked, unclear, or invalid.</p>
+                              <p>Responses used for greetings, HelpDesk scope redirects, and invalid requests.</p>
                             </div>
                             <span className="policy-list-count">{Object.keys(policyConfigDraft || {}).length}</span>
                           </div>
@@ -1869,7 +1908,7 @@ export default function AdminPage() {
                           </div>
                           <button
                             type="button"
-                            className="btn-sm create-user-btn"
+                            className="btn-sm sim-runtime-start-btn"
                             disabled={pendingKey === "policy-save-messages" || !policyMessagesDirty}
                             onClick={savePolicyMessages}
                           >
@@ -1900,35 +1939,34 @@ export default function AdminPage() {
 
             {!loading && activePage === "sims" ? (
               <div className="page active simulation-modules-page">
-                <div className="sim-toolbar">
-                  <div className="sim-toolbar-title">{moduleStats.total} modules · {moduleStats.enabled} enabled</div>
+                <div className="sim-summary-bar">
+                  <div><strong>{moduleStats.enabled}</strong><span>active modules</span></div>
+                  <div><strong>{promptInsightFeed.length}</strong><span>suggestions to review</span></div>
+                  <div><strong>{promptInsightFeed.reduce((sum, item) => sum + Number(item.similarPromptVariants || 1), 0)}</strong><span>prompt variants grouped</span></div>
+                  <div><strong>{moduleStats.completions}</strong><span>module completions</span></div>
                 </div>
-                <div className="sim-layout">
-                  <div className="panel sim-prompt-monitor">
-                    <div className="panel-title">
-                      Prompt Monitoring · AI Module Suggestions
-                      <span>{filteredPromptInsights.length} patterns</span>
-                    </div>
-                    <div className="sim-prompt-toolbar">
-                      <input
-                        className="policy-search-input"
-                        value={promptInsightQuery}
-                        onChange={(event) => setPromptInsightQuery(event.target.value)}
-                        placeholder="Search prompt patterns"
-                      />
-                      <button
-                        type="button"
-                        className="btn-sm"
-                        disabled={promptInsightsLoading}
-                        onClick={loadPromptInsights}
-                      >
-                        {promptInsightsLoading ? "Refreshing..." : "Refresh"}
-                      </button>
-                    </div>
-                    {promptInsightsError ? <div className="admin-alert error">{promptInsightsError}</div> : null}
-                    <div className="sim-prompt-grid">
+                <div className="sim-view-tabs" role="tablist" aria-label="Simulation module views">
+                  <button type="button" className={simulationView === "modules" ? "active" : ""} onClick={() => setSimulationView("modules")} role="tab" aria-selected={simulationView === "modules"}>Modules <span>{moduleStats.total}</span></button>
+                  <button type="button" className={simulationView === "suggestions" ? "active" : ""} onClick={() => setSimulationView("suggestions")} role="tab" aria-selected={simulationView === "suggestions"}>Suggestion Queue <span>{promptInsightFeed.length}</span></button>
+                </div>
+                <div className="panel sim-workspace">
+                  {simulationView === "suggestions" ? (
+                    <>
+                      <div className="sim-workspace-head">
+                        <div className="panel-title">Prompt Monitoring</div>
+                        <div className="sim-prompt-toolbar">
+                          <input className="policy-search-input" value={promptInsightQuery} onChange={(event) => setPromptInsightQuery(event.target.value)} placeholder="Search prompt patterns" aria-label="Search prompt patterns" />
+                          <button type="button" className="btn-sm" disabled={promptInsightsLoading} onClick={loadPromptInsights}>{promptInsightsLoading ? "Refreshing..." : "Refresh"}</button>
+                        </div>
+                      </div>
+                      {promptInsightsError ? <div className="admin-alert error">{promptInsightsError}</div> : null}
+                      <div className="sim-suggestion-list">
                       {filteredPromptInsights.length === 0 ? (
-                        <div className="muted-cell">No repeated prompt patterns yet.</div>
+                        <SimulationEmptyState
+                          type="queue"
+                          title="No prompt patterns to review"
+                          message="Eligible user requests will appear here once the system detects a simulation-ready pattern."
+                        />
                       ) : (
                         filteredPromptInsights.map((insight) => {
                           const createKey = `module-draft-from-prompt-${insight.normalized || insight.samplePrompt}`;
@@ -1937,10 +1975,17 @@ export default function AdminPage() {
                           const disregarding = pendingKey === disregardKey;
                           const isSample = Boolean(insight.isSample);
                           return (
-                            <div className="sim-prompt-card" key={insight.normalized || insight.samplePrompt}>
-                              <div className="sim-prompt-text">{insight.samplePrompt}</div>
+                            <details className="sim-suggestion-row" key={insight.normalized || insight.samplePrompt}>
+                              <summary>
+                                <div className="sim-suggestion-main"><strong>{insight.samplePrompt}</strong><span>{insight.suggestedCategory} · {insight.recommendedSurfaceLabel || formatSurfaceLabel(insight.recommendedSurface)}</span></div>
+                                <div className="sim-suggestion-count"><strong>{insight.occurrences}</strong><span>occurrences</span></div>
+                                <span className="sim-row-chevron" aria-hidden="true">v</span>
+                              </summary>
+                              <div className="sim-suggestion-details">
+                                <div className="sim-prompt-text">{insight.samplePrompt}</div>
                               <div className="sim-prompt-meta">
                                 <span>{insight.occurrences} occurrences</span>
+                                {insight.similarPromptVariants > 1 ? <span>{insight.similarPromptVariants} similar prompts</span> : null}
                                 <span>{insight.uniqueUsers} users</span>
                                 <span>{insight.suggestedCategory}</span>
                                 <span>{insight.recommendedSurfaceLabel || formatSurfaceLabel(insight.recommendedSurface)}</span>
@@ -1966,35 +2011,40 @@ export default function AdminPage() {
                                   </button>
                                 ) : null}
                               </div>
-                            </div>
+                              </div>
+                            </details>
                           );
                         })
                       )}
-                    </div>
-                  </div>
-
-                  <div className="panel sim-modules-panel">
-                    <div className="sim-modules-head">
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                    <div className="sim-workspace-head sim-modules-head">
                       <div className="panel-title">
                         Modules
-                        <span>{filteredModules.length} of {moduleStats.total}</span>
                       </div>
-                      <input
-                        className="policy-search-input sim-module-search"
-                        value={moduleQuery}
-                        onChange={(event) => setModuleQuery(event.target.value)}
-                        placeholder="Search modules by title, category, status..."
-                        aria-label="Search simulation modules"
-                      />
+                      <div className="sim-module-filters">
+                        <input className="policy-search-input sim-module-search" value={moduleQuery} onChange={(event) => setModuleQuery(event.target.value)} placeholder="Search modules" aria-label="Search simulation modules" />
+                        <select value={moduleStatusFilter} onChange={(event) => setModuleStatusFilter(event.target.value)} aria-label="Filter modules by status"><option value="all">All status</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select>
+                        <select value={moduleCategoryFilter} onChange={(event) => setModuleCategoryFilter(event.target.value)} aria-label="Filter modules by category"><option value="all">All categories</option>{moduleCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select>
+                        <select value={moduleSort} onChange={(event) => setModuleSort(event.target.value)} aria-label="Sort modules"><option value="recent">Newest</option><option value="usage">Most used</option><option value="title">Title A-Z</option></select>
+                      </div>
                     </div>
                     <div className="sim-grid">
                       {filteredModules.length === 0 ? (
-                        <div className="muted-cell sim-modules-empty">No modules match your search.</div>
+                        <SimulationEmptyState
+                          type="modules"
+                          title={moduleStats.total === 0 ? "No simulation modules yet" : "No matching modules"}
+                          message={moduleStats.total === 0 ? "Create a module from the Suggestion Queue to start the library." : "Try changing the search or filters to see available modules."}
+                        />
                       ) : filteredModules.map((module) => {
                         const completions = Number(module.completions || 0);
                         const progressWidth = Math.round((completions / maxCompletions) * 100);
                         const pending = pendingKey === `module-${module.id}`;
                         const deleting = pendingKey === `module-delete-${module.id}`;
+                        const moduleSimulation = getModuleSimulationDefinition(module);
+                        const canTestWindows = moduleSimulation.surface === "windows-os";
 
                         return (
                           <div className="sim-card" key={module.id}>
@@ -2022,7 +2072,7 @@ export default function AdminPage() {
                                 type="button"
                                 className="btn-sm"
                                 onClick={() =>
-                                  openModulePreview(getModuleSimulationDefinition(module), {
+                                  openModulePreview(moduleSimulation, {
                                     surface: module?.simulation?.surface,
                                     moduleId: module.id,
                                   })
@@ -2030,6 +2080,15 @@ export default function AdminPage() {
                               >
                                 View Simulation
                               </button>
+                              {canTestWindows ? (
+                                <button
+                                  type="button"
+                                  className="btn-sm sim-runtime-start-btn"
+                                  onClick={() => setAdminWindowsOsTest({ id: module.id, title: module.title, steps: moduleSimulation.steps })}
+                                >
+                                  Test Windows
+                                </button>
+                              ) : null}
                               <button
                                 type="button"
                                 className={`btn-sm ${module.enabled ? "btn-danger" : ""}`}
@@ -2051,7 +2110,8 @@ export default function AdminPage() {
                         );
                       })}
                     </div>
-                  </div>
+                    </>
+                  )}
                 </div>
               </div>
             ) : null}
@@ -2266,7 +2326,6 @@ jumpcloud@JumpCloud ~ % _`}</pre>
                     <h3>Simulation Canvas</h3>
                     <div className="sim-runtime-status-row">
                       <span className="sim-runtime-status-pill">Scenario: {(modulePreview.scenarioType || "general").toUpperCase()}</span>
-                      <span className="sim-runtime-status-pill">In Progress | {previewProgress}%</span>
                     </div>
 
                     <div className="sim-runtime-current">
@@ -2286,17 +2345,9 @@ jumpcloud@JumpCloud ~ % _`}</pre>
                         <img src={windowsOsPreviewImg} alt="Windows Server 2025 simulation preview" />
                         <div className="sim-runtime-windows-os-shade" />
                         <div className="sim-runtime-windows-os-card">
-                          <span className="sim-runtime-windows-os-badge">Windows Server 2025 · Private EC2 workspace</span>
-                          <h4>Ready to test this Windows OS simulation?</h4>
-                          <p>Testing launches one isolated Windows workspace for your administrator account. It does not start automatically when viewing the module.</p>
-                          <button
-                            type="button"
-                            className="btn-sm create-user-btn"
-                            disabled={!modulePreviewModuleId}
-                            onClick={() => setAdminWindowsOsTest({ id: modulePreviewModuleId, title: modulePreview.title, steps: previewSteps })}
-                          >
-                            Test Windows Simulation
-                          </button>
+                          <span className="sim-runtime-windows-os-badge">Windows OS environment preview</span>
+                          <h4>Guided workspace surface</h4>
+                          <p>This preview shows the environment learners will use for the steps above.</p>
                         </div>
                       </div>
                     ) : (
@@ -2374,13 +2425,17 @@ jumpcloud@JumpCloud ~ % _`}</pre>
       ) : null}
 
       {adminWindowsOsTest ? (
-        <WindowsOsSimulation
-          api={api}
-          moduleId={adminWindowsOsTest.id}
-          title={adminWindowsOsTest.title}
-          steps={adminWindowsOsTest.steps}
-          onEnded={() => setAdminWindowsOsTest(null)}
-        />
+        <div className="windows-os-modal-host helpdesk-root theme-light" role="dialog" aria-modal="true" aria-label="Windows OS simulation">
+          <div className="windows-os-modal">
+            <WindowsOsSimulation
+              api={api}
+              moduleId={adminWindowsOsTest.id}
+              title={adminWindowsOsTest.title}
+              steps={adminWindowsOsTest.steps}
+              onEnded={() => setAdminWindowsOsTest(null)}
+            />
+          </div>
+        </div>
       ) : null}
 
       {userActionNotice ? (
