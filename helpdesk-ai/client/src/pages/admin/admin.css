@@ -1879,7 +1879,7 @@
   gap: 12px;
 }
 
-.sim-module-filters { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.sim-module-filters { display: flex; align-items: flex-start; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .sim-module-filters select {
   height: 32px;
   max-width: 150px;
@@ -1964,11 +1964,34 @@
   grid-template-rows: auto auto minmax(0, 1fr);
 }
 
+.sim-workspace-head.sim-prompt-head {
+  flex-direction: column;
+  align-items: stretch;
+}
+
 .sim-prompt-toolbar {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 8px;
+  width: 100%;
+}
+
+.sim-prompt-toolbar .policy-search-input {
+  flex: 0 1 420px;
+  width: 420px;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.sim-prompt-toolbar-actions {
+  display: flex;
+  margin-left: auto;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .sim-prompt-grid {

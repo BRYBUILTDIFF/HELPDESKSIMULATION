@@ -428,11 +428,8 @@ export default function AdminPage() {
   const [promptInsightsLoading, setPromptInsightsLoading] = useState(false);
   const [promptInsightsError, setPromptInsightsError] = useState("");
   const [promptInsightQuery, setPromptInsightQuery] = useState("");
-  const [moduleQuery, setModuleQuery] = useState("");
   const [simulationView, setSimulationView] = useState("modules");
   const [moduleStatusFilter, setModuleStatusFilter] = useState("all");
-  const [moduleCategoryFilter, setModuleCategoryFilter] = useState("all");
-  const [moduleSort, setModuleSort] = useState("recent");
   const [modulePreview, setModulePreview] = useState(null);
   const [modulePreviewStep, setModulePreviewStep] = useState(0);
   const [modulePreviewSurface, setModulePreviewSurface] = useState("windows-terminal");
@@ -584,6 +581,8 @@ export default function AdminPage() {
     const query = userQuery.trim().toLowerCase();
 
     return users.filter((u) => {
+      if (String(u.id) === String(user?.id)) return false;
+
       const fullName = `${u.firstName || ""} ${u.lastName || ""}`.trim().toLowerCase();
       const email = String(u.email || "").toLowerCase();
       const matchesQuery = !query || fullName.includes(query) || email.includes(query);
@@ -595,7 +594,7 @@ export default function AdminPage() {
 
       return matchesQuery && matchesRole && matchesStatus;
     });
-  }, [userQuery, userRoleFilter, userStatusFilter, users]);
+  }, [userQuery, userRoleFilter, userStatusFilter, users, user?.id]);
 
   const filteredPolicyEvents = useMemo(() => {
     const query = policyQuery.trim().toLowerCase();
@@ -650,23 +649,28 @@ export default function AdminPage() {
   }, [policyPageCount]);
 
   const aiResponseWeekChart = useMemo(() => {
-    const dayMs = 24 * 60 * 60 * 1000;
     const weekStartDate = new Date();
     weekStartDate.setHours(0, 0, 0, 0);
     weekStartDate.setDate(weekStartDate.getDate() - weekStartDate.getDay());
     const points = Array.from({ length: 7 }).map((_, index) => {
-      const dayStart = new Date(weekStartDate.getTime() + index * dayMs);
-      const dayEnd = new Date(dayStart.getTime() + dayMs);
+      const dayStart = new Date(weekStartDate);
+      dayStart.setDate(dayStart.getDate() + index);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
       const count = policyEvents.filter((event) => {
         const at = new Date(event.at).getTime();
         return at >= dayStart.getTime() && at < dayEnd.getTime();
       }).length;
       return {
-        label: dayStart.toLocaleDateString([], { weekday: "short" }),
+        label: dayStart.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }),
         count
       };
     });
+    const weekEndDate = new Date(weekStartDate);
+    weekEndDate.setDate(weekEndDate.getDate() + 6);
+    const dateFormat = { month: "short", day: "numeric", year: "numeric" };
     return {
+      dateRange: `${weekStartDate.toLocaleDateString([], dateFormat)} – ${weekEndDate.toLocaleDateString([], dateFormat)}`,
       labels: points.map((point) => point.label),
       counts: points.map((point) => point.count)
     };
@@ -1273,6 +1277,29 @@ export default function AdminPage() {
     }
   };
 
+  const disregardAllPromptInsights = async () => {
+    if (pendingKey || promptInsightsLoading || !promptInsights.length) return;
+    const suggestions = [...promptInsights];
+    if (!window.confirm(`Disregard all ${suggestions.length} suggestions in the queue, including those hidden by search?`)) return;
+    setPendingKey("module-disregard-all");
+    setPromptInsightsError("");
+    let completed = 0;
+    try {
+      for (const insight of suggestions) {
+        await api.post("/api/admin/simulation-modules/prompt-insights/disregard", {
+          sourcePrompt: insight.samplePrompt,
+          insightKey: insight.insightKey
+        });
+        completed += 1;
+        setPromptInsights((prev) => prev.filter((item) => item !== insight));
+      }
+    } catch (err) {
+      setPromptInsightsError(`${completed} of ${suggestions.length} suggestions disregarded. Remaining suggestions are still in the queue. ${safeError(err)}`);
+    } finally {
+      setPendingKey("");
+    }
+  };
+
   const saveModuleDraft = async () => {
     if (!moduleDraftMeta || !modulePreview) {
       return;
@@ -1361,27 +1388,11 @@ export default function AdminPage() {
     });
   }, [promptInsightFeed, promptInsightQuery]);
 
-  const moduleCategories = useMemo(
-    () => Array.from(new Set(modules.map((module) => String(module.category || "General")).filter(Boolean))).sort(),
-    [modules]
-  );
-
   const filteredModules = useMemo(() => {
-    const query = moduleQuery.trim().toLowerCase();
-    const matchingModules = modules.filter((module) => {
-      const matchesQuery = !query || [module.title, module.category, module.difficulty, module.enabled ? "enabled" : "disabled"]
-        .some((value) => String(value || "").toLowerCase().includes(query));
-      const matchesStatus = moduleStatusFilter === "all" || (moduleStatusFilter === "enabled" ? module.enabled : !module.enabled);
-      const matchesCategory = moduleCategoryFilter === "all" || String(module.category || "General") === moduleCategoryFilter;
-      return matchesQuery && matchesStatus && matchesCategory;
-    });
-
-    return matchingModules.sort((a, b) => {
-      if (moduleSort === "usage") return Number(b.completions || 0) - Number(a.completions || 0);
-      if (moduleSort === "title") return String(a.title || "").localeCompare(String(b.title || ""));
-      return Number(b.id || 0) - Number(a.id || 0);
-    });
-  }, [moduleCategoryFilter, moduleQuery, moduleSort, moduleStatusFilter, modules]);
+    return modules.filter((module) =>
+      moduleStatusFilter === "all" || (moduleStatusFilter === "enabled" ? module.enabled : !module.enabled)
+    ).sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+  }, [moduleStatusFilter, modules]);
 
   const previewSteps = Array.isArray(modulePreview?.steps) ? modulePreview.steps : [];
   const previewTotalSteps = previewSteps.length;
@@ -1549,7 +1560,7 @@ export default function AdminPage() {
 
                 <div className="overview-grid">
                   <div className="panel overview-ai-panel">
-                    <div className="panel-title">AI responses (Sun-Sat) <span>whole platform</span></div>
+                    <div className="panel-title">AI responses (this week) <span>{aiResponseWeekChart.dateRange} · whole platform</span></div>
                     <div className="overview-chart-shell">
                       <Line data={aiResponseLineData} options={aiResponseLineOptions} />
                     </div>
@@ -1998,11 +2009,11 @@ export default function AdminPage() {
 
             {!loading && activePage === "sims" ? (
               <div className="page active simulation-modules-page">
-                <div className="sim-summary-bar">
-                  <div><strong>{moduleStats.enabled}</strong><span>active modules</span></div>
-                  <div><strong>{promptInsightFeed.length}</strong><span>suggestions to review</span></div>
-                  <div><strong>{promptInsightFeed.reduce((sum, item) => sum + Number(item.similarPromptVariants || 1), 0)}</strong><span>prompt variants grouped</span></div>
-                  <div><strong>{moduleStats.completions}</strong><span>module completions</span></div>
+                <div className="policy-kpi-grid">
+                  <div className="policy-kpi-card"><span>Active Modules</span><strong>{moduleStats.enabled}</strong></div>
+                  <div className="policy-kpi-card"><span>Suggestions to Review</span><strong>{promptInsightFeed.length}</strong></div>
+                  <div className="policy-kpi-card"><span>Prompt Variants Grouped</span><strong>{promptInsightFeed.reduce((sum, item) => sum + Number(item.similarPromptVariants || 1), 0)}</strong></div>
+                  <div className="policy-kpi-card"><span>Module Completions</span><strong>{moduleStats.completions}</strong></div>
                 </div>
                 <div className="sim-view-tabs" role="tablist" aria-label="Simulation module views">
                   <button type="button" className={simulationView === "modules" ? "active" : ""} onClick={() => setSimulationView("modules")} role="tab" aria-selected={simulationView === "modules"}>Modules <span>{moduleStats.total}</span></button>
@@ -2011,11 +2022,14 @@ export default function AdminPage() {
                 <div className="panel sim-workspace">
                   {simulationView === "suggestions" ? (
                     <>
-                      <div className="sim-workspace-head">
+                      <div className="sim-workspace-head sim-prompt-head">
                         <div className="panel-title">Prompt Monitoring</div>
                         <div className="sim-prompt-toolbar">
                           <input className="policy-search-input" value={promptInsightQuery} onChange={(event) => setPromptInsightQuery(event.target.value)} placeholder="Search prompt patterns" aria-label="Search prompt patterns" />
-                          <button type="button" className="btn-sm" disabled={promptInsightsLoading} onClick={loadPromptInsights}>{promptInsightsLoading ? "Refreshing..." : "Refresh"}</button>
+                          <div className="sim-prompt-toolbar-actions">
+                          <button type="button" className="btn-sm" disabled={promptInsightsLoading || Boolean(pendingKey)} onClick={loadPromptInsights}>{promptInsightsLoading ? "Refreshing..." : "Refresh"}</button>
+                          <button type="button" className="btn-sm btn-danger" disabled={promptInsightsLoading || Boolean(pendingKey) || !promptInsightFeed.length} onClick={disregardAllPromptInsights}>{pendingKey === "module-disregard-all" ? "Disregarding all..." : "Disregard all"}</button>
+                          </div>
                         </div>
                       </div>
                       {promptInsightsError ? <div className="admin-alert error">{promptInsightsError}</div> : null}
@@ -2054,7 +2068,7 @@ export default function AdminPage() {
                                 <button
                                   type="button"
                                   className="btn-sm create-user-btn"
-                                  disabled={creating || disregarding}
+                                  disabled={promptInsightsLoading || Boolean(pendingKey)}
                                   onClick={() => createModuleFromPromptInsight(insight)}
                                 >
                                   {creating ? "Generating..." : "Generate AI Draft"}
@@ -2063,7 +2077,7 @@ export default function AdminPage() {
                                   <button
                                     type="button"
                                     className="btn-sm btn-danger"
-                                    disabled={creating || disregarding}
+                                    disabled={promptInsightsLoading || Boolean(pendingKey)}
                                     onClick={() => disregardPromptInsight(insight)}
                                   >
                                     {disregarding ? "Disregarding..." : "Disregard"}
@@ -2084,10 +2098,7 @@ export default function AdminPage() {
                         Modules
                       </div>
                       <div className="sim-module-filters">
-                        <input className="policy-search-input sim-module-search" value={moduleQuery} onChange={(event) => setModuleQuery(event.target.value)} placeholder="Search modules" aria-label="Search simulation modules" />
-                        <select value={moduleStatusFilter} onChange={(event) => setModuleStatusFilter(event.target.value)} aria-label="Filter modules by status"><option value="all">All status</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select>
-                        <select value={moduleCategoryFilter} onChange={(event) => setModuleCategoryFilter(event.target.value)} aria-label="Filter modules by category"><option value="all">All categories</option>{moduleCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select>
-                        <select value={moduleSort} onChange={(event) => setModuleSort(event.target.value)} aria-label="Sort modules"><option value="recent">Newest</option><option value="usage">Most used</option><option value="title">Title A-Z</option></select>
+                        <select value={moduleStatusFilter} onChange={(event) => setModuleStatusFilter(event.target.value)} aria-label="Filter modules by status"><option value="all">All statuses</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select>
                       </div>
                     </div>
                     <div className="sim-grid">
@@ -2095,7 +2106,7 @@ export default function AdminPage() {
                         <SimulationEmptyState
                           type="modules"
                           title={moduleStats.total === 0 ? "No simulation modules yet" : "No matching modules"}
-                          message={moduleStats.total === 0 ? "Create a module from the Suggestion Queue to start the library." : "Try changing the search or filters to see available modules."}
+                          message={moduleStats.total === 0 ? "Create a module from the Suggestion Queue to start the library." : "Try changing the status filter to see available modules."}
                         />
                       ) : filteredModules.map((module) => {
                         const completions = Number(module.completions || 0);
