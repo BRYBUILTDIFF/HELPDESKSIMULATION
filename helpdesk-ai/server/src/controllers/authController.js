@@ -3,12 +3,17 @@ const prisma = require("../prisma");
 const { generateAccessToken, generateRefreshToken } = require("../utils/jwt");
 const { hashPassword, comparePassword } = require("../utils/password");
 
-const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+const { PASSWORD_REGEX, hashToken } = require("../utils/security");
+const dummyHash = require("bcryptjs").hashSync("invalid-account-password", 12);
 
-function getRefreshExpiryDate() {
-  const token = generateRefreshToken({ probe: "expiry" });
+function getRefreshExpiryDate(token) {
   const decoded = jwt.decode(token);
   return new Date(decoded.exp * 1000);
+}
+
+function tokenKey(token) {
+  const payload = jwt.decode(token);
+  return `${payload?.familyId || "legacy"}:${hashToken(token)}`;
 }
 
 function getCookieOptions() {
@@ -61,9 +66,9 @@ async function register(req, res, next) {
 
     await prisma.refreshToken.create({
       data: {
-        token: refreshToken,
+        token: tokenKey(refreshToken),
         userId: user.id,
-        expiresAt: getRefreshExpiryDate()
+        expiresAt: getRefreshExpiryDate(refreshToken)
       }
     });
 
@@ -77,6 +82,7 @@ async function register(req, res, next) {
         lastName: user.lastName,
         role: user.role,
         isActive: user.isActive,
+        mustChangePassword: user.mustChangePassword,
         createdAt: user.createdAt
       }
     });
@@ -90,16 +96,8 @@ async function login(req, res, next) {
     const { email, password } = req.body;
 
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      return res.status(401).json({ message: "Invalid email or password" });
-    }
-
-    if (!user.isActive) {
-      return res.status(401).json({ message: "Account inactive" });
-    }
-
-    const validPassword = await comparePassword(password, user.passwordHash);
-    if (!validPassword) {
+    const validPassword = await comparePassword(password, user?.passwordHash || dummyHash);
+    if (!user || !user.isActive || !validPassword) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
@@ -109,9 +107,9 @@ async function login(req, res, next) {
 
     await prisma.refreshToken.create({
       data: {
-        token: refreshToken,
+        token: tokenKey(refreshToken),
         userId: user.id,
-        expiresAt: getRefreshExpiryDate()
+        expiresAt: getRefreshExpiryDate(refreshToken)
       }
     });
 
@@ -125,6 +123,7 @@ async function login(req, res, next) {
         lastName: user.lastName,
         role: user.role,
         isActive: user.isActive,
+        mustChangePassword: user.mustChangePassword,
         createdAt: user.createdAt
       }
     });
@@ -147,31 +146,30 @@ async function refresh(req, res, next) {
       return res.status(401).json({ message: "Unauthenticated" });
     }
 
-    const dbToken = await prisma.refreshToken.findUnique({
-      where: { token },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            role: true,
-            isActive: true
-          }
-        }
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${payload.familyId || String(payload.id)}))`;
+      const dbToken = await tx.refreshToken.findUnique({
+        where: { token: tokenKey(token) }, include: { user: true }
+      });
+      if (!dbToken) {
+        if (payload.familyId) await tx.refreshToken.deleteMany({ where: { userId: payload.id, token: { startsWith: payload.familyId + ":" } } });
+        return null;
       }
+      if (dbToken.expiresAt <= new Date() || !dbToken.user?.isActive) return null;
+      const consumed = await tx.refreshToken.deleteMany({ where: { id: dbToken.id } });
+      if (!consumed.count) return null;
+      const user = dbToken.user;
+      const currentPayload = { id: user.id, email: user.email, role: user.role, familyId: payload.familyId };
+      const refreshToken = generateRefreshToken(currentPayload);
+      await tx.refreshToken.create({ data: { token: tokenKey(refreshToken), userId: user.id, expiresAt: getRefreshExpiryDate(refreshToken) } });
+      return { accessToken: generateAccessToken({ id: user.id, email: user.email, role: user.role }), refreshToken };
     });
-
-    if (!dbToken || dbToken.expiresAt < new Date() || !dbToken.user || !dbToken.user.isActive) {
+    if (!result) {
+      res.clearCookie("refreshToken", getCookieOptions());
       return res.status(401).json({ message: "Unauthenticated" });
     }
-
-    const newAccessToken = generateAccessToken({
-      id: payload.id,
-      email: payload.email,
-      role: payload.role
-    });
-
-    return res.status(200).json({ accessToken: newAccessToken });
+    res.cookie("refreshToken", result.refreshToken, getCookieOptions());
+    return res.status(200).json({ accessToken: result.accessToken });
   } catch (err) {
     return next(err);
   }
@@ -183,7 +181,7 @@ async function logout(req, res, next) {
 
     if (token) {
       await prisma.refreshToken.deleteMany({
-        where: { token }
+        where: { token: tokenKey(token) }
       });
     }
 
@@ -205,6 +203,7 @@ async function getMe(req, res, next) {
         lastName: true,
         role: true,
         isActive: true,
+        mustChangePassword: true,
         createdAt: true
       }
     });
@@ -246,7 +245,7 @@ async function changePassword(req, res, next) {
 
     const passwordHash = await hashPassword(newPassword);
     await prisma.$transaction([
-      prisma.user.update({ where: { id: user.id }, data: { passwordHash } }),
+      prisma.user.update({ where: { id: user.id }, data: { passwordHash, mustChangePassword: false } }),
       prisma.refreshToken.deleteMany({ where: { userId: user.id } })
     ]);
 
@@ -254,7 +253,7 @@ async function changePassword(req, res, next) {
     const accessToken = generateAccessToken(payload);
     const refreshToken = generateRefreshToken(payload);
     await prisma.refreshToken.create({
-      data: { token: refreshToken, userId: user.id, expiresAt: getRefreshExpiryDate() }
+      data: { token: tokenKey(refreshToken), userId: user.id, expiresAt: getRefreshExpiryDate(refreshToken) }
     });
 
     res.cookie("refreshToken", refreshToken, getCookieOptions());

@@ -330,15 +330,29 @@ async function getPolicyConfig() {
   }
 }
 
+let runtimeKey = "";
+let runtimeConfig = null;
+let runtimeVersion = null;
 async function getPolicyRuntimeConfig() {
+  let version = null;
+  try {
+    const row = await prisma.policyConfig.findUnique({ where: { id: 1 }, select: { version: true } });
+    version = row?.version ?? null;
+    if (runtimeConfig && version !== null && version === runtimeVersion) return runtimeConfig;
+  } catch (_) { /* Read-only legacy fallback remains available below. */ }
   const config = await getPolicyConfig();
-  return {
+  const key = JSON.stringify(config);
+  if (runtimeConfig && runtimeKey === key) return runtimeConfig;
+  runtimeKey = key;
+  runtimeVersion = version;
+  runtimeConfig = {
     ...clone(config),
     greetingPatternRegex: toKeywordRegExpList(config.greetingPatterns),
     inScopeIntentRegex: toKeywordRegExpList(config.inScopeIntentPatterns),
     inScopeKeywordRegex: toKeywordRegExpList(config.inScopeKeywords),
     outOfScopeKeywordRegex: toKeywordRegExpList(config.outOfScopeKeywords)
   };
+  return runtimeConfig;
 }
 
 async function replacePolicyConfig(nextConfig, updatedById = null) {

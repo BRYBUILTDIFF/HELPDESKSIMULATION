@@ -1,3 +1,4 @@
+require("dotenv").config();
 const { PrismaClient, Role } = require("@prisma/client");
 const bcrypt = require("bcryptjs");
 
@@ -7,14 +8,14 @@ async function main() {
   const accounts = [
     {
       email: "admin@helpdesk.com",
-      plainPassword: "Admin@1234",
+      plainPassword: process.env.SEED_ADMIN_PASSWORD,
       firstName: "System",
       lastName: "Admin",
       role: Role.ADMIN
     },
     {
       email: "user@helpdesk.com",
-      plainPassword: "User@1234",
+      plainPassword: process.env.SEED_USER_PASSWORD,
       firstName: "HelpDesk",
       lastName: "User",
       role: Role.USER
@@ -22,28 +23,25 @@ async function main() {
   ];
 
   for (const account of accounts) {
-    const passwordHash = await bcrypt.hash(account.plainPassword, 12);
+
     const existing = await prisma.user.findUnique({ where: { email: account.email } });
 
     if (existing) {
-      await prisma.user.update({
-        where: { email: account.email },
-        data: {
-          passwordHash,
-          firstName: account.firstName,
-          lastName: account.lastName,
-          role: account.role,
-          isActive: true
-        }
-      });
-      console.log(`${account.role} account updated: ${account.email}`);
+      console.log(`${account.role} account already exists; unchanged: ${account.email}`);
       continue;
     }
 
-    await prisma.user.create({
-      data: {
+    if (!require("../src/utils/security").PASSWORD_REGEX.test(account.plainPassword || "")) {
+      throw new Error(`Set a policy-compliant SEED_${account.role === Role.ADMIN ? "ADMIN" : "USER"}_PASSWORD before creating this account.`);
+    }
+    const passwordHash = await bcrypt.hash(account.plainPassword, 12);
+    await prisma.user.upsert({
+      where: { email: account.email },
+      update: {},
+      create: {
         email: account.email,
         passwordHash,
+        mustChangePassword: true,
         firstName: account.firstName,
         lastName: account.lastName,
         role: account.role

@@ -18,7 +18,7 @@ export function useAxios() {
 
   useEffect(() => {
     const reqId = instance.interceptors.request.use((config) => {
-      if (accessToken) {
+      if (accessToken && !config._retry) {
         config.headers.Authorization = `Bearer ${accessToken}`;
       }
       return config;
@@ -45,6 +45,10 @@ export function useAxios() {
           }
         }
 
+        if (error.response?.data?.code === "PASSWORD_CHANGE_REQUIRED") {
+          window.location.href = "/change-password";
+          return Promise.reject(error);
+        }
         if (error.response?.status === 403) {
           window.location.href = user?.role === "ADMIN" ? "/admin?denied=1" : "/dashboard?denied=1";
         }

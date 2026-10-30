@@ -1,0 +1,6 @@
+{
+  "watch": ["src", ".env"],
+  "ext": "js,json,env",
+  "ignore": ["data/**", "node_modules/**", "prisma/**", "test/**"],
+  "delay": "300"
+}

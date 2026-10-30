@@ -2,6 +2,7 @@ const { EC2Client, RunInstancesCommand, DescribeInstancesCommand, TerminateInsta
 const prisma = require("../prisma");
 
 const ACTIVE_STATUSES = ["PROVISIONING", "READY", "ACTIVE"];
+const LIVE_STATUSES = [...ACTIVE_STATUSES, "TERMINATING"];
 
 class SimulationServiceError extends Error {
   constructor(message, status = 503) {
@@ -39,8 +40,8 @@ function hasExpectedSessionTag(instance, session) {
 }
 
 async function createWindowsSimulationSession(session) {
-  const { launchTemplateId } = getConfig();
   try {
+    const { launchTemplateId } = getConfig();
     const response = await getEc2Client().send(
       new RunInstancesCommand({
         MinCount: 1,
@@ -89,7 +90,7 @@ async function refreshWindowsSimulationSession(session) {
 }
 
 async function terminateWindowsSimulationSession(session) {
-  if (!session || ["ENDED", "FAILED"].includes(session.status)) return session;
+  if (!session || (session.status === "ENDED" && !session.ec2InstanceId)) return session;
   const terminating = await prisma.simulationSession.update({
     where: { id: session.id },
     data: { status: "TERMINATING" }
@@ -100,11 +101,15 @@ async function terminateWindowsSimulationSession(session) {
   try {
     const inspect = await getEc2Client().send(new DescribeInstancesCommand({ InstanceIds: [terminating.ec2InstanceId] }));
     const instance = inspect.Reservations?.[0]?.Instances?.[0];
-    if (instance && hasExpectedSessionTag(instance, terminating) && !["shutting-down", "terminated"].includes(instance.State?.Name)) {
+    if (instance && !hasExpectedSessionTag(instance, terminating)) throw new Error("Instance ownership tag mismatch.");
+    if (instance && !["shutting-down", "terminated"].includes(instance.State?.Name)) {
       await getEc2Client().send(new TerminateInstancesCommand({ InstanceIds: [terminating.ec2InstanceId] }));
     }
     return prisma.simulationSession.update({ where: { id: session.id }, data: { status: "ENDED", endedAt: new Date() } });
   } catch (error) {
+    if ((error?.name || error?.code) === "InvalidInstanceID.NotFound") {
+      return prisma.simulationSession.update({ where: { id: session.id }, data: { status: "ENDED", endedAt: new Date() } });
+    }
     console.error("Windows simulation termination failed", { sessionId: session.id, code: error?.name || error?.code });
     throw new SimulationServiceError("Unable to end the Windows workspace. It will be retried automatically.");
   }
@@ -112,15 +117,51 @@ async function terminateWindowsSimulationSession(session) {
 
 async function cleanupExpiredWindowsSimulationSessions() {
   const expired = await prisma.simulationSession.findMany({
-    where: { status: { in: ACTIVE_STATUSES }, expiresAt: { lt: new Date() } },
+    where: { OR: [{ status: { in: ACTIVE_STATUSES }, expiresAt: { lt: new Date() } }, { status: "TERMINATING" }] },
     take: 100
   });
   await Promise.all(expired.map((session) => terminateWindowsSimulationSession(session).catch(() => null)));
+  await reconcileWindowsSimulationInstances();
   return expired.length;
+}
+
+// Reconcile AWS independently of DB instance IDs, including launches interrupted
+// between RunInstances and persistence. Only application-tagged instances qualify.
+async function reconcileWindowsSimulationInstances() {
+  if (!process.env.AWS_SIMULATION_LAUNCH_TEMPLATE_ID || !process.env.AWS_REGION) return;
+  const client = getEc2Client();
+  let nextToken;
+  do {
+    const response = await client.send(new DescribeInstancesCommand({
+      Filters: [
+        { Name: "tag:Project", Values: ["HelpDeskAI"] },
+        { Name: "tag:Purpose", Values: ["UserSimulation"] },
+        { Name: "instance-state-name", Values: ["pending", "running", "stopping", "stopped"] }
+      ], NextToken: nextToken
+    }));
+    for (const reservation of response.Reservations || []) {
+      for (const instance of reservation.Instances || []) {
+        const tags = Object.fromEntries((instance.Tags || []).map(tag => [tag.Key, tag.Value]));
+        if (!tags.SessionId || !instance.InstanceId) continue;
+        const session = await prisma.simulationSession.findUnique({ where: { id: tags.SessionId } });
+        const deadline = Date.parse(tags.AutoTerminateAt || "");
+        const expired = Number.isFinite(deadline) && deadline <= Date.now();
+        if (expired || !session || !ACTIVE_STATUSES.includes(session.status) || session.expiresAt <= new Date()) {
+          await client.send(new TerminateInstancesCommand({ InstanceIds: [instance.InstanceId] }));
+          if (session) await prisma.simulationSession.update({ where: { id: session.id }, data: { status: "ENDED", endedAt: new Date() } });
+        } else if (!session.ec2InstanceId) {
+          await prisma.simulationSession.update({ where: { id: session.id }, data: { ec2InstanceId: instance.InstanceId } });
+        }
+      }
+    }
+    nextToken = response.NextToken;
+  } while (nextToken);
 }
 
 module.exports = {
   ACTIVE_STATUSES,
+  LIVE_STATUSES,
+  reconcileWindowsSimulationInstances,
   SimulationServiceError,
   createWindowsSimulationSession,
   refreshWindowsSimulationSession,

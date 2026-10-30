@@ -1,3 +1,4 @@
+const { getChatHistory, appendChatTurn } = require("../store/chatHistoryStore");
 const { getAIProvider, getDefaultModel, getOpenAIClient } = require("../utils/openai");
 const { evaluatePromptPolicy } = require("../policy/promptPolicy");
 const { recordPolicyEvent } = require("../store/policyEventStore");
@@ -204,8 +205,9 @@ async function getRelatedTickets(req, res) {
 async function chat(req, res, next) {
   try {
     const message = String(req.body.message || "").trim();
-    const history = Array.isArray(req.body.history) ? req.body.history : [];
+
     const sessionId = String(req.body.sessionId || "").trim();
+    const history = await getChatHistory(req.user.id, sessionId);
     const conversationScope = sessionId ? await getConversationScope(req.user?.id, sessionId) : null;
 
     const policyResult = await evaluatePromptPolicy(message, history, { conversationScope });
@@ -299,6 +301,7 @@ async function chat(req, res, next) {
       reason: responseReason,
       hasHistory: history.length > 0
     });
+    await appendChatTurn(req.user.id, sessionId, message, safeReply);
     if (sessionId && !outputSafety) {
       await markConversationScope(req.user?.id, sessionId, "it_support");
     }
@@ -312,7 +315,7 @@ async function chat(req, res, next) {
     });
   } catch (err) {
     if (err?.status === 401 || err?.code === "invalid_api_key") {
-      return res.status(401).json({
+      return res.status(502).json({
         message:
           "Invalid AI API key for the configured provider. Check AI_PROVIDER, AI_API_KEY, AI_BASE_URL, and AI_MODEL in server/.env."
       });

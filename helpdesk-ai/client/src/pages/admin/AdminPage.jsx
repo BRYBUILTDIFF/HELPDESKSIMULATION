@@ -1,3 +1,4 @@
+import { plainDescription } from "../../utils/plainDescription";
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BarElement,
@@ -27,7 +28,7 @@ const PAGE_META = {
 };
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
-const DEFAULT_USER_PASSWORD = "password123";
+function generateUserPassword() { return "Aa1!" + Array.from(crypto.getRandomValues(new Uint8Array(18)), (value) => value.toString(16).padStart(2, "0")).join(""); }
 const USERS_PER_PAGE = 8;
 const POLICY_EVENTS_PER_PAGE = 10;
 const POLICY_LIST_META = {
@@ -170,20 +171,16 @@ function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
-function validateUserForm(mode, form, options = {}) {
-  const allowDefaultPassword = Boolean(options.allowDefaultPassword);
+function validateUserForm(mode, form) {
+
 
   if (!form.firstName.trim()) return "First name is required.";
   if (!form.lastName.trim()) return "Last name is required.";
   if (!EMAIL_REGEX.test(form.email.trim())) return "Enter a valid email address.";
 
   if (mode === "create") {
-    const isDefaultPassword = form.password === DEFAULT_USER_PASSWORD;
-    if (!isDefaultPassword && !PASSWORD_REGEX.test(form.password)) {
+    if (!PASSWORD_REGEX.test(form.password)) {
       return "Password must be at least 8 chars and include uppercase, number, and special character.";
-    }
-    if (isDefaultPassword && !allowDefaultPassword) {
-      return "Default password is not allowed in this flow.";
     }
     if (form.password !== form.confirmPassword) {
       return "Passwords do not match.";
@@ -191,12 +188,8 @@ function validateUserForm(mode, form, options = {}) {
   }
 
   if (mode === "edit" && form.password) {
-    const isDefaultPassword = form.password === DEFAULT_USER_PASSWORD;
-    if (!isDefaultPassword && !PASSWORD_REGEX.test(form.password)) {
+    if (!PASSWORD_REGEX.test(form.password)) {
       return "Password must be at least 8 chars and include uppercase, number, and special character.";
-    }
-    if (isDefaultPassword && !allowDefaultPassword) {
-      return "Default password is not allowed in this flow.";
     }
     if (form.password !== form.confirmPassword) {
       return "Passwords do not match.";
@@ -442,6 +435,7 @@ export default function AdminPage() {
   const [userPendingDeletion, setUserPendingDeletion] = useState(null);
   const [userForm, setUserForm] = useState(buildDefaultUserForm());
   const [useDefaultPassword, setUseDefaultPassword] = useState(false);
+  const [generatedUserPassword, setGeneratedUserPassword] = useState("");
   const [showCreatePassword, setShowCreatePassword] = useState(false);
   const [showCreateConfirmPassword, setShowCreateConfirmPassword] = useState(false);
   const [userFormError, setUserFormError] = useState("");
@@ -971,9 +965,9 @@ export default function AdminPage() {
 
   const saveUserModal = async () => {
     const resolvedPassword =
-      userModalMode === "create" && useDefaultPassword ? DEFAULT_USER_PASSWORD : userForm.password;
+      userModalMode === "create" && useDefaultPassword ? generatedUserPassword : userForm.password;
     const resolvedConfirmPassword =
-      userModalMode === "create" && useDefaultPassword ? DEFAULT_USER_PASSWORD : userForm.confirmPassword;
+      userModalMode === "create" && useDefaultPassword ? generatedUserPassword : userForm.confirmPassword;
     const formToValidate = {
       ...userForm,
       password: resolvedPassword,
@@ -999,7 +993,7 @@ export default function AdminPage() {
     };
 
     if (userModalMode === "create" && useDefaultPassword) {
-      payload.password = DEFAULT_USER_PASSWORD;
+      payload.password = generatedUserPassword;
     } else if (userForm.password.trim()) {
       payload.password = userForm.password;
     }
@@ -2238,8 +2232,7 @@ export default function AdminPage() {
                       <div className="sim-preview-title">{previewCurrentStep.title || "No step available"}</div>
                       <div
                         className="sim-preview-desc"
-                        dangerouslySetInnerHTML={{ __html: previewCurrentStep.desc || "" }}
-                      />
+                        >{plainDescription(previewCurrentStep.desc || "")}</div>
                       <div className="sim-preview-scenario-box">
                         <div className="sim-preview-scenario-label">Scenario</div>
                         <pre>{previewCurrentStep.screen || "No simulated screen output."}</pre>
@@ -2406,7 +2399,7 @@ jumpcloud@JumpCloud ~ % _`}</pre>
                       </div>
                       <div className="sim-runtime-current-text">{previewCurrentStep.action || "No action provided."}</div>
                       {previewCurrentStep.desc ? (
-                        <div className="sim-runtime-current-text sim-runtime-current-subtext" dangerouslySetInnerHTML={{ __html: previewCurrentStep.desc }} />
+                        <div className="sim-runtime-current-text sim-runtime-current-subtext" >{plainDescription(previewCurrentStep.desc)}</div>
                       ) : null}
                     </div>
 
@@ -2828,21 +2821,23 @@ jumpcloud@JumpCloud ~ % _`}</pre>
                       checked={useDefaultPassword}
                       onChange={(event) => {
                         const checked = event.target.checked;
+                        const password = checked ? generateUserPassword() : "";
+                        setGeneratedUserPassword(password);
                         setUseDefaultPassword(checked);
                         setUserFormError("");
                         setShowCreatePassword(false);
                         setShowCreateConfirmPassword(false);
                         setUserForm((prev) => ({
                           ...prev,
-                          password: checked ? DEFAULT_USER_PASSWORD : "",
-                          confirmPassword: checked ? DEFAULT_USER_PASSWORD : ""
+                          password,
+                          confirmPassword: password
                         }));
                       }}
                     />
                     <span>
-                      <strong>Use default password</strong>
+                      <strong>Use generated password</strong>
                       <em>
-                        Account will be created with <code>{DEFAULT_USER_PASSWORD}</code> and should be changed on first login
+                        Account will be created with <code>{generatedUserPassword}</code> and must be changed on first login
                       </em>
                     </span>
                   </label>

@@ -15,6 +15,7 @@ model User {
   lastName              String
   role                  Role                   @default(USER)
   isActive              Boolean                @default(true)
+  mustChangePassword    Boolean                @default(false)
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   refreshTokens         RefreshToken[]
@@ -50,6 +51,7 @@ model PolicyConversation {
   userId    Int
   sessionId String
   scope     String
+  history   Json     @default("[]")
   expiresAt DateTime @default(now())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

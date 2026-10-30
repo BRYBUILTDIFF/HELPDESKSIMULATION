@@ -9,7 +9,7 @@ function plainText(value) {
   return String(value || "").replace(/<[^>]+>/g, "").trim();
 }
 
-export default function WindowsOsSimulation({ api, moduleId, title, steps = [], completedStepIndexes = [], onEnded, onSessionReady, onStepProgress }) {
+export default function WindowsOsSimulation({ api, moduleId, title, steps = [], completedStepIndexes = [], walkthroughOnOpen = true, onEnded, onSessionReady, onStepProgress }) {
   const [session, setSession] = useState(null);
   const [status, setStatus] = useState("IDLE");
   const [guacamoleUrl, setGuacamoleUrl] = useState("");
@@ -18,7 +18,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
   const [activeStep, setActiveStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState(() => new Set(completedStepIndexes));
   const [completing, setCompleting] = useState(false);
-  const [showWalkthrough, setShowWalkthrough] = useState(true);
+  const [showWalkthrough, setShowWalkthrough] = useState(walkthroughOnOpen);
   const startedRef = useRef(false);
   const connectInFlightRef = useRef(false);
   const guidedSteps = Array.isArray(steps) ? steps : [];

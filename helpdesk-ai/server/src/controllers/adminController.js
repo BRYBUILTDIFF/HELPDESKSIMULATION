@@ -13,8 +13,8 @@ const {
   resetPolicyConfig
 } = require("../store/policyConfigStore");
 
-const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
-const DEFAULT_USER_PASSWORD = "password123";
+const { PASSWORD_REGEX, plainDescription } = require("../utils/security");
+const { terminateWindowsSimulationSession } = require("../services/windowsSimulationService");
 const DIFFICULTY_LEVELS = ["Easy", "Medium", "Hard"];
 const CATEGORY_KEYWORDS = [
   { category: "Network", words: ["internet", "wifi", "network", "dns", "vpn", "lan", "ip", "router"] },
@@ -55,7 +55,7 @@ const PROMPT_SIGNATURE_ALIASES = [
 
 function isAllowedAdminUserPassword(password) {
   const candidate = String(password || "");
-  return candidate === DEFAULT_USER_PASSWORD || PASSWORD_REGEX.test(candidate);
+  return PASSWORD_REGEX.test(candidate);
 }
 
 function normalizePrompt(text) {
@@ -214,7 +214,7 @@ function buildFallbackSimulationDefinition({ title, category, prompt, surface })
     steps: [
       {
         title: "Collect Ticket Context",
-        desc: `Capture user symptoms and impact for <b>${safeTitle}</b>.`,
+        desc: `Capture user symptoms and impact for ${plainDescription(safeTitle)}.`,
         screen: `> Ticket opened\n> Category: ${safeCategory}\n> User prompt: ${promptContext}`,
         action: "Confirm affected systems, time started, and business impact.",
         result: "Incident context documented."
@@ -261,7 +261,7 @@ function sanitizeSimulationDefinition(definition, fallback) {
   const steps = rawSteps
     .map((step, index) => ({
       title: String(step?.title || `Step ${index + 1}`).trim(),
-      desc: String(step?.desc || "").trim(),
+      desc: plainDescription(step?.desc),
       screen: String(step?.screen || "").trim(),
       action: String(step?.action || "").trim(),
       result: String(step?.result || "").trim()
@@ -386,7 +386,7 @@ async function createUser(req, res, next) {
     if (!isAllowedAdminUserPassword(password)) {
       return res.status(400).json({
         message:
-          "Password must be at least 8 characters and include uppercase, number, and special character, or be password123."
+          "Password must be at least 8 characters and include uppercase, number, and special character."
       });
     }
 
@@ -403,6 +403,7 @@ async function createUser(req, res, next) {
         lastName: String(lastName || "").trim(),
         email: normalizedEmail,
         passwordHash,
+        mustChangePassword: true,
         role: role || "USER",
         isActive: typeof isActive === "boolean" ? isActive : true
       },
@@ -446,7 +447,7 @@ async function updateUser(req, res, next) {
     if (password && !isAllowedAdminUserPassword(password)) {
       return res.status(400).json({
         message:
-          "Password must be at least 8 characters and include uppercase, number, and special character, or be password123."
+          "Password must be at least 8 characters and include uppercase, number, and special character."
       });
     }
 
@@ -460,27 +461,33 @@ async function updateUser(req, res, next) {
 
     const passwordHash = password ? await hashPassword(password) : undefined;
 
-    const updated = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        firstName: typeof firstName === "string" ? firstName.trim() : undefined,
-        lastName: typeof lastName === "string" ? lastName.trim() : undefined,
-        email: nextEmail,
-        passwordHash,
-        role: role ?? undefined,
-        isActive: typeof isActive === "boolean" ? isActive : undefined
-      },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        isActive: true,
-        createdAt: true
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await tx.user.update({
+        where: { id: userId },
+        data: {
+          firstName: typeof firstName === "string" ? firstName.trim() : undefined,
+          lastName: typeof lastName === "string" ? lastName.trim() : undefined,
+          email: nextEmail,
+          passwordHash,
+          mustChangePassword: password ? true : undefined,
+          role: role ?? undefined,
+          isActive: typeof isActive === "boolean" ? isActive : undefined
+        },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          role: true,
+          isActive: true,
+          createdAt: true
+        }
+      });
+      if (password || (role && role !== existing.role) || isActive === false) {
+        await tx.refreshToken.deleteMany({ where: { userId } });
       }
+      return result;
     });
-
     return res.status(200).json({ user: updated });
   } catch (err) {
     if (err?.code === "P2002") {
@@ -501,6 +508,9 @@ async function hardDeleteUser(req, res, next) {
     if (!existing) {
       return res.status(404).json({ message: "User not found" });
     }
+
+    const sessions = await prisma.simulationSession.findMany({ where: { userId } });
+    for (const session of sessions) await terminateWindowsSimulationSession(session);
 
     await prisma.user.delete({
       where: { id: userId },

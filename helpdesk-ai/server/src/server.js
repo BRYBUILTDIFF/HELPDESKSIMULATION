@@ -6,6 +6,9 @@ const rateLimit = require("express-rate-limit");
 const dotenv = require("dotenv");
 
 dotenv.config();
+require("./utils/security").validateSecurityConfig();
+if (!process.env.NODE_ENV && process.env.npm_lifecycle_event === "dev") process.env.NODE_ENV = "development";
+if (!["development", "test", "production"].includes(process.env.NODE_ENV)) throw new Error("Set NODE_ENV to development, test, or production.");
 
 const authRoutes = require("./routes/auth.routes");
 const adminRoutes = require("./routes/admin.routes");
@@ -14,14 +17,21 @@ const sessionRoutes = require("./routes/session.routes");
 const simulationRoutes = require("./routes/simulation.routes");
 const simulationSessionRoutes = require("./routes/simulationSession.routes");
 const { cleanupExpiredWindowsSimulationSessions } = require("./services/windowsSimulationService");
+const { cleanupRetainedData } = require("./services/retentionService");
 const { initializePolicyConfig } = require("./store/policyConfigStore");
 
 const app = express();
+// Set only to the number of trusted reverse-proxy hops in this deployment.
+if (process.env.TRUST_PROXY_HOPS) {
+  const hops = Number(process.env.TRUST_PROXY_HOPS);
+  if (!Number.isInteger(hops) || hops < 1) throw new Error("TRUST_PROXY_HOPS must be a positive integer.");
+  app.set("trust proxy", hops);
+}
 const allowedOrigins = [
   ...(process.env.CLIENT_URLS || "").split(",").map((origin) => origin.trim()).filter(Boolean),
   process.env.CLIENT_URL
 ].filter(Boolean);
-const isDevelopment = process.env.NODE_ENV !== "production";
+const isDevelopment = process.env.NODE_ENV === "development";
 
 function isPrivateLanOrigin(origin) {
   try {
@@ -92,6 +102,8 @@ const aiLimiter = rateLimit({
 
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
+app.use("/api/auth/refresh", rateLimit({ windowMs: 60000, max: 60, standardHeaders: true, legacyHeaders: false }));
+app.use("/api/auth/change-password", authLimiter);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/ai", aiLimiter, aiRoutes);
@@ -113,7 +125,7 @@ app.use((err, _req, res, _next) => {
     return res.status(403).json({ message: "CORS origin forbidden" });
   }
 
-  const isProd = process.env.NODE_ENV === "production";
+  const isProd = process.env.NODE_ENV !== "development";
   res.status(500).json({
     message: "Internal server error",
     ...(isProd ? {} : { error: err.message, stack: err.stack })
@@ -123,6 +135,8 @@ app.use((err, _req, res, _next) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  cleanupRetainedData().catch(() => console.error("Data retention cleanup failed; will retry."));
+  setInterval(() => cleanupRetainedData().catch(() => console.error("Data retention cleanup failed; will retry.")), 60 * 60 * 1000).unref();
   initializePolicyConfig().catch((error) => console.error("Policy configuration initialization failed", error?.message));
   cleanupExpiredWindowsSimulationSessions().catch((error) => console.error("Simulation cleanup startup pass failed", error?.message));
   setInterval(() => {

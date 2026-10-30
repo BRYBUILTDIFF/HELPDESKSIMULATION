@@ -1,0 +1,9 @@
+# Local credentials and runtime configuration. Commit examples only.
+**/.env
+**/.env.*
+!**/.env.example
+
+# Installed dependencies and temporary build output.
+**/node_modules/
+**/.security-build/
+helpdesk-ai/server/data/policy-events.json

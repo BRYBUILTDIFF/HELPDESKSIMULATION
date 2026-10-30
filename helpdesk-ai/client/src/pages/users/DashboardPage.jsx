@@ -1,3 +1,4 @@
+import { plainDescription } from "../../utils/plainDescription";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
@@ -1321,6 +1322,7 @@ export default function DashboardPage() {
   const sessionsSaveTimerRef = useRef(null);
   const initialStartNewChatRef = useRef(Boolean(location.state?.startNewChat));
   const appliedUrlSessionIdRef = useRef("");
+  const loadedWorkspaceSessionRef = useRef("");
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sessions, setSessions] = useState([]);
@@ -1333,7 +1335,7 @@ export default function DashboardPage() {
   const [copiedMessageId, setCopiedMessageId] = useState("");
 
   const [stepModalOpen, setStepModalOpen] = useState(false);
-  const [showSimulationWalkthrough, setShowSimulationWalkthrough] = useState(true);
+  const [showSimulationWalkthrough, setShowSimulationWalkthrough] = useState(false);
   const [modalSteps, setModalSteps] = useState([]);
   const [modalStepDetails, setModalStepDetails] = useState([]);
   const [modalSourceTitle, setModalSourceTitle] = useState("AI Response");
@@ -1349,11 +1351,6 @@ export default function DashboardPage() {
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState("");
 
-  useEffect(() => {
-    if (stepModalOpen && modalCanvasState?.simulationId) {
-      setShowSimulationWalkthrough(true);
-    }
-  }, [stepModalOpen, modalCanvasState?.simulationId]);
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordVisibility, setPasswordVisibility] = useState({ current: false, next: false, confirm: false });
   const [openSessionMenuId, setOpenSessionMenuId] = useState(null);
@@ -1735,6 +1732,9 @@ export default function DashboardPage() {
     if (location.state?.startNewChat) {
       return;
     }
+    // Saving progress changes currentSession too; restore only on navigation.
+    if (loadedWorkspaceSessionRef.current === currentSession.id) return;
+    loadedWorkspaceSessionRef.current = currentSession.id;
     if (currentSession.isSimulationSession) {
       loadSimulationWorkspaceFromSession(currentSession);
       return;
@@ -2227,6 +2227,7 @@ export default function DashboardPage() {
         ? currentSession
         : createSession(sim.title || suggestion?.title || "Windows OS Simulation", { isSimulationSession: true });
       const sessionId = targetSession.id;
+      loadedWorkspaceSessionRef.current = sessionId;
       if (!canReuseCurrentSession) {
         setSessions((prev) => [targetSession, ...prev]);
         setActiveSessionId(sessionId);
@@ -2252,7 +2253,7 @@ export default function DashboardPage() {
         )
       );
       setPendingSimulationCreation(false);
-      setActiveWindowsOsModule({ id: simulationId, title: sim.title || suggestion?.title || "Windows OS Simulation", steps: sim.steps || [], sessionId });
+      setActiveWindowsOsModule({ id: simulationId, title: sim.title || suggestion?.title || "Windows OS Simulation", steps: sim.steps || [], sessionId, walkthroughOnOpen: !canReuseCurrentSession });
       return;
     }
 
@@ -2262,6 +2263,7 @@ export default function DashboardPage() {
       ? createSession("New Simulation", { isSimulationSession: true })
       : currentSession;
     const sessionId = targetSession.id;
+    loadedWorkspaceSessionRef.current = sessionId;
     if (shouldCreateNewSimulationSession) {
       setSessions((prev) => [targetSession, ...prev]);
       setActiveSessionId(targetSession.id);
@@ -2323,7 +2325,8 @@ export default function DashboardPage() {
       steps,
       scenarioType,
       canvasState,
-      stepDetails: sim.steps
+      stepDetails: sim.steps,
+      fresh: true
     });
   };
 
@@ -2394,6 +2397,8 @@ export default function DashboardPage() {
   };
 
   function loadSimulationWorkspaceFromSession(session) {
+    loadedWorkspaceSessionRef.current = session?.id || "";
+    setShowSimulationWalkthrough(false);
     if (!session?.isSimulationSession) {
       return;
     }
@@ -2521,7 +2526,8 @@ export default function DashboardPage() {
     steps,
     scenarioType,
     canvasState,
-    stepDetails = []
+    stepDetails = [],
+    fresh = false
   }) => {
     setModalSteps(steps);
     setModalStepDetails(stepDetails);
@@ -2530,12 +2536,7 @@ export default function DashboardPage() {
     setModalCanvasState(canvasState);
     setModalSourceTitle(sourceTitle);
     setTerminalQueuedCommand(null);
-    if (canvasState?.simulationId || canvasState?.terminalType || String(sourceTitle || "").toLowerCase().includes("terminal")) {
-      setShowSimulationWalkthrough(true);
-    }
-    // The walkthrough is enabled by the effect below once the terminal canvas
-    // has finished loading. Do not set it from this initial payload because
-    // restored simulations may briefly arrive without their final metadata.
+    setShowSimulationWalkthrough(fresh);
     setStepModalOpen(!isSimulationSession);
   };
 
@@ -2564,6 +2565,7 @@ export default function DashboardPage() {
       steps,
       scenarioType,
       canvasState,
+      fresh: !existingCanvas,
       stepDetails: existingCanvas?.stepDetails || []
     });
 
@@ -3518,7 +3520,7 @@ export default function DashboardPage() {
                     <div className="step-modal-current-text">{modalStepDetails[modalSafeStep].action}</div>
                   ) : null}
                   {modalStepDetails[modalSafeStep]?.desc ? (
-                    <div className="step-modal-current-text step-modal-current-subtext" dangerouslySetInnerHTML={{ __html: modalStepDetails[modalSafeStep].desc }} />
+                    <div className="step-modal-current-text step-modal-current-subtext" >{plainDescription(modalStepDetails[modalSafeStep].desc)}</div>
                   ) : null}
                 </div>
                 <div className="terminal-guide">
@@ -3923,6 +3925,8 @@ export default function DashboardPage() {
           <div className={`chat-wrap ${activeWindowsOsModule ? "has-windows-os-simulation" : ""}`} ref={chatWrapRef}>
             {activeWindowsOsModule ? (
               <WindowsOsSimulation
+                key={activeWindowsOsModule.sessionId}
+                walkthroughOnOpen={Boolean(activeWindowsOsModule.walkthroughOnOpen)}
                 api={api}
                 moduleId={activeWindowsOsModule.id}
                 title={activeWindowsOsModule.title}
@@ -4036,7 +4040,7 @@ export default function DashboardPage() {
                             <div className="step-modal-current-text">{modalStepDetails[modalSafeStep].action}</div>
                           ) : null}
                           {modalStepDetails[modalSafeStep]?.desc ? (
-                            <div className="step-modal-current-text step-modal-current-subtext" dangerouslySetInnerHTML={{ __html: modalStepDetails[modalSafeStep].desc }} />
+                            <div className="step-modal-current-text step-modal-current-subtext" >{plainDescription(modalStepDetails[modalSafeStep].desc)}</div>
                           ) : null}
                         </div>
                         {modalStepOutcome ? (

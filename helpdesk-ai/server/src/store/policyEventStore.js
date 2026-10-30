@@ -5,7 +5,7 @@ const prisma = require("../prisma");
 const MAX_EVENTS = 1000;
 const DATA_DIR = path.resolve(__dirname, "../../data");
 const POLICY_EVENTS_FILE = path.resolve(DATA_DIR, "policy-events.json");
-let dbUnavailable = false;
+let dbRetryAt = 0;
 let dbSeedChecked = false;
 
 function ensureDataDir() {
@@ -70,7 +70,7 @@ function mapDbEvent(item) {
 }
 
 function canUseDb() {
-  return Boolean(prisma?.policyEvent) && !dbUnavailable;
+  return Boolean(prisma?.policyEvent) && Date.now() >= dbRetryAt;
 }
 
 async function ensureDbSeededFromFile() {
@@ -102,9 +102,17 @@ async function ensureDbSeededFromFile() {
     });
   } catch (err) {
     if (shouldDisableDb(err)) {
-      dbUnavailable = true;
+      dbRetryAt = Date.now() + 30000;
     }
   }
+}
+
+function prunePolicyEvents(cutoff = new Date(Date.now() - (Math.max(1, Number(process.env.POLICY_RETENTION_DAYS) || 90) * 86400000))) {
+  const previousCount = policyEvents.length;
+  for (let index = policyEvents.length - 1; index >= 0; index -= 1) {
+    if (!Number.isFinite(Date.parse(policyEvents[index].at)) || new Date(policyEvents[index].at) < cutoff) policyEvents.splice(index, 1);
+  }
+  if (policyEvents.length !== previousCount) persistEvents(policyEvents);
 }
 
 async function recordPolicyEvent(event) {
@@ -138,11 +146,12 @@ async function recordPolicyEvent(event) {
       return mapDbEvent(created);
     } catch (err) {
       if (shouldDisableDb(err)) {
-        dbUnavailable = true;
+        dbRetryAt = Date.now() + 30000;
       }
     }
   }
 
+  prunePolicyEvents();
   policyEvents.unshift(item);
   if (policyEvents.length > MAX_EVENTS) {
     policyEvents.length = MAX_EVENTS;
@@ -163,7 +172,7 @@ async function listPolicyEvents(limit = 100) {
       return rows.map(mapDbEvent);
     } catch (err) {
       if (shouldDisableDb(err)) {
-        dbUnavailable = true;
+        dbRetryAt = Date.now() + 30000;
       }
     }
   }
@@ -197,7 +206,7 @@ async function getPolicySummary() {
       };
     } catch (err) {
       if (shouldDisableDb(err)) {
-        dbUnavailable = true;
+        dbRetryAt = Date.now() + 30000;
       }
     }
   }
@@ -225,6 +234,7 @@ async function getPolicySummary() {
 }
 
 module.exports = {
+  prunePolicyEvents,
   recordPolicyEvent,
   listPolicyEvents,
   getPolicySummary

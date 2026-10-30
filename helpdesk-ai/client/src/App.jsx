@@ -1,3 +1,4 @@
+import ChangePasswordPage from "./pages/users/ChangePasswordPage";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./hooks/useAuth";
 import PrivateRoute from "./components/PrivateRoute";
@@ -34,6 +35,8 @@ function UserOnly({ children }) {
 }
 
 export default function App() {
+  const { user, initializing } = useAuth();
+  if (!initializing && user?.mustChangePassword) return <ChangePasswordPage />;
   return (
     <Routes>
       <Route
@@ -44,6 +47,7 @@ export default function App() {
           </PublicOnly>
         }
       />
+      <Route path="/change-password" element={<RoleHomeRedirect />} />
       <Route path="/register" element={<Navigate to="/login" replace />} />
 
       <Route element={<PrivateRoute />}>

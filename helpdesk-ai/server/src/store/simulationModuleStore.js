@@ -1,3 +1,4 @@
+const { plainDescription } = require("../utils/security");
 const prisma = require("../prisma");
 const { ACTIVE_STATUSES, terminateWindowsSimulationSession } = require("../services/windowsSimulationService");
 
@@ -46,7 +47,7 @@ function ensureUniqueMemoryId(baseId) {
 
 function normalizeSimulationStep(step, index) {
   const title = String(step?.title || `Step ${index + 1}`).trim();
-  const desc = String(step?.desc || "").trim();
+  const desc = plainDescription(step?.desc);
   const screen = String(step?.screen || "").trim();
   const action = String(step?.action || "").trim();
   const result = String(step?.result || "").trim();
@@ -258,7 +259,7 @@ async function deleteModule(id) {
     // removing their records so the module is not held by a foreign key.
     const relatedSessions = await prisma.simulationSession.findMany({ where: { moduleId: safeId } });
     for (const session of relatedSessions) {
-      if (ACTIVE_STATUSES.includes(session.status)) {
+      if (session.status !== "ENDED" || session.ec2InstanceId) {
         await terminateWindowsSimulationSession(session);
       }
     }
@@ -294,6 +295,7 @@ async function recordModuleCompletion({ moduleId, userId, attemptKey, surface, s
   }
 
   return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${safeId}))`;
     const existing = await tx.simulationCompletion.findUnique({ where: { attemptKey: safeAttemptKey } });
     if (existing) {
       if (existing.userId !== userId || existing.moduleId !== safeId) {
@@ -308,21 +310,24 @@ async function recordModuleCompletion({ moduleId, userId, attemptKey, surface, s
     const module = await tx.simulationModule.findUnique({ where: { id: safeId } });
     if (!module || !module.enabled) return null;
     const expectedSteps = Array.isArray(module.simulation?.steps) ? module.simulation.steps.length : 0;
+    const expectedSurface = module.simulation?.surface || module.simulation?.terminalType || "windows-terminal";
+    if (surface !== expectedSurface) {
+      const error = new Error("Simulation surface does not match this module."); error.status = 400; throw error;
+    }
+    if (surface === "windows-os") {
+      const sessionId = safeAttemptKey.startsWith("windows-os:") ? safeAttemptKey.slice(11) : "";
+      const session = await tx.simulationSession.findFirst({ where: { id: sessionId, userId, moduleId: safeId, status: { in: ["READY", "ACTIVE"] }, expiresAt: { gt: new Date() } } });
+      if (!session) { const error = new Error("A live workspace belonging to this user and module is required."); error.status = 403; throw error; }
+    }
 
-    const previousCompletions = Math.max(0, Number(module.completions || 0));
-    const nextCompletions = previousCompletions + 1;
-    const completedSteps = expectedSteps > 0
-      ? Math.min(requestedSteps, expectedSteps)
-      : requestedSteps;
-    const nextAverageSteps = ((Number(module.avgSteps || 0) * previousCompletions) + completedSteps) / nextCompletions;
-    const nextPassRate = ((Number(module.passRate || 0) * previousCompletions) + 100) / nextCompletions;
-
+    const completedSteps = expectedSteps > 0 ? Math.min(requestedSteps, expectedSteps) : requestedSteps;
     await tx.simulationCompletion.create({
       data: { userId, moduleId: safeId, attemptKey: safeAttemptKey, surface: String(surface || "terminal"), stepsCompleted: completedSteps }
     });
+    const stats = await tx.simulationCompletion.aggregate({ where: { moduleId: safeId }, _count: { _all: true }, _avg: { stepsCompleted: true } });
     const updated = await tx.simulationModule.update({
       where: { id: safeId },
-      data: { completions: nextCompletions, avgSteps: nextAverageSteps, passRate: nextPassRate }
+      data: { completions: stats._count._all, avgSteps: stats._avg.stepsCompleted || 0 }
     });
     return { module: mapDbModule(updated), recorded: true };
   });

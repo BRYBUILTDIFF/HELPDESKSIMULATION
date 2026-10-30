@@ -99,6 +99,8 @@ GUAC_URL_TTL_SECONDS=300
 
 ## 3. Optional PostgreSQL via Docker
 
+Set `POSTGRES_PASSWORD` in your shell or a root `.env` file before starting Docker. Use the same value in `server/.env` DATABASE_URL. Existing database volumes retain their current credentials until changed inside PostgreSQL.
+
 From `helpdesk-ai/`:
 
 ```bash
@@ -122,13 +124,13 @@ From `helpdesk-ai/server`:
 npm run seed
 ```
 
-Seeded credentials:
+Set `SEED_ADMIN_PASSWORD` and `SEED_USER_PASSWORD` in `server/.env` to unique passwords that satisfy the password policy before seeding. Seeding creates missing accounts only and never resets existing accounts. New accounts must change their password on first login.
+
+Seeded accounts:
 
 - Email: `admin@helpdesk.com`
-- Password: `Admin@1234`
 - Role: `ADMIN`
 - Email: `user@helpdesk.com`
-- Password: `User@1234`
 - Role: `USER`
 
 ## 6. Start development servers
@@ -151,7 +153,7 @@ npm run dev
 
 ### Auth routes
 
-- `POST /api/auth/register`
+- Public self-registration is disabled; admins create accounts through `POST /api/admin/users`.
 - `POST /api/auth/login`
 - `POST /api/auth/refresh`
 - `POST /api/auth/logout`
@@ -171,7 +173,7 @@ npm run dev
 
 - `GET /api/admin/users`
 - `PATCH /api/admin/users/:id`
-- `DELETE /api/admin/users/:id` (soft delete via `isActive=false`)
+- `DELETE /api/admin/users/:id` (permanent deletion after ending lab sessions)
 
 ## Security features
 

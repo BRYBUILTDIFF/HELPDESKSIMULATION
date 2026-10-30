@@ -883,3 +883,15 @@ select {
     margin-left: auto;
   }
 }
+.required-password-form {
+  width: min(100%, 460px);
+  margin: auto;
+  padding: 32px;
+  border-radius: 16px;
+  background: white;
+  box-shadow: 0 8px 32px #0002;
+}
+.required-password-form label { display: grid; gap: 8px; margin: 18px 0; }
+.required-password-form input { padding: 12px; border: 1px solid #b8c4d4; border-radius: 8px; }
+.required-password-form button { padding: 12px 18px; cursor: pointer; }
+.required-password-form [role="alert"] { color: #a02020; }

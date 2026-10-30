@@ -25,7 +25,7 @@ export default function SimulationWalkthrough({ type = "terminal", onDone }) {
         [".sim-runtime-terminal", "Simulation terminal", "Practice the support commands here. Type help to see available commands."],
         [".sim-runtime-footer", "Move through the guide", "Use the step controls to go Previous or Next as you work."],
         [".sim-preview-topbar-right", "Finish the simulation", "When you reach the final step, close the simulation from the top-right corner."]
-      ], [windows]);
+      ], [windows, dashboardTerminal]);
   const [target, setTarget] = useState(null);
   useEffect(() => {
     const update = () => {

@@ -2,7 +2,9 @@ import { createContext, useCallback, useEffect, useMemo, useRef, useState } from
 import axios from "axios";
 
 const API_URL = import.meta.env.VITE_API_URL || "/";
-const ACCESS_TOKEN_STORAGE_KEY = "helpdesk_access_token";
+let pendingRefresh = null;
+// Remove tokens persisted by older versions.
+try { localStorage.removeItem("helpdesk_access_token"); } catch (_) {}
 
 export const AuthContext = createContext(null);
 
@@ -11,41 +13,9 @@ const publicApi = axios.create({
   withCredentials: true
 });
 
-function decodeJwtPayload(token) {
-  try {
-    const payload = token.split(".")[1];
-    if (!payload) return null;
-    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-  } catch (_err) {
-    return null;
-  }
-}
-
-function isTokenExpired(token) {
-  const payload = decodeJwtPayload(token);
-  if (!payload?.exp) {
-    return true;
-  }
-  return payload.exp * 1000 <= Date.now();
-}
-
-function readStoredToken() {
-  try {
-    const token = localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
-    if (!token) return null;
-    if (isTokenExpired(token)) {
-      localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
-      return null;
-    }
-    return token;
-  } catch (_err) {
-    return null;
-  }
-}
-
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [accessToken, setAccessToken] = useState(() => readStoredToken());
+  const [accessToken, setAccessToken] = useState(null);
   const [initializing, setInitializing] = useState(true);
   const restoreStartedRef = useRef(false);
 
@@ -59,15 +29,7 @@ export function AuthProvider({ children }) {
 
   const persistAccessToken = useCallback((token) => {
     setAccessToken(token);
-    try {
-      if (token) {
-        localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token);
-      } else {
-        localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
-      }
-    } catch (_err) {
-      // best effort only
-    }
+
   }, []);
 
   const clearAuth = useCallback(() => {
@@ -76,7 +38,11 @@ export function AuthProvider({ children }) {
   }, [persistAccessToken]);
 
   const refreshAccessToken = useCallback(async () => {
-    const response = await publicApi.post("/api/auth/refresh");
+    if (!pendingRefresh) {
+      const refresh = () => publicApi.post("/api/auth/refresh");
+      pendingRefresh = (navigator.locks ? navigator.locks.request("helpdesk-session-refresh", refresh) : refresh()).finally(() => { pendingRefresh = null; });
+    }
+    const response = await pendingRefresh;
     const newToken = response.data.accessToken;
     persistAccessToken(newToken);
     return newToken;
@@ -87,18 +53,7 @@ export function AuthProvider({ children }) {
       const token = await refreshAccessToken();
       await fetchMe(token);
     } catch (refreshErr) {
-      const fallbackToken = readStoredToken();
-      if (fallbackToken) {
-        try {
-          await fetchMe(fallbackToken);
-          persistAccessToken(fallbackToken);
-          return;
-        } catch (_fallbackErr) {
-          clearAuth();
-        }
-      } else {
-        clearAuth();
-      }
+      clearAuth();
 
       if (import.meta.env.DEV) {
         const status = refreshErr?.response?.status;

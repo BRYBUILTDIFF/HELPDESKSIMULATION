@@ -17,6 +17,7 @@ async function verifyToken(req, res, next) {
         id: true,
         email: true,
         role: true,
+        mustChangePassword: true,
         isActive: true
       }
     });
@@ -25,9 +26,13 @@ async function verifyToken(req, res, next) {
       return res.status(401).json({ message: "Unauthenticated" });
     }
 
+    if (user.mustChangePassword && !["/api/auth/me", "/api/auth/change-password"].includes(req.originalUrl.split("?")[0])) {
+      return res.status(403).json({ message: "Change your password before continuing.", code: "PASSWORD_CHANGE_REQUIRED" });
+    }
     req.user = user;
     next();
   } catch (err) {
+    if (!["JsonWebTokenError", "TokenExpiredError", "NotBeforeError"].includes(err?.name)) return next(err);
     return res.status(401).json({ message: "Unauthenticated" });
   }
 }

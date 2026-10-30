@@ -2,6 +2,7 @@ const prisma = require("../prisma");
 const { getModuleById } = require("../store/simulationModuleStore");
 const {
   ACTIVE_STATUSES,
+  LIVE_STATUSES,
   SimulationServiceError,
   createWindowsSimulationSession,
   refreshWindowsSimulationSession,
@@ -32,28 +33,26 @@ async function createSimulationSession(req, res, next) {
     if (module?.simulation?.surface !== "windows-os") {
       return res.status(400).json({ message: "This module does not use the Windows OS simulation surface." });
     }
-    const activeWhere = { status: { in: ACTIVE_STATUSES } };
-    const existingUserSession = await prisma.simulationSession.findFirst({
-      where: { userId: req.user.id, moduleId: module.id, ...activeWhere, expiresAt: { gt: new Date() } },
-      orderBy: { createdAt: "desc" }
+    const reservation = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(911)`;
+      const activeWhere = { status: { in: LIVE_STATUSES } };
+      const existing = await tx.simulationSession.findFirst({
+        where: { userId: req.user.id, moduleId: module.id, status: { in: ACTIVE_STATUSES }, expiresAt: { gt: new Date() } },
+        orderBy: { createdAt: "desc" }
+      });
+      if (existing) return { session: existing, resumed: true };
+      const perUser = await tx.simulationSession.count({ where: { userId: req.user.id, ...activeWhere } });
+      const global = await tx.simulationSession.count({ where: activeWhere });
+      if (perUser >= limit("SIMULATION_MAX_PER_USER", 1)) throw new SimulationServiceError("You already have an active Windows simulation.", 409);
+      if (global >= limit("SIMULATION_GLOBAL_MAX", 1)) throw new SimulationServiceError("All Windows simulation workspaces are currently in use.", 429);
+      const session = await tx.simulationSession.create({ data: {
+        userId: req.user.id, moduleId: module.id, surface: "windows-os",
+        expiresAt: new Date(Date.now() + limit("SIMULATION_TTL_MINUTES", 20) * 60000)
+      } });
+      return { session, resumed: false };
     });
-    if (existingUserSession) {
-      return res.status(200).json({ ...safeSession(existingUserSession), resumed: true });
-    }
-    const [perUser, global] = await Promise.all([
-      prisma.simulationSession.count({ where: { userId: req.user.id, ...activeWhere } }),
-      prisma.simulationSession.count({ where: activeWhere })
-    ]);
-    if (perUser >= limit("SIMULATION_MAX_PER_USER", 1)) {
-      return res.status(409).json({ message: "You already have an active Windows simulation." });
-    }
-    if (global >= limit("SIMULATION_GLOBAL_MAX", 1)) {
-      return res.status(429).json({ message: "All Windows simulation workspaces are currently in use. Please try again shortly." });
-    }
-    const ttl = limit("SIMULATION_TTL_MINUTES", 20);
-    const session = await prisma.simulationSession.create({
-      data: { userId: req.user.id, moduleId: module.id, surface: "windows-os", expiresAt: new Date(Date.now() + ttl * 60 * 1000) }
-    });
+    const { session } = reservation;
+    if (reservation.resumed) return res.status(200).json({ ...safeSession(session), resumed: true });
     try {
       await createWindowsSimulationSession(session);
     } catch (error) {
@@ -61,6 +60,7 @@ async function createSimulationSession(req, res, next) {
     }
     return res.status(202).json(safeSession(session));
   } catch (error) {
+    if (error instanceof SimulationServiceError) return res.status(error.status).json({ message: error.message });
     return next(error);
   }
 }
@@ -77,6 +77,7 @@ async function getSimulationSession(req, res, next) {
     }
     return res.status(200).json(safeSession(session));
   } catch (error) {
+    if (error instanceof SimulationServiceError) return res.status(error.status).json({ message: error.message });
     return next(error);
   }
 }

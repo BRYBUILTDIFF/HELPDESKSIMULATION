@@ -1,3 +1,5 @@
+import { claimCatalogWalkthrough } from "../../utils/walkthroughHistory";
+import { plainDescription } from "../../utils/plainDescription";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
@@ -195,15 +197,7 @@ export default function SimulationsPage() {
     return () => media.removeListener(syncLayout);
   }, []);
 
-  // Always start a fresh walkthrough whenever a simulation becomes active.
-  // This also covers simulations opened through restored or alternate UI state.
-  useEffect(() => {
-    if (activeSimId) {
-      setShowWalkthrough(true);
-    }
-  }, [activeSimId]);
-
-  useEffect(() => {
+useEffect(() => {
     if (!user?.id) {
       setSessions([]);
       return;
@@ -249,7 +243,7 @@ export default function SimulationsPage() {
     setActiveSimId(card.simId);
     setActiveSimLabel(card.label);
     setSimStep(0);
-    setShowWalkthrough(true);
+    setShowWalkthrough(claimCatalogWalkthrough(user?.id, card.simId));
   };
 
   const closeSimulation = () => {
@@ -276,7 +270,7 @@ export default function SimulationsPage() {
       ) : null}
 
       {currentSim?.surface === "windows-os" ? (
-          <WindowsOsSimulation api={api} moduleId={activeSimId} title={activeSimLabel} steps={currentSim?.steps || []} onEnded={closeSimulation} />
+          <WindowsOsSimulation key={activeSimId} walkthroughOnOpen={showWalkthrough} api={api} moduleId={activeSimId} title={activeSimLabel} steps={currentSim?.steps || []} onEnded={closeSimulation} />
       ) : null}
 
       {currentSim && currentSim.surface !== "windows-os" ? (
@@ -335,8 +329,7 @@ export default function SimulationsPage() {
                   </div>
                   <div
                     className="sim-runtime-current-text"
-                    dangerouslySetInnerHTML={{ __html: currentSim.steps[simStep].desc }}
-                  />
+                    >{plainDescription(currentSim.steps[simStep].desc)}</div>
                 </div>
 
                 <div className="sim-runtime-terminal">

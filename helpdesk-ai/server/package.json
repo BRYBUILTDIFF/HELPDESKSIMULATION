@@ -7,7 +7,12 @@
     "dev": "nodemon src/server.js",
     "migrate": "prisma migrate dev",
     "seed": "node prisma/seed.js",
-    "generate": "prisma generate"
+    "generate": "prisma generate",
+    "test": "node --test test/*.test.js",
+    "migrate:deploy": "prisma migrate deploy",
+    "start": "node src/server.js",
+    "test:db": "node --test test/database.integration.js",
+    "security:flag-legacy-passwords": "node scripts/flag-legacy-passwords.js"
   },
   "dependencies": {
     "@aws-sdk/client-ec2": "^3.1095.0",

@@ -18,18 +18,6 @@ const passwordRule = body("password")
   .isLength({ min: 8 })
   .withMessage("Password must be at least 8 characters");
 
-router.post(
-  "/register",
-  [
-    body("firstName").trim().notEmpty().withMessage("First name is required"),
-    body("lastName").trim().notEmpty().withMessage("Last name is required"),
-    emailRule,
-    passwordRule
-  ],
-  validateRequest,
-  authController.register
-);
-
 router.post("/login", [emailRule, passwordRule], validateRequest, authController.login);
 router.post("/refresh", authController.refresh);
 router.post("/logout", authController.logout);

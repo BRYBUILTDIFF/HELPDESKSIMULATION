@@ -1,7 +1,8 @@
 const prisma = require("../prisma");
 
 const memoryConversations = new Map();
-let dbUnavailable = false;
+let dbRetryAt = 0;
+const MEMORY_LIMIT = 1000;
 const CONVERSATION_TTL_MS = Math.max(60 * 60 * 1000, Number(process.env.POLICY_CONVERSATION_TTL_MS) || 24 * 60 * 60 * 1000);
 
 function keyFor(userId, sessionId) {
@@ -9,7 +10,7 @@ function keyFor(userId, sessionId) {
 }
 
 function canUseDb() {
-  return Boolean(prisma?.policyConversation) && !dbUnavailable;
+  return Boolean(prisma?.policyConversation) && Date.now() >= dbRetryAt;
 }
 
 async function getConversationScope(userId, sessionId) {
@@ -28,7 +29,7 @@ async function getConversationScope(userId, sessionId) {
       }
       return conversation?.scope || null;
     } catch (err) {
-      if (["P2021", "P2022", "P1001", "P1002"].includes(err?.code)) dbUnavailable = true;
+      if (["P2021", "P2022", "P1001", "P1002"].includes(err?.code)) dbRetryAt = Date.now() + 30000;
     }
   }
 
@@ -47,6 +48,10 @@ async function markConversationScope(userId, sessionId, scope) {
   if (!safeSessionId || !safeScope || !Number.isInteger(Number(userId))) return;
 
   const expiresAt = new Date(Date.now() + CONVERSATION_TTL_MS);
+  for (const [entryKey, entry] of memoryConversations) {
+    if (entry.expiresAt <= Date.now()) memoryConversations.delete(entryKey);
+  }
+  if (!memoryConversations.has(key) && memoryConversations.size >= MEMORY_LIMIT) memoryConversations.delete(memoryConversations.keys().next().value);
   memoryConversations.set(key, { scope: safeScope, expiresAt: expiresAt.getTime() });
   if (!canUseDb()) return;
 
@@ -57,7 +62,7 @@ async function markConversationScope(userId, sessionId, scope) {
       create: { userId: Number(userId), sessionId: safeSessionId, scope: safeScope, expiresAt }
     });
   } catch (err) {
-    if (["P2021", "P2022", "P1001", "P1002"].includes(err?.code)) dbUnavailable = true;
+    if (["P2021", "P2022", "P1001", "P1002"].includes(err?.code)) dbRetryAt = Date.now() + 30000;
   }
 }
 
@@ -76,7 +81,7 @@ async function removeMissingConversationScopes(userId, activeSessionIds = []) {
       where: { userId: safeUserId, sessionId: { notIn: [...activeIds] } }
     });
   } catch (err) {
-    if (["P2021", "P2022", "P1001", "P1002"].includes(err?.code)) dbUnavailable = true;
+    if (["P2021", "P2022", "P1001", "P1002"].includes(err?.code)) dbRetryAt = Date.now() + 30000;
   }
 }
 

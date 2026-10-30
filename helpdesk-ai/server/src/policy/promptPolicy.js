@@ -58,19 +58,6 @@ function outOfScopeRedirect(policy) {
   };
 }
 
-function isEstablishedItConversationFollowUp(input, context, signals) {
-  if (String(context?.conversationScope || "") !== "it_support" || input.length > 500) {
-    return false;
-  }
-
-  // Explicit scope signals use their dedicated policy paths. This branch is
-  // for context-dependent responses such as "yes", "more detail", or "the C drive".
-  if (signals.hasInScopeKeyword || signals.hasInScopeIntent || signals.hasOutOfScopeKeyword) {
-    return false;
-  }
-  return true;
-}
-
 function getClassifierSystemPrompt(policy = {}) {
   const inScopePreview = listPreview(policy.inScopeKeywords).join(", ");
   const outOfScopePreview = listPreview(policy.outOfScopeKeywords).join(", ");
@@ -223,25 +210,25 @@ async function classifyWithDeepSeek(message, history, policy) {
     try {
       envelope = JSON.parse(rawResponse);
     } catch (_err) {
-      console.error("[PolicyClassifier] Malformed JSON envelope from classifier:", rawResponse);
+      console.error("[PolicyClassifier] Invalid classifier response; content redacted.");
       throw new Error("Malformed classifier response.");
     }
 
     const rawModelContent = String(envelope?.message?.content || "").trim();
     if (!rawModelContent) {
-      console.error("[PolicyClassifier] Empty classifier output:", rawResponse);
+      console.error("[PolicyClassifier] Invalid classifier response; content redacted.");
       throw new Error("Classifier returned empty output.");
     }
 
     const parsed = findClassifierPayloadInText(rawModelContent);
     if (!parsed) {
-      console.error("[PolicyClassifier] Non-JSON classifier content:", rawModelContent);
+      console.error("[PolicyClassifier] Invalid classifier response; content redacted.");
       throw new Error("Classifier returned non-JSON content.");
     }
 
     const classification = String(parsed?.classification || "").trim();
     if (!["in_scope", "out_of_scope", "greeting"].includes(classification)) {
-      console.error("[PolicyClassifier] Invalid classification payload:", rawModelContent);
+      console.error("[PolicyClassifier] Invalid classifier response; content redacted.");
       throw new Error("Classifier returned unsupported classification.");
     }
 
@@ -320,15 +307,7 @@ async function evaluatePromptPolicy(message, history = [], context = {}) {
     return outOfScopeRedirect(policy);
   }
 
-  if (isEstablishedItConversationFollowUp(input, context, signals)) {
-    return {
-      allowed: true,
-      code: "ALLOWED_CONVERSATION_FOLLOW_UP",
-      reason: "Contextual follow-up in a server-verified IT support conversation."
-    };
-  }
-
-  if (isLikelyFollowUpWithoutContext(input, safeHistory, signals)) {
+if (isLikelyFollowUpWithoutContext(input, safeHistory, signals)) {
     return outOfScopeRedirect(policy);
   }
 
