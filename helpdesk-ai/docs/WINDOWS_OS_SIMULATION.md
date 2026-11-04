@@ -1,5 +1,7 @@
 # Windows OS simulation
 
+Paths and commands below are relative to `helpdesk-ai/`, not this `docs/` folder.
+
 ## Implemented in this repository
 
 - Simulation modules persist `simulation.surface` independently of `terminalType`.
@@ -49,6 +51,28 @@ GUAC_URL_TTL_SECONDS=300
 6. Copy `infrastructure/guacamole/guac-launch.html` to the same web origin as Guacamole (for example `/var/www/html/guac-launch.html`), then run `sudo nginx -t` and `sudo systemctl reload nginx`. Set `GUACAMOLE_LAUNCH_URL` to that HTTPS launcher URL. The launcher clears only `GUAC_*` browser storage before redirecting to the fixed `/guacamole/` path, preventing an old Guacamole login from hiding the fresh session connection.
 
 ## Connection lifecycle
+
+Provisioning now waits for both EC2 system and instance status checks to report
+`ok`. The backend IAM policy must allow `ec2:DescribeInstanceStatus` in addition
+to the existing EC2 permissions. Without permission, the backend logs a warning
+and uses the previous running-instance check. These checks do not guarantee RDP readiness.
+The launcher embeds Guacamole on its own origin and watches its managed client
+connection state. A loading screen covers startup and connection errors until
+the client reports `CONNECTED`. It reports failures to the HelpDesk parent
+frame, which requests a fresh URL for the same session after ten seconds.
+Retries stop after eight minutes without success or session expiry. Messages
+are accepted only from the current iframe and its expected origin.
+This uses Guacamole's Angular `guacClientManager` service; verify compatibility
+when upgrading Guacamole. A successful iframe load alone is not readiness.
+
+Deploy the updated `infrastructure/guacamole/guac-launch.html` to the Ubuntu
+gateway's existing launcher path (for example `/var/www/html/guac-launch.html`).
+Restarting the HelpDesk backend does not deploy the launcher. Both the new
+frontend and gateway launcher are required for automatic retries.
+
+The application's Try Again action after a connection API failure obtains a
+fresh connection URL for the same session without launching another VM or
+resetting guided step progress.
 
 `POST /api/simulation-sessions` provisions the EC2 workspace. `GET /api/simulation-sessions/:id` reports only the session status and never generates a Guacamole URL. Once status is `READY`, the client calls `POST /api/simulation-sessions/:id/connect` once. That ownership-checked endpoint creates one short-lived encrypted URL and changes the database session to `ACTIVE`. The iframe mounts only after that URL is returned, and is removed immediately when the simulation ends.
 

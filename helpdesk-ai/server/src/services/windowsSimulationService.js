@@ -1,4 +1,4 @@
-const { EC2Client, RunInstancesCommand, DescribeInstancesCommand, TerminateInstancesCommand } = require("@aws-sdk/client-ec2");
+const { EC2Client, RunInstancesCommand, DescribeInstancesCommand, DescribeInstanceStatusCommand, TerminateInstancesCommand } = require("@aws-sdk/client-ec2");
 const prisma = require("../prisma");
 
 const ACTIVE_STATUSES = ["PROVISIONING", "READY", "ACTIVE"];
@@ -39,6 +39,23 @@ function hasExpectedSessionTag(instance, session) {
   return (instance?.Tags || []).some((tag) => tag.Key === "SessionId" && tag.Value === session.id);
 }
 
+async function countLiveWindowsInstances() {
+  let count = 0;
+  let nextToken;
+  do {
+    const response = await getEc2Client().send(new DescribeInstancesCommand({
+      Filters: [
+        { Name: "tag:Project", Values: ["HelpDeskAI"] },
+        { Name: "tag:Purpose", Values: ["UserSimulation"] },
+        { Name: "instance-state-name", Values: ["pending", "running", "stopping", "stopped", "shutting-down"] }
+      ], NextToken: nextToken
+    }));
+    count += (response.Reservations || []).reduce((total, reservation) => total + (reservation.Instances || []).length, 0);
+    nextToken = response.NextToken;
+  } while (nextToken);
+  return count;
+}
+
 async function createWindowsSimulationSession(session) {
   try {
     const { launchTemplateId } = getConfig();
@@ -53,11 +70,13 @@ async function createWindowsSimulationSession(session) {
     );
     const instanceId = response.Instances?.[0]?.InstanceId;
     if (!instanceId) throw new Error("EC2 did not return an instance ID.");
-    return prisma.simulationSession.update({ where: { id: session.id }, data: { ec2InstanceId: instanceId } });
+    return await prisma.simulationSession.update({ where: { id: session.id }, data: { ec2InstanceId: instanceId } });
   } catch (error) {
     await prisma.simulationSession.update({
       where: { id: session.id },
-      data: { status: "FAILED", endedAt: new Date() }
+      // A timeout may occur after AWS accepted the launch. Reserve capacity
+      // until reconciliation recovers the instance or expiry cleans it up.
+      data: { status: "PROVISIONING", endedAt: null }
     }).catch(() => {});
     console.error("Windows simulation launch failed", { sessionId: session.id, code: error?.name || error?.code });
     throw new SimulationServiceError("Unable to prepare the Windows workspace. Please try again later.");
@@ -74,6 +93,19 @@ async function refreshWindowsSimulationSession(session) {
     }
     const state = instance.State?.Name;
     if (state === "running" && instance.PrivateIpAddress) {
+      if (session.status !== "ACTIVE") {
+        try {
+          const health = await getEc2Client().send(new DescribeInstanceStatusCommand({
+            InstanceIds: [session.ec2InstanceId], IncludeAllInstances: true
+          }));
+          const checks = health.InstanceStatuses?.find(item => item.InstanceId === session.ec2InstanceId);
+          if (checks?.SystemStatus?.Status !== "ok" || checks?.InstanceStatus?.Status !== "ok") return session;
+        } catch (error) {
+          if (!["UnauthorizedOperation", "AccessDenied", "AccessDeniedException"].includes(error?.name || error?.code)) throw error;
+          // Preserve existing connectivity when deployments lack this read permission.
+          console.warn("Windows readiness health check unavailable: allow ec2:DescribeInstanceStatus in the backend IAM policy.");
+        }
+      }
       return prisma.simulationSession.update({
         where: { id: session.id },
         data: { status: session.status === "ACTIVE" ? "ACTIVE" : "READY", privateIp: instance.PrivateIpAddress }
@@ -82,10 +114,14 @@ async function refreshWindowsSimulationSession(session) {
     if (["shutting-down", "terminated"].includes(state)) {
       return prisma.simulationSession.update({ where: { id: session.id }, data: { status: "ENDED", endedAt: new Date() } });
     }
+    if (["stopping", "stopped"].includes(state)) {
+      await terminateWindowsSimulationSession(session);
+      return prisma.simulationSession.findUnique({ where: { id: session.id } });
+    }
     return session;
   } catch (error) {
     console.error("Windows simulation refresh failed", { sessionId: session.id, code: error?.name || error?.code });
-    return session;
+    throw new SimulationServiceError("Unable to verify the Windows workspace. Please try again shortly.");
   }
 }
 
@@ -159,6 +195,7 @@ async function reconcileWindowsSimulationInstances() {
 }
 
 module.exports = {
+  countLiveWindowsInstances,
   ACTIVE_STATUSES,
   LIVE_STATUSES,
   reconcileWindowsSimulationInstances,

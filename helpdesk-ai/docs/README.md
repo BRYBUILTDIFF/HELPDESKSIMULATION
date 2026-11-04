@@ -16,9 +16,19 @@ Full-stack HelpDesk AI system with JWT auth, refresh cookies, role-based admin p
 helpdesk-ai/
   client/
   server/
+  infrastructure/
+  docs/
+    INDEX.md
+    README.md
+    database/schema-reference.sql
   docker-compose.yml
-  README.md
+  package.json
+  package-lock.json
 ```
+
+See [the documentation index](INDEX.md) for all guides and references.
+Run commands from `helpdesk-ai/` unless a section specifies another directory;
+the `docs/` folder is only for reading documentation.
 
 ## 1. Install dependencies
 

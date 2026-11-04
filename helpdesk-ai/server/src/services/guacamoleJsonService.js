@@ -33,7 +33,7 @@ function createGuacamoleUrl(session) {
           port: "3389",
           username,
           password,
-          security: "nla",
+          security: "any",
           "ignore-cert": "true"
         }
       }

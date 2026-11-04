@@ -6,21 +6,74 @@
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <title>Connecting to Windows workspace</title>
-    <style>body{margin:0;display:grid;min-height:100vh;place-items:center;background:#0f172a;color:#e2e8f0;font:16px system-ui,sans-serif}p{color:#94a3b8}</style>
+    <style>body{margin:0;background:#0f172a;color:#e2e8f0;font:16px system-ui,sans-serif}main{position:fixed;inset:0;display:grid;place-content:center;text-align:center;z-index:1;background:#0f172a}p{color:#94a3b8}iframe{position:fixed;inset:0;width:100%;height:100%;border:0}main[hidden]{display:none}</style>
   </head>
   <body><main><strong>Connecting to your Windows workspace…</strong><p id="message">Please wait.</p></main>
     <script>
       (() => {
-        const data = new URLSearchParams(location.search).get("data");
+        const params = new URLSearchParams(location.search);
+        const data = params.get("data");
         const message = document.getElementById("message");
         if (!data) { message.textContent = "A secure connection link was not provided."; return; }
+        let parentOrigin;
+        try {
+          const url = new URL(params.get("parentOrigin"));
+          if (["https:", "http:"].includes(url.protocol)) parentOrigin = url.origin;
+        } catch (_) {}
+        const report = state => {
+          if (parentOrigin && parent !== window) parent.postMessage({ type: "helpdesk-lab-state", state }, parentOrigin);
+        };
         for (const store of [localStorage, sessionStorage]) {
           for (let index = store.length - 1; index >= 0; index -= 1) {
             const key = store.key(index);
             if (key && key.startsWith("GUAC_")) store.removeItem(key);
           }
         }
-        location.replace(`/guacamole/?data=${encodeURIComponent(data)}&fresh=${Date.now()}`);
+        const cover = document.querySelector("main");
+        const frame = document.createElement("iframe");
+        frame.title = "Windows desktop";
+        frame.allow = "clipboard-read; clipboard-write; fullscreen";
+        frame.src = `/guacamole/?data=${encodeURIComponent(data)}&fresh=${Date.now()}`;
+        document.body.appendChild(frame);
+        message.textContent = "Windows is starting. Connecting automatically...";
+        let connected = false;
+        let reportedFailure = false;
+        const started = Date.now();
+        const timer = setInterval(() => {
+          try {
+            const win = frame.contentWindow;
+            const root = win.document.querySelector("[ng-app]") || win.document.body;
+            const injector = win.angular?.element(root).injector();
+            const clients = injector?.get("guacClientManager").getManagedClients();
+            const states = Object.values(clients || {}).map(client => client.clientState?.connectionState);
+            if (states.includes("CONNECTED")) {
+              connected = true;
+              reportedFailure = false;
+              cover.hidden = true;
+              report("CONNECTED");
+              return;
+            }
+            if (states.some(state => ["CLIENT_ERROR", "TUNNEL_ERROR", "DISCONNECTED"].includes(state)) || (!connected && Date.now() - started > 60000)) {
+              cover.hidden = false;
+              message.textContent = "Waiting for the Windows desktop. Retrying automatically...";
+              if (!reportedFailure) {
+                reportedFailure = true;
+                report("RETRY");
+                if (!parentOrigin) {
+                  message.textContent = "The desktop is not ready. Return to HelpDesk and try again.";
+                  clearInterval(timer);
+                }
+              }
+            }
+          } catch (_) {
+            if (Date.now() - started > 60000 && !reportedFailure) {
+              reportedFailure = true;
+              message.textContent = "Unable to verify the desktop connection. Retrying...";
+              report("RETRY");
+            }
+          }
+        }, 500);
+        window.addEventListener("pagehide", () => clearInterval(timer), { once: true });
       })();
     </script>
   </body>

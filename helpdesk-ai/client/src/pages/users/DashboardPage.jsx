@@ -1320,7 +1320,9 @@ export default function DashboardPage() {
   const accountMenuRef = useRef(null);
   const autoAdvanceTimeoutRef = useRef(null);
   const sessionsSaveTimerRef = useRef(null);
-  const initialStartNewChatRef = useRef(Boolean(location.state?.startNewChat));
+  const initialStartNewChatRef = useRef(Boolean(
+    location.state?.startNewChat && !new URLSearchParams(location.search).get("session")
+  ));
   const appliedUrlSessionIdRef = useRef("");
   const loadedWorkspaceSessionRef = useRef("");
 
@@ -1726,10 +1728,10 @@ export default function DashboardPage() {
     if (!currentSession) {
       return;
     }
-    // During the first render after login, the stored active session may be a
-    // Windows simulation. Do not restore it while the one-time fresh-chat
-    // redirect is being applied.
-    if (location.state?.startNewChat) {
+    // The router's login navigation state survives subsequent refreshes.
+    // Only block restoration while the initial fresh-chat request is pending,
+    // not for the lifetime of that history entry.
+    if (!sessionsHydrated || initialStartNewChatRef.current) {
       return;
     }
     // Saving progress changes currentSession too; restore only on navigation.
@@ -1742,7 +1744,7 @@ export default function DashboardPage() {
     setStepModalOpen(false);
     setShowSimulationCatalog(false);
     setActiveWindowsOsModule(null);
-  }, [activeSessionId, currentSession, location.state]);
+  }, [activeSessionId, currentSession, sessionsHydrated]);
 
   const ensureSession = () => {
     if (currentSession) {
@@ -3384,18 +3386,7 @@ export default function DashboardPage() {
     <button
       key={session.id}
       className={`session-item hd-btn-reset ${activeSessionId === session.id ? "active" : ""} ${openSessionMenuId === session.id ? "menu-open" : ""}`}
-      onClick={() => {
-        setActiveSessionId(session.id);
-        if (session.isSimulationSession) {
-          loadSimulationWorkspaceFromSession(session);
-        } else {
-          setShowSimulationCatalog(false);
-        }
-        setOpenSessionMenuId(null);
-        if (mobileView) {
-          setSidebarCollapsed(true);
-        }
-      }}
+      onClick={() => handleSelectSession(session)}
     >
       <div className="session-icon">
         {((firstUserPrompt(session.messages) || session.title || "?").trim().charAt(0) || "?").toUpperCase()}
@@ -3895,7 +3886,7 @@ export default function DashboardPage() {
                 <button className="avatar-popover-btn hd-btn-reset" onClick={openAccountSettings}>
                   Account settings
                 </button>
-                <button className="avatar-popover-btn danger hd-btn-reset" onClick={logout}>
+                <button className="avatar-popover-btn danger hd-btn-reset" onClick={async () => { await endWindowsOsForNavigation(); await logout(); }}>
                   Logout
                 </button>
               </div>

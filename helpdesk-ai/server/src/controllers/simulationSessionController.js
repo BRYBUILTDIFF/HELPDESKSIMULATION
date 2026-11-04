@@ -3,6 +3,7 @@ const { getModuleById } = require("../store/simulationModuleStore");
 const {
   ACTIVE_STATUSES,
   LIVE_STATUSES,
+  countLiveWindowsInstances,
   SimulationServiceError,
   createWindowsSimulationSession,
   refreshWindowsSimulationSession,
@@ -45,6 +46,11 @@ async function createSimulationSession(req, res, next) {
       const global = await tx.simulationSession.count({ where: activeWhere });
       if (perUser >= limit("SIMULATION_MAX_PER_USER", 1)) throw new SimulationServiceError("You already have an active Windows simulation.", 409);
       if (global >= limit("SIMULATION_GLOBAL_MAX", 1)) throw new SimulationServiceError("All Windows simulation workspaces are currently in use.", 429);
+      // Database rows alone cannot account for interrupted launches or EC2
+      // instances that are still shutting down after End Simulation.
+      if (await countLiveWindowsInstances() >= limit("SIMULATION_GLOBAL_MAX", 1)) {
+        throw new SimulationServiceError("A Windows workspace is still running or shutting down. Wait for it to finish before starting another.", 429);
+      }
       const session = await tx.simulationSession.create({ data: {
         userId: req.user.id, moduleId: module.id, surface: "windows-os",
         expiresAt: new Date(Date.now() + limit("SIMULATION_TTL_MINUTES", 20) * 60000)
@@ -90,7 +96,7 @@ async function connectSimulationSession(req, res, next) {
       await terminateWindowsSimulationSession(session).catch(() => null);
       return res.status(409).json({ message: "This Windows workspace has expired. Start a new simulation." });
     }
-    if (session.status === "PROVISIONING") {
+    if (ACTIVE_STATUSES.includes(session.status)) {
       session = await refreshWindowsSimulationSession(session);
     }
     if (!["READY", "ACTIVE"].includes(session.status) || !session.privateIp) {

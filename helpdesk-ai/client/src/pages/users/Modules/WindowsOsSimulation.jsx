@@ -24,12 +24,15 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
   const [showWalkthrough, setShowWalkthrough] = useState(walkthroughOnOpen);
   const startedRef = useRef(false);
   const connectInFlightRef = useRef(false);
+  const desktopFrameRef = useRef(null);
+  const retryDeadlineRef = useRef(Date.now() + 8 * 60 * 1000);
   const guidedSteps = Array.isArray(steps) ? steps : [];
   const currentStep = guidedSteps[activeStep];
   const currentStepAction = plainText(currentStep?.action || currentStep?.instruction);
   const currentStepDescription = plainText(currentStep?.desc || currentStep?.description);
 
   const start = useCallback(async () => {
+    retryDeadlineRef.current = Date.now() + 8 * 60 * 1000;
     connectInFlightRef.current = false;
     setError(""); setGuacamoleUrl(""); setSession(null); setStatus("PROVISIONING");
     try {
@@ -50,6 +53,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
       try {
         const response = await api.get(`/api/simulation-sessions/${session.id}`);
         if (cancelled) return;
+        setError("");
         setSession(response.data);
         setStatus(response.data.status);
         onSessionReady?.(response.data);
@@ -57,7 +61,14 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
           timer = window.setTimeout(poll, 4000);
         }
       } catch (err) {
-        if (!cancelled) { setStatus("FAILED"); setError(messageFrom(err, "Unable to connect to your Windows workspace.")); }
+        if (!cancelled) {
+          if (!err?.response || err.response.status >= 500 || err.response.status === 429) {
+            setError("Still waiting for your workspace. Retrying automatically...");
+            timer = window.setTimeout(poll, 5000);
+          } else {
+            setStatus("FAILED"); setError(messageFrom(err, "Unable to connect to your Windows workspace."));
+          }
+        }
       }
     };
     timer = window.setTimeout(poll, 4000);
@@ -70,7 +81,9 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
     api.post(`/api/simulation-sessions/${session.id}/connect`)
       .then((response) => {
         setSession(response.data);
-        setGuacamoleUrl(response.data.guacamoleUrl || "");
+        const connectionUrl = new URL(response.data.guacamoleUrl);
+        connectionUrl.searchParams.set("parentOrigin", window.location.origin);
+        setGuacamoleUrl(connectionUrl.href);
         setConnectionAttempt((attempt) => attempt + 1);
         setStatus("CONNECTING");
         onSessionReady?.(response.data);
@@ -81,6 +94,37 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
         setError(messageFrom(err, "Unable to connect to your Windows workspace."));
       });
   }, [api, guacamoleUrl, onSessionReady, session?.id, status]);
+
+  useEffect(() => {
+    if (!guacamoleUrl || !session?.id || !["CONNECTING", "ACTIVE"].includes(status)) return undefined;
+    const expectedOrigin = new URL(guacamoleUrl).origin;
+    let retryTimer;
+    const receiveState = (event) => {
+      if (event.source !== desktopFrameRef.current?.contentWindow || event.origin !== expectedOrigin || event.data?.type !== "helpdesk-lab-state") return;
+      if (event.data.state === "CONNECTED") {
+        window.clearTimeout(retryTimer);
+        retryTimer = undefined;
+        retryDeadlineRef.current = Date.now() + 8 * 60 * 1000;
+        setStatus("ACTIVE");
+        return;
+      }
+      if (event.data.state !== "RETRY" || retryTimer) return;
+      const expired = new Date(session.expiresAt).getTime() <= Date.now();
+      if (expired || Date.now() >= retryDeadlineRef.current) {
+        setGuacamoleUrl("");
+        setStatus("FAILED");
+        setError(expired ? "This lab has expired. End it and start a new simulation." : "Windows did not become reachable. Try Again or end this simulation.");
+        return;
+      }
+      retryTimer = window.setTimeout(() => {
+        connectInFlightRef.current = false;
+        setGuacamoleUrl("");
+        setStatus("READY");
+      }, 10000);
+    };
+    window.addEventListener("message", receiveState);
+    return () => { window.removeEventListener("message", receiveState); window.clearTimeout(retryTimer); };
+  }, [guacamoleUrl, session?.id, session?.expiresAt, status]);
 
   useEffect(() => {
     setActiveStep((current) => Math.min(current, Math.max(guidedSteps.length - 1, 0)));
@@ -106,7 +150,15 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
   const end = useCallback(async () => {
     setGuacamoleUrl("");
     setStatus("TERMINATING");
-    if (session?.id) { try { await api.post(`/api/simulation-sessions/${session.id}/end`); } catch (_err) {} }
+    if (session?.id) {
+      try {
+        await api.post(`/api/simulation-sessions/${session.id}/end`);
+      } catch (err) {
+        setStatus("FAILED");
+        setError(messageFrom(err, "Unable to end the workspace. Use End Simulation to retry."));
+        return;
+      }
+    }
     setSession(null);
     onEnded?.();
   }, [api, onEnded, session?.id]);
@@ -127,7 +179,14 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
       setCompleting(false);
     }
   }, [api, completing, end, guidedSteps.length, moduleId, session?.id]);
-  const retry = () => { startedRef.current = true; start(); };
+  const reconnect = () => {
+    retryDeadlineRef.current = Date.now() + 8 * 60 * 1000;
+    connectInFlightRef.current = false;
+    setError("");
+    setGuacamoleUrl("");
+    setStatus("READY");
+  };
+  const retry = () => { if (session?.id) reconnect(); else { startedRef.current = true; start(); } };
   const remainingMinutes = session?.expiresAt ? Math.max(0, Math.ceil((new Date(session.expiresAt).getTime() - Date.now()) / 60000)) : null;
 
   return <div className="windows-os-overlay" aria-label="Windows OS simulation">
@@ -157,7 +216,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
               {completedSteps.has(activeStep) ? "Completed" : activeStep === guidedSteps.length - 1 ? "Complete final step" : "Complete step"}
             </button>
           </div> : null}
-          <iframe key={`${session.id}-${connectionAttempt}`} className="windows-os-frame" title="Windows Server 2025 Help Desk Lab" src={guacamoleUrl} onLoad={() => setStatus("ACTIVE")} allow="clipboard-read; clipboard-write; fullscreen" referrerPolicy="no-referrer" />
+          <iframe ref={desktopFrameRef} key={`${session.id}-${connectionAttempt}`} className="windows-os-frame" title="Windows Server 2025 Help Desk Lab" src={guacamoleUrl} allow="clipboard-read; clipboard-write; fullscreen" referrerPolicy="no-referrer" />
         </section>
       </div> : null}
       {["CONNECTING", "ACTIVE"].includes(status) && guacamoleUrl ? <footer className="windows-os-footer">
@@ -167,7 +226,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
       </footer> : null}
       {status === "FAILED" ? <div className="windows-os-status is-error" role="alert"><h3>We could not start the live Windows lab</h3><p>{error || "The Windows workspace failed to start. Please try again."}</p><div className="windows-os-error-actions"><button type="button" className="btn-sm" onClick={retry}>Try Again</button><button type="button" className="btn-sm" onClick={onEnded}>Return to Modules</button></div></div> : null}
       {error && status === "ACTIVE" ? <div className="windows-os-completion-error" role="alert">{error}</div> : null}
-      {["CONNECTING", "ACTIVE"].includes(status) && guacamoleUrl && showWalkthrough ? <SimulationWalkthrough type="windows" onDone={() => setShowWalkthrough(false)} /> : null}
+      {status === "ACTIVE" && guacamoleUrl && showWalkthrough ? <SimulationWalkthrough type="windows" onDone={() => setShowWalkthrough(false)} /> : null}
     </section>
   </div>;
 }

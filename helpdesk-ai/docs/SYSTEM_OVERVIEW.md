@@ -329,6 +329,8 @@ Defined in `server/prisma/schema.prisma`.
 ## 9. Local Development and Operations
 
 ### Install
+Run the following setup commands from `helpdesk-ai/`, not `docs/`.
+
 1. `cd server && npm install`
 2. `cd ../client && npm install`
 
