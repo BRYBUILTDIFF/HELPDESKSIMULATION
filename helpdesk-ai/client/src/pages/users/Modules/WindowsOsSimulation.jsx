@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import SimulationWalkthrough from "./SimulationWalkthrough";
 
 function messageFrom(error, fallback) {
+  if (!error?.response && error?.isAxiosError) {
+    return "Cannot reach the HelpDesk server. Check that the backend is running and try again.";
+  }
   return error?.response?.data?.message || fallback;
 }
 
@@ -40,16 +43,24 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
 
   useEffect(() => { if (!startedRef.current) { startedRef.current = true; start(); } }, [start]);
   useEffect(() => {
-    if (!session?.id || !["PROVISIONING", "READY"].includes(status)) return undefined;
+    if (!session?.id || status !== "PROVISIONING") return undefined;
     let cancelled = false;
-    const timer = window.setTimeout(async () => {
+    let timer;
+    const poll = async () => {
       try {
         const response = await api.get(`/api/simulation-sessions/${session.id}`);
-        if (!cancelled) { setSession(response.data); setStatus(response.data.status); onSessionReady?.(response.data); }
+        if (cancelled) return;
+        setSession(response.data);
+        setStatus(response.data.status);
+        onSessionReady?.(response.data);
+        if (response.data.status === "PROVISIONING") {
+          timer = window.setTimeout(poll, 4000);
+        }
       } catch (err) {
         if (!cancelled) { setStatus("FAILED"); setError(messageFrom(err, "Unable to connect to your Windows workspace.")); }
       }
-    }, 4000);
+    };
+    timer = window.setTimeout(poll, 4000);
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [api, onSessionReady, session?.id, status]);
 
@@ -154,7 +165,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
         <div className="windows-os-footer-progress"><span>{completedSteps.size} of {guidedSteps.length} complete</span><div className="windows-os-progress-line">{guidedSteps.map((_, index) => <i key={index} className={completedSteps.has(index) ? "done" : index === activeStep ? "active" : ""} />)}</div></div>
         <button type="button" className="windows-os-nav-btn is-next btn-sm" disabled={!currentStep || activeStep === guidedSteps.length - 1} onClick={() => setActiveStep((step) => step + 1)}><span>Next Step</span> →</button>
       </footer> : null}
-      {status === "FAILED" ? <div className="windows-os-status is-error"><h3>We could not start the live Windows lab</h3><p>Please try starting the Windows workspace again.</p><div className="windows-os-error-actions"><button type="button" className="btn-sm" onClick={retry}>Try Again</button><button type="button" className="btn-sm" onClick={onEnded}>Return to Modules</button></div></div> : null}
+      {status === "FAILED" ? <div className="windows-os-status is-error" role="alert"><h3>We could not start the live Windows lab</h3><p>{error || "The Windows workspace failed to start. Please try again."}</p><div className="windows-os-error-actions"><button type="button" className="btn-sm" onClick={retry}>Try Again</button><button type="button" className="btn-sm" onClick={onEnded}>Return to Modules</button></div></div> : null}
       {error && status === "ACTIVE" ? <div className="windows-os-completion-error" role="alert">{error}</div> : null}
       {["CONNECTING", "ACTIVE"].includes(status) && guacamoleUrl && showWalkthrough ? <SimulationWalkthrough type="windows" onDone={() => setShowWalkthrough(false)} /> : null}
     </section>
