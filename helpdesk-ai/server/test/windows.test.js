@@ -25,7 +25,12 @@ const prisma = {
   simulationSession: {
     findMany: async (query) => { expiredQuery = query; return sessions.filter(s => s.status === "TERMINATING" || s.expiresAt < new Date()); },
     findUnique: async ({ where }) => sessions.find(s => s.id === where.id) || null,
-    findFirst: async ({ where }) => sessions.find(s => s.id === where.id && s.userId === where.userId) || null,
+    findFirst: async ({ where }) => sessions.find(s =>
+      (!where.id || s.id === where.id) && s.userId === where.userId &&
+      (!where.moduleId || s.moduleId === where.moduleId) &&
+      (!where.status || where.status.in.includes(s.status)) &&
+      (!where.expiresAt || s.expiresAt > where.expiresAt.gt)
+    ) || null,
     count: async ({ where }) => sessions.filter(s => where.status.in.includes(s.status) && (!where.userId || s.userId === where.userId)).length,
     create: async ({ data }) => { const row = { ...data, id: `session-${sessions.length}`, status: "PROVISIONING" }; sessions.push(row); return row; },
     update: async ({ where, data }) => { const row = sessions.find(s => s.id === where.id); Object.assign(row, data); return { ...row }; }
@@ -38,6 +43,49 @@ const controller = require("../src/controllers/simulationSessionController");
 function response() { return { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } }; }
 function fail(err) { if (err) throw err; }
 beforeEach(() => { sessions = []; calls = []; expiredQuery = null; send = async () => ({}); });
+
+test("new labs reserve eight boot minutes in addition to the usable session duration", async () => {
+  const started = Date.now();
+  send = async () => ({ Instances: [{ InstanceId: "i-new" }] });
+  const res = response();
+  await controller.createSimulationSession({ body: { moduleId: "lab" }, user: { id: 1 } }, res, fail);
+  assert.equal(res.statusCode, 202);
+  const expected = (8 + (Number(process.env.SIMULATION_TTL_MINUTES) || 20)) * 60000;
+  assert.ok(sessions[0].expiresAt.getTime() >= started + expected);
+  assert.ok(sessions[0].expiresAt.getTime() <= Date.now() + expected);
+});
+
+test("resuming a lab preserves its reveal time and original expiry", async () => {
+  const createdAt = new Date(Date.now() - 10 * 60000);
+  const expiresAt = new Date(createdAt.getTime() + 28 * 60000);
+  sessions.push({ id: "resume", moduleId: "lab", userId: 1, status: "ACTIVE", ec2InstanceId: "i-resume", createdAt, expiresAt });
+  const res = response();
+  await controller.createSimulationSession({ body: { moduleId: "lab" }, user: { id: 1 } }, res, fail);
+  assert.equal(new Date(res.body.revealAt).getTime(), createdAt.getTime() + 8 * 60000);
+  assert.equal(res.body.expiresAt.getTime(), expiresAt.getTime());
+  assert.equal(calls.length, 0);
+});
+
+test("returning to an unexpired lab resumes its existing VM without another launch", async () => {
+  sessions.push({ id: "retained", moduleId: "lab", userId: 1, status: "ACTIVE", ec2InstanceId: "i-retained", expiresAt: new Date(Date.now() + 60000) });
+  const res = response();
+  await controller.createSimulationSession({ body: { moduleId: "lab" }, user: { id: 1 } }, res, fail);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.id, "retained");
+  assert.equal(res.body.resumed, true);
+  assert.equal(calls.length, 0);
+  assert.equal(sessions.length, 1);
+});
+
+test("ending a retained lab terminates only its own instance", async () => {
+  sessions.push({ id: "retained", userId: 1, status: "ACTIVE", ec2InstanceId: "i-retained" });
+  send = async command => command instanceof DescribeInstancesCommand
+    ? { Reservations: [{ Instances: [{ State: { Name: "running" }, Tags: [{ Key: "SessionId", Value: "retained" }] }] }] } : {};
+  const res = response();
+  await controller.endSimulationSession({ params: { id: "retained" }, user: { id: 1 } }, res, fail);
+  assert.equal(res.body.status, "ENDED");
+  assert.deepEqual(calls.find(c => c instanceof TerminateInstancesCommand).input.InstanceIds, ["i-retained"]);
+});
 
 test("a running VM stays provisioning until both EC2 health checks pass", async () => {
   const session = { id: "booting", ec2InstanceId: "i-booting", status: "PROVISIONING" };
@@ -161,4 +209,24 @@ test("an ambiguous launch failure keeps its capacity reservation", async () => {
   await controller.createSimulationSession({ body: { moduleId: "lab" }, user: { id: 2 } }, res, fail);
   assert.equal(res.statusCode, 429);
   assert.equal(calls.filter(c => c instanceof RunInstancesCommand).length, 1);
+});
+
+test("an explicitly denied launch releases the reservation and explains the AWS restriction", async () => {
+  const session = { id: "denied", moduleId: "lab", userId: 1, status: "PROVISIONING", expiresAt: new Date(Date.now() + 60000) };
+  sessions.push(session);
+  send = async () => { const error = new Error("Explicit deny"); error.name = "UnauthorizedOperation"; throw error; };
+  await assert.rejects(service.createWindowsSimulationSession(session), /AWS denied permission/);
+  assert.equal(session.status, "FAILED");
+  assert.ok(session.endedAt instanceof Date);
+});
+
+test("retrying provisioning without an instance uses the original launch token", async () => {
+  sessions.push({ id: "interrupted", moduleId: "lab", userId: 1, status: "PROVISIONING", expiresAt: new Date(Date.now() + 60000) });
+  send = async () => ({ Instances: [{ InstanceId: "i-recovered" }] });
+  const res = response();
+  await controller.createSimulationSession({ body: { moduleId: "lab" }, user: { id: 1 } }, res, fail);
+  assert.equal(res.statusCode, 202);
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].ec2InstanceId, "i-recovered");
+  assert.equal(calls.find(c => c instanceof RunInstancesCommand).input.ClientToken, "interrupted");
 });

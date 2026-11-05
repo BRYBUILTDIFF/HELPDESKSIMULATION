@@ -52,6 +52,17 @@ GUAC_URL_TTL_SECONDS=300
 
 ## Connection lifecycle
 
+While a Windows workspace is open, New Chat, New Simulation, selecting other
+saved chats/labs, deleting the current lab, and the Admin link are blocked with
+a reminder to use End Simulation or Complete Simulation first. Selecting the
+current lab does not remount it. Refreshing the saved lab resumes the same
+unexpired user/module session; navigation does not extend its deadline.
+Use End Simulation, Complete Simulation, or Return to Modules on the failure
+screen to end the lab explicitly. Deleting a saved lab or logging out also
+requests termination, including labs retained while viewing chats. Browser
+closure still relies on expiry cleanup. One active lab per user is the local
+configuration; users must end that lab before starting a different module.
+
 Provisioning now waits for both EC2 system and instance status checks to report
 `ok`. The backend IAM policy must allow `ec2:DescribeInstanceStatus` in addition
 to the existing EC2 permissions. Without permission, the backend logs a warning
@@ -60,7 +71,7 @@ The launcher embeds Guacamole on its own origin and watches its managed client
 connection state. A loading screen covers startup and connection errors until
 the client reports `CONNECTED`. It reports failures to the HelpDesk parent
 frame, which requests a fresh URL for the same session after ten seconds.
-Retries stop after eight minutes without success or session expiry. Messages
+Retries stop after ten minutes without success or session expiry. Messages
 are accepted only from the current iframe and its expected origin.
 This uses Guacamole's Angular `guacClientManager` service; verify compatibility
 when upgrading Guacamole. A successful iframe load alone is not readiness.
@@ -103,3 +114,12 @@ npm run build
 ```
 
 Create an admin module with `simulation.surface` set to `windows-os`, publish it, then open it in `/simulations` as a normal user. The user should see a provisioning screen while the backend creates the private EC2 session.
+
+## Lab countdown
+
+New sessions reserve eight minutes for preparation, followed by the configured
+SIMULATION_TTL_MINUTES of lab time (20 minutes by default). The server returns
+the original reveal time, so refreshing does not restart preparation or extend
+expiry. The remaining-time counter is shown after reveal and updates each second.
+EC2 cleanup and the AutoTerminateAt tag use the full preparation-plus-lab deadline.
+Existing sessions retain their previously assigned expiry.

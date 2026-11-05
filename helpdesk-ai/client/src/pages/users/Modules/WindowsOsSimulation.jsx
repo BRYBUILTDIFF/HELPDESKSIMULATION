@@ -17,6 +17,17 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
   const [status, setStatus] = useState("IDLE");
   const [guacamoleUrl, setGuacamoleUrl] = useState("");
   const [connectionAttempt, setConnectionAttempt] = useState(0);
+  const [revealAt, setRevealAt] = useState(() => Date.now() + 8 * 60 * 1000);
+  const [desktopRevealed, setDesktopRevealed] = useState(false);
+  const [clockNow, setClockNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDesktopRevealed(true), Math.max(0, revealAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [revealAt]);
   const [error, setError] = useState("");
   const [activeStep, setActiveStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState(() => new Set(completedStepIndexes));
@@ -25,18 +36,29 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
   const startedRef = useRef(false);
   const connectInFlightRef = useRef(false);
   const desktopFrameRef = useRef(null);
-  const retryDeadlineRef = useRef(Date.now() + 8 * 60 * 1000);
+  const connectionIssuedAtRef = useRef(0);
+  const refreshedAtRevealRef = useRef(null);
+  const retryDeadlineRef = useRef(Date.now() + 10 * 60 * 1000);
   const guidedSteps = Array.isArray(steps) ? steps : [];
   const currentStep = guidedSteps[activeStep];
   const currentStepAction = plainText(currentStep?.action || currentStep?.instruction);
   const currentStepDescription = plainText(currentStep?.desc || currentStep?.description);
 
   const start = useCallback(async () => {
-    retryDeadlineRef.current = Date.now() + 8 * 60 * 1000;
+    setRevealAt(Date.now() + 8 * 60 * 1000);
+    setDesktopRevealed(false);
+    retryDeadlineRef.current = Date.now() + 10 * 60 * 1000;
     connectInFlightRef.current = false;
     setError(""); setGuacamoleUrl(""); setSession(null); setStatus("PROVISIONING");
     try {
       const response = await api.post("/api/simulation-sessions", { moduleId });
+      if (response.data?.revealAt) {
+        const deadline = new Date(response.data.revealAt).getTime();
+        if (Number.isFinite(deadline)) {
+          setRevealAt(deadline);
+          setDesktopRevealed(Date.now() >= deadline);
+        }
+      }
       setSession(response.data); setStatus(response.data?.status || "PROVISIONING");
       onSessionReady?.(response.data);
     } catch (err) {
@@ -83,7 +105,9 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
         setSession(response.data);
         const connectionUrl = new URL(response.data.guacamoleUrl);
         connectionUrl.searchParams.set("parentOrigin", window.location.origin);
+        connectionUrl.searchParams.set("revealAt", String(revealAt));
         setGuacamoleUrl(connectionUrl.href);
+        connectionIssuedAtRef.current = Date.now();
         setConnectionAttempt((attempt) => attempt + 1);
         setStatus("CONNECTING");
         onSessionReady?.(response.data);
@@ -93,7 +117,20 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
         setStatus("FAILED");
         setError(messageFrom(err, "Unable to connect to your Windows workspace."));
       });
-  }, [api, guacamoleUrl, onSessionReady, session?.id, status]);
+  }, [api, guacamoleUrl, onSessionReady, session?.id, status, revealAt]);
+
+  useEffect(() => {
+    if (!desktopRevealed || !session?.id || !guacamoleUrl || !["CONNECTING", "ACTIVE"].includes(status)) return;
+    if (refreshedAtRevealRef.current === session.id) return;
+    refreshedAtRevealRef.current = session.id;
+    // A token issued during boot may already have expired when the cover lifts.
+    // Request a fresh URL once, preserving the VM, steps, and session deadline.
+    if (connectionIssuedAtRef.current < revealAt) {
+      connectInFlightRef.current = false;
+      setGuacamoleUrl("");
+      setStatus("READY");
+    }
+  }, [desktopRevealed, session?.id, guacamoleUrl, status, revealAt]);
 
   useEffect(() => {
     if (!guacamoleUrl || !session?.id || !["CONNECTING", "ACTIVE"].includes(status)) return undefined;
@@ -104,7 +141,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
       if (event.data.state === "CONNECTED") {
         window.clearTimeout(retryTimer);
         retryTimer = undefined;
-        retryDeadlineRef.current = Date.now() + 8 * 60 * 1000;
+        retryDeadlineRef.current = Date.now() + 10 * 60 * 1000;
         setStatus("ACTIVE");
         return;
       }
@@ -179,22 +216,20 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
       setCompleting(false);
     }
   }, [api, completing, end, guidedSteps.length, moduleId, session?.id]);
-  const reconnect = () => {
-    retryDeadlineRef.current = Date.now() + 8 * 60 * 1000;
-    connectInFlightRef.current = false;
-    setError("");
-    setGuacamoleUrl("");
-    setStatus("READY");
-  };
-  const retry = () => { if (session?.id) reconnect(); else { startedRef.current = true; start(); } };
-  const remainingMinutes = session?.expiresAt ? Math.max(0, Math.ceil((new Date(session.expiresAt).getTime() - Date.now()) / 60000)) : null;
+  const retry = () => { startedRef.current = true; start(); };
+  const remainingMinutes = desktopRevealed && session?.expiresAt ? Math.max(0, Math.ceil((new Date(session.expiresAt).getTime() - clockNow) / 60000)) : null;
 
   return <div className="windows-os-overlay" aria-label="Windows OS simulation">
     <section className="windows-os-shell">
       <header className="windows-os-header"><div><span className="windows-os-kicker">Windows OS Simulation</span><h2>{title}</h2></div><div className="windows-os-controls">{remainingMinutes !== null ? <span>{remainingMinutes} min remaining</span> : null}<button type="button" className="windows-os-end-btn btn-sm" onClick={end}>End Simulation</button><button type="button" className="windows-os-complete-btn btn-sm" onClick={complete} disabled={!session?.id || completing} title={!session?.id ? "A live workspace is required to record completion" : "Complete simulation"}>✓ <span>{completing ? "Completing..." : "Complete Simulation"}</span></button></div></header>
-      {["IDLE", "PROVISIONING", "READY", "TERMINATING"].includes(status) ? <div className="windows-os-status"><div className="windows-os-spinner" aria-hidden="true" /><h3>{status === "TERMINATING" ? "Ending your Windows Server 2025 workspace..." : "Preparing your Windows Server 2025 workspace..."}</h3><p>Your private simulation environment is being prepared. This usually takes a few minutes.</p></div> : null}
-      {["CONNECTING", "ACTIVE"].includes(status) && guacamoleUrl ? <div className="windows-os-workspace">
-        <aside className="windows-os-guide" aria-label="Simulation steps">
+      {["IDLE", "PROVISIONING", "READY", "TERMINATING"].includes(status) ? <div className="windows-os-status"><div className="windows-os-spinner" aria-hidden="true" /><h3>{status === "TERMINATING" ? "Ending your Windows Server 2025 workspace..." : "Preparing your Windows Server 2025 workspace..."}</h3><p>We are getting your lab ready. This may take a few minutes. Please keep this page open.</p></div> : null}
+      {["CONNECTING", "ACTIVE"].includes(status) && guacamoleUrl ? <div className="windows-os-workspace" style={{ position: "relative" }}>
+        {!desktopRevealed ? <div className="windows-os-status" role="status" style={{ position: "absolute", inset: 0, zIndex: 10, background: "#f7f9fc" }}>
+          <div className="windows-os-spinner" aria-hidden="true" />
+          <h3>Preparing your Windows Server 2025 workspace...</h3>
+          <p>We are getting your lab ready. This may take a few minutes. Please keep this page open.</p>
+        </div> : null}
+        <aside inert={!desktopRevealed ? "" : undefined} className="windows-os-guide" aria-label="Simulation steps">
           <div className="windows-os-guide-heading"><span>Simulation Steps</span><small>{guidedSteps.length ? `${activeStep + 1} of ${guidedSteps.length}` : "No steps"}</small></div>
           {guidedSteps.length ? <div className="windows-os-step-list">
             {guidedSteps.map((step, index) => <button type="button" key={`${step?.id || step?.title || "step"}-${index}`} className={`windows-os-step${index === activeStep ? " is-active" : ""}${completedSteps.has(index) ? " is-complete" : ""}`} onClick={() => setActiveStep(index)}>
@@ -204,7 +239,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
           </div> : <p className="windows-os-no-steps">This module does not include guided steps yet.</p>}
           <div className="windows-os-help-card"><strong>◌&nbsp; Need Help?</strong><span>Follow each step carefully. You can navigate back and forth between steps at any time.</span></div>
         </aside>
-        <section className="windows-os-desktop">
+        <section inert={!desktopRevealed ? "" : undefined} className="windows-os-desktop">
           {currentStep ? <div className="windows-os-instruction">
             <span>Current Step</span>
             <h3>{currentStep.title || `Step ${activeStep + 1}`}</h3>
@@ -219,14 +254,14 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
           <iframe ref={desktopFrameRef} key={`${session.id}-${connectionAttempt}`} className="windows-os-frame" title="Windows Server 2025 Help Desk Lab" src={guacamoleUrl} allow="clipboard-read; clipboard-write; fullscreen" referrerPolicy="no-referrer" />
         </section>
       </div> : null}
-      {["CONNECTING", "ACTIVE"].includes(status) && guacamoleUrl ? <footer className="windows-os-footer">
+      {desktopRevealed && guacamoleUrl ? <footer className="windows-os-footer">
         <button type="button" className="windows-os-nav-btn btn-sm" disabled={!currentStep || activeStep === 0} onClick={() => setActiveStep((step) => step - 1)}>← <span>Previous Step</span></button>
         <div className="windows-os-footer-progress"><span>{completedSteps.size} of {guidedSteps.length} complete</span><div className="windows-os-progress-line">{guidedSteps.map((_, index) => <i key={index} className={completedSteps.has(index) ? "done" : index === activeStep ? "active" : ""} />)}</div></div>
         <button type="button" className="windows-os-nav-btn is-next btn-sm" disabled={!currentStep || activeStep === guidedSteps.length - 1} onClick={() => setActiveStep((step) => step + 1)}><span>Next Step</span> →</button>
       </footer> : null}
-      {status === "FAILED" ? <div className="windows-os-status is-error" role="alert"><h3>We could not start the live Windows lab</h3><p>{error || "The Windows workspace failed to start. Please try again."}</p><div className="windows-os-error-actions"><button type="button" className="btn-sm" onClick={retry}>Try Again</button><button type="button" className="btn-sm" onClick={onEnded}>Return to Modules</button></div></div> : null}
+      {status === "FAILED" ? <div className="windows-os-status is-error" role="alert"><h3>We could not start the live Windows lab</h3><p>{error || "The Windows workspace failed to start. Please try again."}</p><div className="windows-os-error-actions"><button type="button" className="btn-sm" onClick={retry}>Try Again</button><button type="button" className="btn-sm" onClick={end}>Return to Modules</button></div></div> : null}
       {error && status === "ACTIVE" ? <div className="windows-os-completion-error" role="alert">{error}</div> : null}
-      {status === "ACTIVE" && guacamoleUrl && showWalkthrough ? <SimulationWalkthrough type="windows" onDone={() => setShowWalkthrough(false)} /> : null}
+      {desktopRevealed && guacamoleUrl && showWalkthrough ? <SimulationWalkthrough type="windows" onDone={() => setShowWalkthrough(false)} /> : null}
     </section>
   </div>;
 }

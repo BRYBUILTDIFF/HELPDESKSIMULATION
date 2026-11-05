@@ -6,13 +6,14 @@
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <title>Connecting to Windows workspace</title>
-    <style>body{margin:0;background:#0f172a;color:#e2e8f0;font:16px system-ui,sans-serif}main{position:fixed;inset:0;display:grid;place-content:center;text-align:center;z-index:1;background:#0f172a}p{color:#94a3b8}iframe{position:fixed;inset:0;width:100%;height:100%;border:0}main[hidden]{display:none}</style>
+    <style>body{margin:0;background:#f7f9fc;color:#12243c;font:16px system-ui,sans-serif}main{position:fixed;inset:0;display:grid;place-content:center;text-align:center;z-index:1;background:#f7f9fc;padding:24px}p{color:#53657d;max-width:480px;line-height:1.7}.spinner{width:26px;height:26px;margin:0 auto 16px;border:3px solid #d7efff;border-top-color:#29baff;border-radius:50%;animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.spinner{animation:none}}iframe{position:fixed;inset:0;width:100%;height:100%;border:0}main[hidden]{display:none}</style>
   </head>
-  <body><main><strong>Connecting to your Windows workspace…</strong><p id="message">Please wait.</p></main>
+  <body><main><div class="spinner" aria-hidden="true"></div><strong>Preparing your Windows Server 2025 workspace...</strong><p id="message">Please wait.</p></main>
     <script>
       (() => {
         const params = new URLSearchParams(location.search);
         const data = params.get("data");
+        const revealAt = Number(params.get("revealAt")) || 0;
         const message = document.getElementById("message");
         if (!data) { message.textContent = "A secure connection link was not provided."; return; }
         let parentOrigin;
@@ -35,11 +36,12 @@
         frame.allow = "clipboard-read; clipboard-write; fullscreen";
         frame.src = `/guacamole/?data=${encodeURIComponent(data)}&fresh=${Date.now()}`;
         document.body.appendChild(frame);
-        message.textContent = "Windows is starting. Connecting automatically...";
+        message.textContent = "We are getting your lab ready. This may take a few minutes. Please keep this page open.";
         let connected = false;
         let reportedFailure = false;
         const started = Date.now();
         const timer = setInterval(() => {
+          if (revealAt && Date.now() >= revealAt) cover.hidden = true;
           try {
             const win = frame.contentWindow;
             const root = win.document.querySelector("[ng-app]") || win.document.body;
@@ -49,13 +51,13 @@
             if (states.includes("CONNECTED")) {
               connected = true;
               reportedFailure = false;
-              cover.hidden = true;
+              cover.hidden = revealAt ? Date.now() >= revealAt : true;
               report("CONNECTED");
               return;
             }
             if (states.some(state => ["CLIENT_ERROR", "TUNNEL_ERROR", "DISCONNECTED"].includes(state)) || (!connected && Date.now() - started > 60000)) {
-              cover.hidden = false;
-              message.textContent = "Waiting for the Windows desktop. Retrying automatically...";
+              cover.hidden = !!revealAt && Date.now() >= revealAt;
+              message.textContent = "We are getting your lab ready. This may take a few minutes. Please keep this page open.";
               if (!reportedFailure) {
                 reportedFailure = true;
                 report("RETRY");
@@ -68,7 +70,7 @@
           } catch (_) {
             if (Date.now() - started > 60000 && !reportedFailure) {
               reportedFailure = true;
-              message.textContent = "Unable to verify the desktop connection. Retrying...";
+              message.textContent = "We are getting your lab ready. This may take a few minutes. Please keep this page open.";
               report("RETRY");
             }
           }

@@ -57,6 +57,7 @@ async function countLiveWindowsInstances() {
 }
 
 async function createWindowsSimulationSession(session) {
+  let launchAccepted = false;
   try {
     const { launchTemplateId } = getConfig();
     const response = await getEc2Client().send(
@@ -70,15 +71,20 @@ async function createWindowsSimulationSession(session) {
     );
     const instanceId = response.Instances?.[0]?.InstanceId;
     if (!instanceId) throw new Error("EC2 did not return an instance ID.");
+    launchAccepted = true;
     return await prisma.simulationSession.update({ where: { id: session.id }, data: { ec2InstanceId: instanceId } });
   } catch (error) {
+    const denied = !launchAccepted && ["UnauthorizedOperation", "AccessDenied", "AccessDeniedException", "AuthFailure", "InvalidClientTokenId", "SignatureDoesNotMatch"].includes(error?.name || error?.code);
     await prisma.simulationSession.update({
       where: { id: session.id },
       // A timeout may occur after AWS accepted the launch. Reserve capacity
       // until reconciliation recovers the instance or expiry cleans it up.
-      data: { status: "PROVISIONING", endedAt: null }
+      data: denied ? { status: "FAILED", endedAt: new Date() } : { status: "PROVISIONING", endedAt: null }
     }).catch(() => {});
     console.error("Windows simulation launch failed", { sessionId: session.id, code: error?.name || error?.code });
+    if (denied) {
+      throw new SimulationServiceError("AWS denied permission to create the Windows lab. Ask your administrator to check the backend AWS credentials and IAM restrictions.");
+    }
     throw new SimulationServiceError("Unable to prepare the Windows workspace. Please try again later.");
   }
 }

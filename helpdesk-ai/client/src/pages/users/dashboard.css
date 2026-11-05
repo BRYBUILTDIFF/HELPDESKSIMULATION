@@ -5545,3 +5545,65 @@
     max-height: 150px;
   }
 }
+.lab-navigation-dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  box-sizing: border-box;
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 30px;
+  border: 1px solid #dbe5f0;
+  border-radius: 20px;
+  background: #fff;
+  color: #12243c;
+  text-align: center;
+  box-shadow: 0 24px 80px rgb(0 0 0 / 25%);
+}
+
+.lab-navigation-dialog::backdrop {
+  background: rgb(10 23 43 / 55%);
+  backdrop-filter: blur(3px);
+}
+
+.lab-navigation-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  background: #e8f1ff;
+  color: #2563eb;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.lab-navigation-dialog h2 {
+  margin: 0 0 12px;
+  font-size: 21px;
+  line-height: 1.3;
+}
+
+.lab-navigation-dialog p {
+  margin: 0 0 24px;
+  color: #53657d;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.lab-navigation-return {
+  width: 100%;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 10px;
+  background: #3068ed;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lab-navigation-return:hover { background: #2456d0; }
+.lab-navigation-return:focus-visible { outline: 3px solid #93baff; outline-offset: 3px; }

@@ -20,6 +20,7 @@ function safeSession(session, guacamoleUrl) {
   return {
     id: session.id,
     status: session.status,
+    revealAt: session.createdAt ? new Date(new Date(session.createdAt).getTime() + 8 * 60000) : undefined,
     expiresAt: session.expiresAt,
     endedAt: session.endedAt,
     ...(guacamoleUrl ? { guacamoleUrl } : {})
@@ -53,12 +54,16 @@ async function createSimulationSession(req, res, next) {
       }
       const session = await tx.simulationSession.create({ data: {
         userId: req.user.id, moduleId: module.id, surface: "windows-os",
-        expiresAt: new Date(Date.now() + limit("SIMULATION_TTL_MINUTES", 20) * 60000)
+        expiresAt: new Date(Date.now() + (8 + limit("SIMULATION_TTL_MINUTES", 20)) * 60000)
       } });
       return { session, resumed: false };
     });
     const { session } = reservation;
-    if (reservation.resumed) return res.status(200).json({ ...safeSession(session), resumed: true });
+    if (reservation.resumed && (session.ec2InstanceId || session.status !== "PROVISIONING")) {
+      return res.status(200).json({ ...safeSession(session), resumed: true });
+    }
+    // Retry an interrupted/rejected launch with its original idempotency token.
+    // Never leave a resumed row polling forever without an EC2 instance ID.
     try {
       await createWindowsSimulationSession(session);
     } catch (error) {

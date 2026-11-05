@@ -819,6 +819,7 @@ function normalizeLoadedSession(session, idx) {
       session?.windowsOsSimulation && typeof session.windowsOsSimulation === "object" && session.windowsOsSimulation.moduleId
         ? {
             moduleId: String(session.windowsOsSimulation.moduleId),
+            simulationSessionId: session.windowsOsSimulation.simulationSessionId || null,
             title: String(session.windowsOsSimulation.title || incomingTitle || "Windows OS Simulation"),
             steps: Array.isArray(session.windowsOsSimulation.steps) ? session.windowsOsSimulation.steps : [],
             completedStepIndexes: Array.isArray(session.windowsOsSimulation.completedStepIndexes)
@@ -1365,6 +1366,16 @@ export default function DashboardPage() {
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [simulationModules, setSimulationModules] = useState([]);
   const [activeWindowsOsModule, setActiveWindowsOsModule] = useState(null);
+  const [labNavigationNoticeOpen, setLabNavigationNoticeOpen] = useState(false);
+  const labNavigationDialogRef = useRef(null);
+
+  useEffect(() => {
+    const dialog = labNavigationDialogRef.current;
+    if (!dialog) return;
+    if (labNavigationNoticeOpen && activeWindowsOsModule) {
+      if (!dialog.open) dialog.showModal();
+    } else if (dialog.open) dialog.close();
+  }, [labNavigationNoticeOpen, activeWindowsOsModule]);
   const [aiSuggestedTickets, setAiSuggestedTickets] = useState([]);
   const [aiSuggestedTicketsLoading, setAiSuggestedTicketsLoading] = useState(true);
   const [sidebarGroupsCollapsed, setSidebarGroupsCollapsed] = useState({
@@ -2212,7 +2223,14 @@ export default function DashboardPage() {
     });
   };
 
+  function blockNavigationDuringWindowsLab() {
+    if (!activeWindowsOsModule) return false;
+    setLabNavigationNoticeOpen(true);
+    return true;
+  }
+
   const startSuggestedSimulation = (suggestion) => {
+    if (blockNavigationDuringWindowsLab()) return;
     setShowSimulationCatalog(false);
     const questionText = suggestion?.simulationId ? String(suggestion.question || "").trim() : pickSuggestionQuestion(suggestion);
     const simulationId = suggestion?.simulationId || SUGGESTED_SIMULATION_MAP[suggestion?.title];
@@ -2363,14 +2381,18 @@ export default function DashboardPage() {
       try {
         await api.post(`/api/simulation-sessions/${workspace.simulationSessionId}/end`);
       } catch (_err) {
-        // The server cleanup job remains the fallback if this navigation request is interrupted.
+        window.alert("Unable to end the Windows lab. Please try again.");
+        return false;
       }
     }
     finishWindowsOsWorkspace(workspace);
+    return true;
   };
 
   const startNewSession = async () => {
-    await endWindowsOsForNavigation();
+    if (blockNavigationDuringWindowsLab()) return;
+    setActiveWindowsOsModule(null);
+    loadedWorkspaceSessionRef.current = "";
     const freshSession = createSession();
     setShowSimulationCatalog(false);
     setPendingSimulationCreation(false);
@@ -2385,7 +2407,9 @@ export default function DashboardPage() {
   };
 
   const startNewSimulationSession = async () => {
-    await endWindowsOsForNavigation();
+    if (blockNavigationDuringWindowsLab()) return;
+    setActiveWindowsOsModule(null);
+    loadedWorkspaceSessionRef.current = "";
     setOpenSessionMenuId(null);
     setPendingSimulationCreation(true);
     setActiveSessionId("");
@@ -2407,6 +2431,7 @@ export default function DashboardPage() {
     if (session?.windowsOsSimulation?.moduleId) {
       setActiveWindowsOsModule({
         id: session.windowsOsSimulation.moduleId,
+        simulationSessionId: session.windowsOsSimulation.simulationSessionId || null,
         title: session.windowsOsSimulation.title || session.title || "Windows OS Simulation",
         steps: Array.isArray(session.windowsOsSimulation.steps) ? session.windowsOsSimulation.steps : [],
         completedStepIndexes: Array.isArray(session.windowsOsSimulation.completedStepIndexes) ? session.windowsOsSimulation.completedStepIndexes : [],
@@ -2458,11 +2483,20 @@ export default function DashboardPage() {
   }
 
   const deleteSession = async (sessionId) => {
+    if (activeWindowsOsModule?.sessionId === sessionId && blockNavigationDuringWindowsLab()) return;
     setOpenSessionMenuId(null);
     const isDeletingWindowsWorkspace = activeWindowsOsModule?.sessionId === sessionId;
 
     if (isDeletingWindowsWorkspace) {
-      await endWindowsOsForNavigation();
+      if (await endWindowsOsForNavigation() === false) return;
+    } else if (sessions.find(session => session.id === sessionId)?.windowsOsSimulation?.simulationSessionId) {
+      const saved = sessions.find(session => session.id === sessionId);
+      try {
+        await api.post(`/api/simulation-sessions/${saved.windowsOsSimulation.simulationSessionId}/end`);
+      } catch (_err) {
+        window.alert("Unable to end this Windows lab. Please retry deleting it.");
+        return;
+      }
     } else if (activeSessionId === sessionId) {
       // Terminal simulations are client-side, but their canvas must not remain
       // visible after the session that owns it has been removed.
@@ -3435,10 +3469,9 @@ export default function DashboardPage() {
   };
 
   const handleSelectSession = async (session) => {
-    // A Windows OS workspace owns a dedicated EC2 instance. End it before
-    // leaving its saved simulation session so it cannot continue invisibly.
-    if (activeWindowsOsModule && activeWindowsOsModule.sessionId !== session.id) {
-      await endWindowsOsForNavigation();
+    if (activeWindowsOsModule) {
+      if (activeWindowsOsModule.sessionId === session.id) return;
+      if (blockNavigationDuringWindowsLab()) return;
     }
     setPendingSimulationCreation(false);
     setActiveSessionId(session.id);
@@ -3455,6 +3488,19 @@ export default function DashboardPage() {
 
   return (
     <div className={`helpdesk-root ${theme === "light" ? "theme-light" : ""}`}>
+      <dialog
+        ref={labNavigationDialogRef}
+        className="lab-navigation-dialog"
+        aria-labelledby="lab-navigation-title"
+        aria-describedby="lab-navigation-description"
+        onCancel={() => setLabNavigationNoticeOpen(false)}
+        onClose={() => setLabNavigationNoticeOpen(false)}
+      >
+        <div className="lab-navigation-icon" aria-hidden="true">!</div>
+        <h2 id="lab-navigation-title">Your Windows lab is still open</h2>
+        <p id="lab-navigation-description">Choose <strong>End Simulation</strong> or <strong>Complete Simulation</strong> in the lab before opening another chat or simulation.</p>
+        <button type="button" className="lab-navigation-return" onClick={() => setLabNavigationNoticeOpen(false)}>Back to lab</button>
+      </dialog>
       {(stepModalOpen || (isSimulationSession && !showSimulationCatalog && !activeWindowsOsModule)) && modalCanvasState && showSimulationWalkthrough ? (
         <SimulationWalkthrough
           key={modalMessageId || modalSourceTitle}
@@ -3886,7 +3932,16 @@ export default function DashboardPage() {
                 <button className="avatar-popover-btn hd-btn-reset" onClick={openAccountSettings}>
                   Account settings
                 </button>
-                <button className="avatar-popover-btn danger hd-btn-reset" onClick={async () => { await endWindowsOsForNavigation(); await logout(); }}>
+                <button className="avatar-popover-btn danger hd-btn-reset" onClick={async () => {
+                  const ids = new Set(sessions.map(session => session.windowsOsSimulation?.simulationSessionId).filter(Boolean));
+                  if (activeWindowsOsModule?.simulationSessionId) ids.add(activeWindowsOsModule.simulationSessionId);
+                  try {
+                    await Promise.all([...ids].map(id => api.post(`/api/simulation-sessions/${id}/end`)));
+                  } catch (_err) {
+                    window.alert("Some labs could not be ended. They remain subject to automatic expiry cleanup.");
+                  }
+                  await logout();
+                }}>
                   Logout
                 </button>
               </div>
@@ -3907,7 +3962,7 @@ export default function DashboardPage() {
             <div className="topbar-title">{topbarSessionTitle}</div>
             {denied ? <span className="denied-pill">Access denied</span> : null}
             {user?.role === "ADMIN" ? (
-              <Link to="/admin" className="top-btn">
+              <Link to="/admin" className="top-btn" onClick={event => { if (blockNavigationDuringWindowsLab()) event.preventDefault(); }}>
                 Admin
               </Link>
             ) : null}
@@ -3924,6 +3979,11 @@ export default function DashboardPage() {
                 steps={activeWindowsOsModule.steps}
                 completedStepIndexes={activeWindowsOsModule.completedStepIndexes || []}
                 onSessionReady={(simulationSession) => {
+                  setSessions(currentSessions => currentSessions.map(session =>
+                    session.id === activeWindowsOsModule.sessionId && session.windowsOsSimulation?.simulationSessionId !== simulationSession.id
+                      ? { ...session, windowsOsSimulation: { ...session.windowsOsSimulation, simulationSessionId: simulationSession.id } }
+                      : session
+                  ));
                   setActiveWindowsOsModule((current) => (
                     current?.sessionId === activeWindowsOsModule.sessionId
                       ? { ...current, simulationSessionId: simulationSession.id }
