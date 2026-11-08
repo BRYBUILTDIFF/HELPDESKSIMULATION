@@ -1,13 +1,14 @@
 const prisma = require("../prisma");
-const { prunePolicyEvents } = require("../store/policyEventStore");
-
 async function cleanupRetainedData() {
-  const days = Math.max(1, Number(process.env.POLICY_RETENTION_DAYS) || 90);
-  const cutoff = new Date(Date.now() - days * 86400000);
-  prunePolicyEvents(cutoff);
+  const cutoff = new Date(Date.now() - Math.max(1, Number(process.env.POLICY_RETENTION_DAYS) || 90) * 86400000);
+  const chatCutoff = new Date(Date.now() - Math.max(1, Number(process.env.CHAT_RETENTION_DAYS) || 90) * 86400000);
   await prisma.policyEvent.deleteMany({ where: { at: { lt: cutoff } } });
   await prisma.policyConversation.deleteMany({ where: { expiresAt: { lt: new Date() } } });
   await prisma.refreshToken.deleteMany({ where: { expiresAt: { lt: new Date() } } });
+  await prisma.chatSession.deleteMany({ where: { updatedAt: { lt: chatCutoff } } });
+  await prisma.userSessionState.deleteMany({ where: { updatedAt: { lt: chatCutoff } } });
+  await prisma.simulationAttempt.deleteMany({ where: { expiresAt: { lt: chatCutoff } } });
+  await prisma.requestLimit.deleteMany({ where: { resetAt: { lt: new Date() } } });
+  await prisma.adminAuditLog.deleteMany({ where: { at: { lt: new Date(Date.now() - 365 * 86400000) } } });
 }
-
 module.exports = { cleanupRetainedData };

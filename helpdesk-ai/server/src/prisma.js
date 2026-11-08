@@ -5,7 +5,9 @@ const globalForPrisma = globalThis;
 const prisma =
   globalForPrisma.prisma ||
   new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"]
+    // Prisma error/query logs can contain SQL parameters and connection details.
+    // Request handlers report sanitized failure metadata instead.
+    log: []
   });
 
 if (process.env.NODE_ENV !== "production") {

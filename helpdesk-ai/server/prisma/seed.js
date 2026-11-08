@@ -7,14 +7,14 @@ const prisma = new PrismaClient();
 async function main() {
   const accounts = [
     {
-      email: "admin@helpdesk.com",
+      email: (process.env.SEED_ADMIN_EMAIL || "admin@helpdesk.com").trim().toLowerCase(),
       plainPassword: process.env.SEED_ADMIN_PASSWORD,
       firstName: "System",
       lastName: "Admin",
       role: Role.ADMIN
     },
     {
-      email: "user@helpdesk.com",
+      email: (process.env.SEED_USER_EMAIL || "user@helpdesk.com").trim().toLowerCase(),
       plainPassword: process.env.SEED_USER_PASSWORD,
       firstName: "HelpDesk",
       lastName: "User",

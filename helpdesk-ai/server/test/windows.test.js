@@ -27,12 +27,13 @@ const prisma = {
     findUnique: async ({ where }) => sessions.find(s => s.id === where.id) || null,
     findFirst: async ({ where }) => sessions.find(s =>
       (!where.id || s.id === where.id) && s.userId === where.userId &&
+      (!where.createdAt || (s.createdAt && s.createdAt > (where.createdAt.gt || where.createdAt.gte))) &&
       (!where.moduleId || s.moduleId === where.moduleId) &&
       (!where.status || where.status.in.includes(s.status)) &&
       (!where.expiresAt || s.expiresAt > where.expiresAt.gt)
     ) || null,
-    count: async ({ where }) => sessions.filter(s => where.status.in.includes(s.status) && (!where.userId || s.userId === where.userId)).length,
-    create: async ({ data }) => { const row = { ...data, id: `session-${sessions.length}`, status: "PROVISIONING" }; sessions.push(row); return row; },
+    count: async ({ where }) => sessions.filter(s => (!where.status || where.status.in.includes(s.status)) && (!where.userId || s.userId === where.userId) && (!where.createdAt || s.createdAt >= where.createdAt.gte)).length,
+    create: async ({ data }) => { const row = { ...data, id: `session-${sessions.length}`, status: "PROVISIONING", createdAt: new Date() }; sessions.push(row); return row; },
     update: async ({ where, data }) => { const row = sessions.find(s => s.id === where.id); Object.assign(row, data); return { ...row }; }
   }
 };
@@ -229,4 +230,17 @@ test("retrying provisioning without an instance uses the original launch token",
   assert.equal(sessions.length, 1);
   assert.equal(sessions[0].ec2InstanceId, "i-recovered");
   assert.equal(calls.find(c => c instanceof RunInstancesCommand).input.ClientToken, "interrupted");
+});
+
+test("daily lab quota blocks a new launch without affecting another account", async () => {
+  for (let i = 0; i < 3; i++) sessions.push({ id: `old-${i}`, userId: 1, status: "ENDED", createdAt: new Date() });
+  const res = response();
+  await controller.createSimulationSession({ body: { moduleId: "lab" }, user: { id: 1 } }, res, fail);
+  assert.equal(res.statusCode, 429); assert.equal(calls.length, 0);
+});
+test("lab cooldown prevents immediate end and recreate loops", async () => {
+  sessions.push({ id: "recent", userId: 1, status: "ENDED", createdAt: new Date() });
+  const res = response();
+  await controller.createSimulationSession({ body: { moduleId: "lab" }, user: { id: 1 } }, res, fail);
+  assert.equal(res.statusCode, 429); assert.equal(calls.length, 0);
 });

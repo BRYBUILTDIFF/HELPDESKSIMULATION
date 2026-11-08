@@ -1,5 +1,12 @@
 {
-  "dependencies": {
-    "@aws-sdk/client-ec2": "^3.1161.0"
+  "name": "helpdesk-ai",
+  "private": true,
+  "scripts": {
+    "test": "npm --prefix server test",
+    "lint": "npm --prefix server run lint",
+    "build": "npm --prefix client run build"
+  },
+  "engines": {
+    "node": ">=22.12 <25"
   }
 }

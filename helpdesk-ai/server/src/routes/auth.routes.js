@@ -21,6 +21,7 @@ const passwordRule = body("password")
 router.post("/login", [emailRule, passwordRule], validateRequest, authController.login);
 router.post("/refresh", authController.refresh);
 router.post("/logout", authController.logout);
+router.post("/logout-all", verifyToken, authController.logoutAll);
 router.get("/me", verifyToken, authController.getMe);
 router.post(
   "/change-password",

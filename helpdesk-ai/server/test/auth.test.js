@@ -64,7 +64,8 @@ test("refresh rotates credentials, uses current role, and detects replay", async
   await auth.refresh({ cookies: { refreshToken: old } }, rotated, fail);
   assert.equal(rotated.statusCode, 200);
   assert.notEqual(rotated.cookies.refreshToken, old);
-  assert.equal(jwt.verify(rotated.body.accessToken, process.env.JWT_ACCESS_SECRET).role, "ADMIN");
+  assert.equal(jwt.verify(rotated.body.accessToken, process.env.JWT_ACCESS_SECRET).role, undefined);
+  assert.equal(jwt.verify(rotated.body.accessToken, process.env.JWT_ACCESS_SECRET).tokenVersion, 0);
   assert.equal(records.length, 1);
   const replay = response();
   await auth.refresh({ cookies: { refreshToken: old } }, replay, fail);
@@ -119,4 +120,21 @@ test("public registration is not routed to account creation", async () => {
   });
   assert.equal(res.statusCode, 404);
   assert.equal(records.length, 0);
+});
+
+test("password version changes immediately revoke old access tokens", async () => {
+  const token = generateAccessToken({ id: 1, tokenVersion: 0 });
+  user.tokenVersion = 1;
+  const res = response();
+  await verifyToken({ headers: { authorization: `Bearer ${token}` }, originalUrl: "/api/auth/me" }, res, fail);
+  assert.equal(res.statusCode, 401);
+});
+test("foreign issuer access tokens are rejected", async () => {
+  const token = jwt.sign({ id: 1, tokenVersion: 0 }, process.env.JWT_ACCESS_SECRET, { issuer: "other", audience: "helpdesk-client" });
+  const res = response();
+  await verifyToken({ headers: { authorization: `Bearer ${token}` }, originalUrl: "/api/auth/me" }, res, fail);
+  assert.equal(res.statusCode, 401);
+});
+test("refresh session cannot renew beyond its absolute lifetime", () => {
+  assert.throws(() => generateRefreshToken({ id: 1, familyCreatedAt: Date.now() - 31 * 86400000 }));
 });

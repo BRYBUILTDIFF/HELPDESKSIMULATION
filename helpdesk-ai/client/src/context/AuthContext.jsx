@@ -85,21 +85,6 @@ export function AuthProvider({ children }) {
     [persistAccessToken]
   );
 
-  const register = useCallback(
-    async ({ firstName, lastName, email, password }) => {
-      const response = await publicApi.post("/api/auth/register", {
-        firstName,
-        lastName,
-        email,
-        password
-      });
-      persistAccessToken(response.data.accessToken);
-      setUser(response.data.user);
-      return response.data.user;
-    },
-    [persistAccessToken]
-  );
-
   const logout = useCallback(async () => {
     try {
       await publicApi.post("/api/auth/logout");
@@ -114,13 +99,12 @@ export function AuthProvider({ children }) {
       accessToken,
       initializing,
       login,
-      register,
       logout,
       refreshAccessToken,
       fetchMe,
       clearAuth
     }),
-    [accessToken, clearAuth, fetchMe, initializing, login, logout, refreshAccessToken, register, user]
+    [accessToken, clearAuth, fetchMe, initializing, login, logout, refreshAccessToken, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

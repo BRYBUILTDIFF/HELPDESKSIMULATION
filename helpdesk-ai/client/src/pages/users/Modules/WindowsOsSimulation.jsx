@@ -215,7 +215,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
     } finally {
       setCompleting(false);
     }
-  }, [api, completing, end, guidedSteps.length, moduleId, session?.id]);
+  }, [api, completing, end, guidedSteps.length, activeStep, moduleId, session?.id]);
   const retry = () => { startedRef.current = true; start(); };
   const remainingMinutes = desktopRevealed && session?.expiresAt ? Math.max(0, Math.ceil((new Date(session.expiresAt).getTime() - clockNow) / 60000)) : null;
 
@@ -251,7 +251,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
               {completedSteps.has(activeStep) ? "Completed" : activeStep === guidedSteps.length - 1 ? "Complete final step" : "Complete step"}
             </button>
           </div> : null}
-          <iframe ref={desktopFrameRef} key={`${session.id}-${connectionAttempt}`} className="windows-os-frame" title="Windows Server 2025 Help Desk Lab" src={guacamoleUrl} allow="clipboard-read; clipboard-write; fullscreen" referrerPolicy="no-referrer" />
+          <iframe ref={desktopFrameRef} key={`${session.id}-${connectionAttempt}`} className="windows-os-frame" title="Windows Server 2025 Help Desk Lab" src={guacamoleUrl} sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock" allow="clipboard-read; clipboard-write; fullscreen" referrerPolicy="no-referrer" />
         </section>
       </div> : null}
       {desktopRevealed && guacamoleUrl ? <footer className="windows-os-footer">

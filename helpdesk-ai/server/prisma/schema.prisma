@@ -16,6 +16,9 @@ model User {
   role                  Role                   @default(USER)
   isActive              Boolean                @default(true)
   mustChangePassword    Boolean                @default(false)
+  tokenVersion          Int                    @default(0)
+  chatSessions          ChatSession[]
+  simulationAttempts    SimulationAttempt[]
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   refreshTokens         RefreshToken[]
@@ -111,6 +114,7 @@ model SimulationCompletion {
   attemptKey     String           @unique
   surface        String
   stepsCompleted Int
+  verification   String           @default("self-reported")
   completedAt    DateTime         @default(now())
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   module         SimulationModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
@@ -174,4 +178,47 @@ enum PolicyRuleType {
   IN_SCOPE_KEYWORD
   OUT_OF_SCOPE_KEYWORD
   IN_SCOPE_INTENT
+}
+
+model ChatSession {
+  userId Int
+  id String
+  data Json
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@id([userId, id])
+  @@index([updatedAt])
+}
+model RequestLimit {
+  key String @id
+  hits Int
+  resetAt DateTime
+  @@index([resetAt])
+}
+model AdminAuditLog {
+  id BigInt @id @default(autoincrement())
+  actorId Int
+  method String
+  path String
+  status Int
+  at DateTime @default(now())
+  @@index([at])
+}
+model PromptInsightDismissal {
+  key String @id
+  createdAt DateTime @default(now())
+}
+
+model SimulationAttempt {
+  id String @id @default(cuid())
+  userId Int
+  moduleId String
+  surface String
+  expected Json
+  nextStep Int @default(0)
+  mistakes Int @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, expiresAt])
 }

@@ -10,6 +10,10 @@ function getGuacamoleConfig() {
   if (!baseUrl || !username || !password || !/^[a-fA-F0-9]{32}$/.test(secret)) {
     throw new SimulationServiceError("Windows remote desktop access is not configured. Contact your administrator.");
   }
+  for (const value of [baseUrl, launchUrl].filter(Boolean)) {
+    let url; try { url = new URL(value); } catch (_) { throw new SimulationServiceError("Invalid remote desktop URL configuration."); }
+    if (!["http:", "https:"].includes(url.protocol) || (process.env.NODE_ENV === "production" && url.protocol !== "https:")) throw new SimulationServiceError("Production remote desktop access requires HTTPS.");
+  }
   return { baseUrl, launchUrl, secret: Buffer.from(secret, "hex"), username, password };
 }
 
@@ -33,8 +37,8 @@ function createGuacamoleUrl(session) {
           port: "3389",
           username,
           password,
-          security: "any",
-          "ignore-cert": "true"
+          security: "nla",
+          "ignore-cert": process.env.NODE_ENV !== "production" && process.env.WINDOWS_LAB_IGNORE_CERT === "true" ? "true" : "false"
         }
       }
     }

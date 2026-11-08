@@ -1321,6 +1321,8 @@ export default function DashboardPage() {
   const accountMenuRef = useRef(null);
   const autoAdvanceTimeoutRef = useRef(null);
   const sessionsSaveTimerRef = useRef(null);
+  const deletingChatDataRef = useRef(false);
+  const terminalAttemptPromisesRef = useRef(new Map());
   const initialStartNewChatRef = useRef(Boolean(
     location.state?.startNewChat && !new URLSearchParams(location.search).get("session")
   ));
@@ -1333,6 +1335,12 @@ export default function DashboardPage() {
   const [typing, setTyping] = useState(false);
   const [input, setInput] = useState("");
   const [sessionsHydrated, setSessionsHydrated] = useState(false);
+  const [sessionSyncError, setSessionSyncError] = useState("");
+  const [syncRetry, setSyncRetry] = useState(0);
+  const savedSessionsRef = useRef(new Map());
+  const sessionSyncQueueRef = useRef(Promise.resolve());
+  const sessionSyncOwnerRef = useRef(user?.id);
+  sessionSyncOwnerRef.current = user?.id;
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editingText, setEditingText] = useState("");
   const [copiedMessageId, setCopiedMessageId] = useState("");
@@ -1602,6 +1610,8 @@ export default function DashboardPage() {
     setSessionsHydrated(false);
 
     const loadSessions = async () => {
+      let sessionLoadFailed = false;
+      savedSessionsRef.current = new Map();
       try {
         const response = await api.get("/api/sessions");
         const source = Array.isArray(response.data?.sessions) ? response.data.sessions : [];
@@ -1610,6 +1620,7 @@ export default function DashboardPage() {
           return;
         }
 
+        savedSessionsRef.current = new Map(source.map(session => [session.id, JSON.stringify(session)]));
         const normalized = source.map((session, idx) => normalizeLoadedSession(session, idx));
         const savedActiveSessionId = activeSessionStorageKey
           ? localStorage.getItem(activeSessionStorageKey)
@@ -1630,12 +1641,14 @@ export default function DashboardPage() {
         }
       } catch (_err) {
         if (!cancelled) {
+          sessionLoadFailed = true;
+          setSessionSyncError("Could not load your chats. Reload the page before making changes.");
           setSessions([]);
           setActiveSessionId("");
         }
       } finally {
         if (!cancelled) {
-          setSessionsHydrated(true);
+          setSessionsHydrated(!sessionLoadFailed);
         }
       }
     };
@@ -1648,7 +1661,7 @@ export default function DashboardPage() {
   }, [activeSessionStorageKey, api, user?.id]);
 
   useEffect(() => {
-    if (!user?.id || !sessionsHydrated) {
+    if (!user?.id || !sessionsHydrated || deletingChatDataRef.current) {
       return;
     }
 
@@ -1666,9 +1679,30 @@ export default function DashboardPage() {
           }
           return Array.isArray(session?.messages) && session.messages.length > 0;
         });
-        await api.put("/api/sessions", { sessions: sessionsToPersist });
+        if (deletingChatDataRef.current) return;
+        const snapshot = sessionsToPersist.map(session => [session.id, JSON.stringify(session)]);
+        const ownerId = user.id;
+        sessionSyncQueueRef.current = sessionSyncQueueRef.current.catch(() => {}).then(async () => {
+          if (sessionSyncOwnerRef.current !== ownerId || deletingChatDataRef.current) return;
+          const desired = new Map(snapshot);
+          for (const [id, serialized] of snapshot) {
+            if (sessionSyncOwnerRef.current !== ownerId || deletingChatDataRef.current) return;
+            if (savedSessionsRef.current.get(id) === serialized) continue;
+            await api.put(`/api/sessions/${encodeURIComponent(id)}`, { session: JSON.parse(serialized) });
+            savedSessionsRef.current.set(id, serialized);
+          }
+          for (const id of [...savedSessionsRef.current.keys()]) {
+            if (sessionSyncOwnerRef.current !== ownerId || deletingChatDataRef.current) return;
+            if (!desired.has(id)) {
+              await api.delete(`/api/sessions/${encodeURIComponent(id)}`);
+              savedSessionsRef.current.delete(id);
+            }
+          }
+          setSessionSyncError("");
+        });
+        await sessionSyncQueueRef.current;
       } catch (_err) {
-        // best-effort save
+        setSessionSyncError("Your latest chat changes could not be saved. Keep this page open and retry.");
       }
     }, 250);
 
@@ -1678,7 +1712,7 @@ export default function DashboardPage() {
         sessionsSaveTimerRef.current = null;
       }
     };
-  }, [api, sessions, sessionsHydrated, user?.id]);
+  }, [api, sessions, sessionsHydrated, user?.id, syncRetry]);
 
   useEffect(() => {
     if (!sessionsHydrated) {
@@ -1992,7 +2026,7 @@ export default function DashboardPage() {
     try {
       const response = await api.post("/api/ai/chat", {
         message: nextText,
-        history: historyBeforeEdited,
+        resetHistory: true,
         sessionId
       });
       if (response.data?.policy?.blocked) {
@@ -2684,7 +2718,18 @@ export default function DashboardPage() {
     }));
   };
 
-  const handleTerminalCommand = ({ command, normalizedCommand: normalizedFromTerminal, result }) => {
+  const getTerminalAttempt = async () => {
+    const moduleId = modalCanvasState?.simulationId;
+    if (!moduleId) throw new Error("Start a catalog module to record a verified attempt.");
+    const key = `${user.id}:${currentSession?.id}:${modalMessageId}:${moduleId}`;
+    if (!terminalAttemptPromisesRef.current.has(key)) {
+      terminalAttemptPromisesRef.current.set(key, api.post(`/api/simulations/modules/${moduleId}/attempts`).then(response => response.data.attemptKey).catch(error => {
+        terminalAttemptPromisesRef.current.delete(key); throw error;
+      }));
+    }
+    return terminalAttemptPromisesRef.current.get(key);
+  };
+  const handleTerminalCommand = async ({ command, normalizedCommand: normalizedFromTerminal, result }) => {
     if (!command || modalStepCount <= 0) {
       return [];
     }
@@ -2740,6 +2785,15 @@ export default function DashboardPage() {
     const stepDetail = modalStepDetails[modalSafeStep] || {};
     const expectedCommands = extractExpectedCommands(modalSteps[modalSafeStep] || "", stepDetail);
     const matchesExpected = expectedCommands.some((expected) => normalizedCommand === expected);
+    if (matchesExpected && modalCanvasState?.simulationId) {
+      try {
+        const attemptKey = await getTerminalAttempt();
+        const response = await api.post(`/api/simulations/modules/${modalCanvasState.simulationId}/attempts/${attemptKey}/commands`, { command, step: modalSafeStep });
+        if (!response.data.accepted) return ["The server did not accept this step. Follow the module sequence."];
+      } catch (err) {
+        return [err.response?.data?.message || "Could not verify this command. Retry before continuing."];
+      }
+    }
     const stepAlreadyCompleted = Boolean(modalCanvasState?.completed?.[modalSafeStep]);
     const shouldScheduleAdvance = matchesExpected && !stepAlreadyCompleted;
 
@@ -2886,7 +2940,7 @@ export default function DashboardPage() {
     setTerminalCompletionError("");
     try {
       await api.post(`/api/simulations/modules/${simulationId}/complete`, {
-        attemptKey: `terminal:${currentSession?.id || "session"}:${modalMessageId || "simulation"}`,
+        attemptKey: await getTerminalAttempt(),
         surface: modalCanvasState?.terminalType || "windows-terminal",
         stepsCompleted: modalStepCount > 0 ? modalSafeStep + 1 : 0
       });
@@ -3488,6 +3542,7 @@ export default function DashboardPage() {
 
   return (
     <div className={`helpdesk-root ${theme === "light" ? "theme-light" : ""}`}>
+      {sessionSyncError && <div role="alert" className="session-sync-alert">{sessionSyncError} <button type="button" onClick={() => sessionsHydrated ? setSyncRetry(value => value + 1) : window.location.reload()}>Retry</button></div>}
       <dialog
         ref={labNavigationDialogRef}
         className="lab-navigation-dialog"
@@ -3933,6 +3988,21 @@ export default function DashboardPage() {
                   Account settings
                 </button>
                 <button className="avatar-popover-btn danger hd-btn-reset" onClick={async () => {
+                  if (!window.confirm("Delete your saved chats and prompt history? This cannot be undone.")) return;
+                  deletingChatDataRef.current = true;
+                  try {
+                    if (sessionsSaveTimerRef.current) window.clearTimeout(sessionsSaveTimerRef.current);
+                    await sessionSyncQueueRef.current.catch(() => {});
+                    await api.delete("/api/sessions");
+                    savedSessionsRef.current.clear(); setSessions([]); setActiveSessionId(""); setSessionSyncError("");
+                  } catch (_) { setSessionSyncError("Could not delete your chat data. Please retry."); }
+                  finally { deletingChatDataRef.current = false; }
+                }}>Delete my chat data</button>
+                <button className="avatar-popover-btn danger hd-btn-reset" onClick={async () => {
+                  try { await api.post("/api/auth/logout-all"); await logout(); }
+                  catch (_) { setSessionSyncError("Could not sign out all sessions. Please retry."); }
+                }}>Sign out everywhere</button>
+                <button className="avatar-popover-btn danger hd-btn-reset" onClick={async () => {
                   const ids = new Set(sessions.map(session => session.windowsOsSimulation?.simulationSessionId).filter(Boolean));
                   if (activeWindowsOsModule?.simulationSessionId) ids.add(activeWindowsOsModule.simulationSessionId);
                   try {
@@ -4218,7 +4288,7 @@ export default function DashboardPage() {
                           }
                         }}
                         rows={1}
-                        placeholder="Ask about password reset, VPN, printer, internet, BSOD..."
+                        placeholder="Do not paste passwords or API keys. Ask about password reset, VPN, printer, internet, BSOD..."
                       />
                       <button
                         className="send-btn hd-btn-reset"
@@ -4325,7 +4395,7 @@ export default function DashboardPage() {
                       }
                     }}
                     rows={1}
-                    placeholder="Describe your IT issue or ask how to fix something..."
+                    placeholder="Describe your IT issue. Do not paste passwords or API keys."
                   />
                   <button
                     className="send-btn hd-btn-reset"

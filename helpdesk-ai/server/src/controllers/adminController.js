@@ -386,7 +386,7 @@ async function createUser(req, res, next) {
     if (!isAllowedAdminUserPassword(password)) {
       return res.status(400).json({
         message:
-          "Password must be at least 8 characters and include uppercase, number, and special character."
+          "Password must be at least 12 characters, at most 72 UTF-8 bytes, and not be a common password."
       });
     }
 
@@ -447,7 +447,7 @@ async function updateUser(req, res, next) {
     if (password && !isAllowedAdminUserPassword(password)) {
       return res.status(400).json({
         message:
-          "Password must be at least 8 characters and include uppercase, number, and special character."
+          "Password must be at least 12 characters, at most 72 UTF-8 bytes, and not be a common password."
       });
     }
 
@@ -462,6 +462,14 @@ async function updateUser(req, res, next) {
     const passwordHash = password ? await hashPassword(password) : undefined;
 
     const updated = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(912)`;
+      const actor = await tx.user.findUnique({ where: { id: req.user.id } });
+      const current = await tx.user.findUnique({ where: { id: userId } });
+      if (!actor?.isActive || actor.role !== "ADMIN") { const error = new Error("Forbidden"); error.status = 403; throw error; }
+      if (current?.role === "ADMIN" && current.isActive && (role === "USER" || isActive === false)) {
+        const remaining = await tx.user.count({ where: { role: "ADMIN", isActive: true, id: { not: userId } } });
+        if (!remaining) { const error = new Error("Last active admin"); error.status = 409; error.publicMessage = "Keep at least one active administrator."; throw error; }
+      }
       const result = await tx.user.update({
         where: { id: userId },
         data: {
@@ -469,6 +477,7 @@ async function updateUser(req, res, next) {
           lastName: typeof lastName === "string" ? lastName.trim() : undefined,
           email: nextEmail,
           passwordHash,
+          tokenVersion: password || role !== undefined || isActive === false ? { increment: 1 } : undefined,
           mustChangePassword: password ? true : undefined,
           role: role ?? undefined,
           isActive: typeof isActive === "boolean" ? isActive : undefined
@@ -512,8 +521,15 @@ async function hardDeleteUser(req, res, next) {
     const sessions = await prisma.simulationSession.findMany({ where: { userId } });
     for (const session of sessions) await terminateWindowsSimulationSession(session);
 
-    await prisma.user.delete({
-      where: { id: userId },
+    await prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(912)`;
+      const actor = await tx.user.findUnique({ where: { id: req.user.id } });
+      if (!actor?.isActive || actor.role !== "ADMIN") { const error = new Error("Forbidden"); error.status = 403; throw error; }
+      const current = await tx.user.findUnique({ where: { id: userId } });
+      if (current?.role === "ADMIN" && current.isActive && !await tx.user.count({ where: { role: "ADMIN", isActive: true, id: { not: userId } } })) {
+        const error = new Error("Last active admin"); error.status = 409; error.publicMessage = "Keep at least one active administrator."; throw error;
+      }
+      await tx.user.delete({ where: { id: userId } });
     });
 
     return res.status(200).json({ ok: true });
@@ -656,7 +672,7 @@ async function getSimulationPromptInsights(req, res, next) {
       }
       const intentSignature = getPromptIntentSignature(event.message, alignment);
       if (
-        isPromptInsightDismissed(normalized, intentSignature) ||
+        await isPromptInsightDismissed(normalized, intentSignature) ||
         createdPromptKeys.has(normalized) ||
         createdIntentKeys.has(intentSignature)
       ) {
@@ -712,7 +728,7 @@ async function disregardSimulationPromptInsight(req, res, next) {
       return res.status(400).json({ message: "A valid sourcePrompt is required." });
     }
     const insightKey = String(req.body?.insightKey || "").trim();
-    dismissPromptInsight(normalized, insightKey);
+    await dismissPromptInsight(normalized, insightKey);
     return res.status(200).json({ disregarded: true, normalized, insightKey });
   } catch (err) {
     return next(err);
@@ -723,7 +739,7 @@ async function generateSimulationModuleDraft(req, res, next) {
   try {
     const mode = String(req.body?.mode || "from_prompt");
     if (mode === "from_prompt") {
-      const sourcePrompt = String(req.body?.sourcePrompt || "").trim();
+      const sourcePrompt = require("../utils/redact").redactSecrets(req.body?.sourcePrompt).trim();
       if (!sourcePrompt) {
         return res.status(400).json({ message: "sourcePrompt is required for mode from_prompt" });
       }
@@ -769,13 +785,13 @@ async function createSimulationModule(req, res, next) {
       title: req.body?.title,
       category: req.body?.category,
       difficulty: req.body?.difficulty,
-      enabled: req.body?.enabled,
+      enabled: false,
       simulation: req.body?.simulation,
       sourcePrompt: req.body?.sourcePrompt
     };
 
     if (mode === "from_prompt") {
-      const sourcePrompt = String(req.body?.sourcePrompt || "").trim();
+      const sourcePrompt = require("../utils/redact").redactSecrets(req.body?.sourcePrompt).trim();
       if (!sourcePrompt) {
         return res.status(400).json({ message: "sourcePrompt is required for mode from_prompt" });
       }
@@ -796,14 +812,14 @@ async function createSimulationModule(req, res, next) {
       }
       payload = {
         ...draft,
-        enabled: true,
+        enabled: false,
         sourcePrompt,
         simulation: draft.simulation
       };
     }
 
     if (mode === "manual") {
-      const sourcePrompt = String(req.body?.sourcePrompt || "").trim();
+      const sourcePrompt = require("../utils/redact").redactSecrets(req.body?.sourcePrompt).trim();
       if (sourcePrompt && !payload.simulation) {
         payload.simulation = buildFallbackSimulationDefinition({
           title: payload.title,

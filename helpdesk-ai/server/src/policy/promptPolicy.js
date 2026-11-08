@@ -290,32 +290,12 @@ async function evaluatePromptPolicy(message, history = [], context = {}) {
   const hasInScopeIntent = matchesAnyRegex(policy.inScopeIntentRegex, input);
   const signals = { hasInScopeKeyword, hasOutOfScopeKeyword, hasInScopeIntent };
 
-  if (hasGreetingPattern && !hasInScopeKeyword && !hasInScopeIntent && !hasOutOfScopeKeyword) {
+  if (hasGreetingPattern && /^(?:hi|hello|hey|good morning|good afternoon|good evening|yo|hi there|hello there)[!.?\s]*$/i.test(input)) {
     return {
       allowed: true,
       code: "GREETING_PATTERN",
       reason: "Matched greeting pattern.",
       directReply: policy.messages.greetingReply
-    };
-  }
-
-  if (hasOutOfScopeKeyword && !hasInScopeKeyword && !hasInScopeIntent) {
-    return outOfScopeRedirect(policy);
-  }
-
-  if (hasOutOfScopeKeyword && (hasInScopeKeyword || hasInScopeIntent)) {
-    return outOfScopeRedirect(policy);
-  }
-
-if (isLikelyFollowUpWithoutContext(input, safeHistory, signals)) {
-    return outOfScopeRedirect(policy);
-  }
-
-  if ((hasInScopeKeyword || hasInScopeIntent) && !hasOutOfScopeKeyword) {
-    return {
-      allowed: true,
-      code: "ALLOWED_RULE_MATCH",
-      reason: "Matched in-scope keyword or intent pattern."
     };
   }
 
@@ -331,7 +311,7 @@ if (isLikelyFollowUpWithoutContext(input, safeHistory, signals)) {
       };
     }
 
-    if (classificationResult.classification === "in_scope") {
+    if (classificationResult.classification === "in_scope" && classificationResult.confidence >= 0.75) {
       return {
         allowed: true,
         code: "ALLOWED",
@@ -350,7 +330,7 @@ if (isLikelyFollowUpWithoutContext(input, safeHistory, signals)) {
 
     return outOfScopeRedirect(policy);
   } catch (err) {
-    console.error("[PolicyClassifier]", err);
+    console.error("[PolicyClassifier] Unavailable", { code: err?.code || "UNAVAILABLE" });
     return {
       allowed: true,
       code: "SCOPE_CLASSIFIER_UNAVAILABLE",
@@ -360,4 +340,15 @@ if (isLikelyFollowUpWithoutContext(input, safeHistory, signals)) {
   }
 }
 
-module.exports = { evaluatePromptPolicy };
+async function evaluateResponsePolicy(reply) {
+  try {
+    const policy = await getPolicyRuntimeConfig();
+    const decision = await classifyWithDeepSeek(reply, [], policy);
+    return decision.classification === "in_scope" && decision.confidence >= 0.75;
+  } catch (_) {
+    console.warn("[PolicyClassifier] Response scope check unavailable");
+    return false;
+  }
+}
+
+module.exports = { evaluatePromptPolicy, evaluateResponsePolicy, classifyWithDeepSeek };

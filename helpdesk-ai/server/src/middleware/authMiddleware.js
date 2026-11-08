@@ -1,3 +1,4 @@
+const { verifyOptions } = require("../utils/jwt");
 const jwt = require("jsonwebtoken");
 const prisma = require("../prisma");
 
@@ -10,7 +11,7 @@ async function verifyToken(req, res, next) {
   }
 
   try {
-    const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+    const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET, verifyOptions);
     const user = await prisma.user.findUnique({
       where: { id: payload.id },
       select: {
@@ -18,15 +19,16 @@ async function verifyToken(req, res, next) {
         email: true,
         role: true,
         mustChangePassword: true,
-        isActive: true
+        isActive: true,
+        tokenVersion: true
       }
     });
 
-    if (!user || !user.isActive) {
+    if (!user || !user.isActive || payload.tokenVersion !== (user.tokenVersion || 0)) {
       return res.status(401).json({ message: "Unauthenticated" });
     }
 
-    if (user.mustChangePassword && !["/api/auth/me", "/api/auth/change-password"].includes(req.originalUrl.split("?")[0])) {
+    if (user.mustChangePassword && !["/api/auth/me", "/api/auth/change-password", "/api/auth/logout-all"].includes(req.originalUrl.split("?")[0])) {
       return res.status(403).json({ message: "Change your password before continuing.", code: "PASSWORD_CHANGE_REQUIRED" });
     }
     req.user = user;

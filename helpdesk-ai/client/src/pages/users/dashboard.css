@@ -5607,3 +5607,6 @@
 
 .lab-navigation-return:hover { background: #2456d0; }
 .lab-navigation-return:focus-visible { outline: 3px solid #93baff; outline-offset: 3px; }
+
+.session-sync-alert { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 2000; max-width: min(700px, 95vw); padding: 12px 16px; border: 1px solid #a16207; border-radius: 8px; background: #fef3c7; color: #713f12; }
+.session-sync-alert button { margin-left: 8px; text-decoration: underline; }

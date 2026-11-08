@@ -1,6 +1,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 let sentMessages, savedTurn, providerError;
+let outputAllowed = true;
 require.cache[require.resolve("../src/utils/openai")] = { exports: {
   getAIProvider: () => "test", getDefaultModel: () => "test",
   getOpenAIClient: () => ({ chat: { completions: { create: async ({ messages }) => {
@@ -13,7 +14,7 @@ require.cache[require.resolve("../src/store/chatHistoryStore")] = { exports: {
   getChatHistory: async () => [{ role: "assistant", content: "Trusted server turn" }],
   appendChatTurn: async (...args) => { savedTurn = args; }
 } };
-require.cache[require.resolve("../src/policy/promptPolicy")] = { exports: { evaluatePromptPolicy: async () => ({ allowed: true, code: "ALLOWED" }) } };
+require.cache[require.resolve("../src/policy/promptPolicy")] = { exports: { evaluatePromptPolicy: async () => ({ allowed: true, code: "ALLOWED" }), evaluateResponsePolicy: async () => outputAllowed } };
 require.cache[require.resolve("../src/store/policyEventStore")] = { exports: { recordPolicyEvent: async () => {} } };
 require.cache[require.resolve("../src/store/policyConversationStore")] = { exports: { getConversationScope: async () => null, markConversationScope: async () => {} } };
 require.cache[require.resolve("../src/policy/contentSafety")] = { exports: { evaluateContentSafety: async () => null } };
@@ -34,4 +35,15 @@ test("provider authentication failures do not return a user-session 401", async 
     await chat({ user: { id: 1 }, body: { message: "Help with VPN", sessionId: "session" } }, res, err => { throw err; });
     assert.equal(res.statusCode, 502);
   } finally { providerError = null; }
+});
+
+test("an out-of-scope answer is withheld and the safe replacement is saved", async () => {
+  outputAllowed = false;
+  const res = { status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; } };
+  try {
+    await chat({ user: { id: 1 }, body: { message: "Help with VPN", sessionId: "scope-test" } }, res, err => { throw err; });
+    assert.equal(res.body.policy.code, "OUTPUT_SCOPE_FILTERED");
+    assert.notEqual(res.body.reply, "Check the VPN connection.");
+    assert.equal(savedTurn[3], res.body.reply);
+  } finally { outputAllowed = true; }
 });

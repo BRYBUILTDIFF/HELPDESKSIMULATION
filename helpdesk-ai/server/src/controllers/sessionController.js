@@ -1,54 +1,50 @@
 const prisma = require("../prisma");
-const { removeMissingConversationScopes } = require("../store/policyConversationStore");
-
-function normalizeSessions(raw) {
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-  return raw.filter((item) => item && typeof item === "object");
-}
-
+const { redactObject } = require("../utils/redact");
 async function getMySessions(req, res, next) {
   try {
-    const state = await prisma.userSessionState.findUnique({
-      where: { userId: req.user.id },
-      select: { sessions: true, updatedAt: true }
-    });
-
-    return res.status(200).json({
-      sessions: normalizeSessions(state?.sessions),
-      updatedAt: state?.updatedAt || null
-    });
-  } catch (err) {
-    return next(err);
-  }
+    const rows = await prisma.chatSession.findMany({ where: { userId: req.user.id }, orderBy: { updatedAt: "desc" }, take: 500 });
+    return res.json({ sessions: rows.map(row => row.data) });
+  } catch (err) { return next(err); }
 }
-
-async function saveMySessions(req, res, next) {
+async function saveSession(req, res, next) {
   try {
-    const sessions = normalizeSessions(req.body?.sessions);
-
-    const updated = await prisma.userSessionState.upsert({
-      where: { userId: req.user.id },
-      update: { sessions },
-      create: {
-        userId: req.user.id,
-        sessions
-      },
-      select: { sessions: true, updatedAt: true }
+    const data = redactObject(req.body.session);
+    if (!data || Array.isArray(data) || data.id !== req.params.id || !Array.isArray(data.messages) || data.messages.length > 1000) {
+      return res.status(400).json({ message: "A session with a matching id and at most 1000 messages is required." });
+    }
+    if (Buffer.byteLength(JSON.stringify(data)) > 200 * 1024) return res.status(413).json({ message: "This chat is too large. Start a new chat." });
+    const row = await prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`sessions:${req.user.id}`}))`;
+      const existing = await tx.chatSession.findUnique({ where: { userId_id: { userId: req.user.id, id: req.params.id } } });
+      if (!existing && await tx.chatSession.count({ where: { userId: req.user.id } }) >= 500) {
+        const error = new Error("Session quota exceeded"); error.status = 409; error.publicMessage = "Delete an old chat before creating another."; throw error;
+      }
+      return tx.chatSession.upsert({ where: { userId_id: { userId: req.user.id, id: req.params.id } },
+        create: { userId: req.user.id, id: req.params.id, data }, update: { data } });
     });
-    await removeMissingConversationScopes(req.user.id, sessions.map((session) => session.id));
-
-    return res.status(200).json({
-      sessions: normalizeSessions(updated.sessions),
-      updatedAt: updated.updatedAt
-    });
-  } catch (err) {
-    return next(err);
-  }
+    return res.json({ updatedAt: row.updatedAt });
+  } catch (err) { return next(err); }
 }
-
-module.exports = {
-  getMySessions,
-  saveMySessions
-};
+async function deleteSession(req, res, next) {
+  try {
+    await prisma.$transaction([
+      prisma.chatSession.deleteMany({ where: { userId: req.user.id, id: req.params.id } }),
+      prisma.policyConversation.deleteMany({ where: { userId: req.user.id, sessionId: req.params.id } }),
+      // Legacy copies must not survive deletion.
+      prisma.userSessionState.deleteMany({ where: { userId: req.user.id } })
+    ]);
+    return res.json({ deleted: true });
+  } catch (err) { return next(err); }
+}
+async function deleteMyData(req, res, next) {
+  try {
+    await prisma.$transaction([
+      prisma.chatSession.deleteMany({ where: { userId: req.user.id } }),
+      prisma.userSessionState.deleteMany({ where: { userId: req.user.id } }),
+      prisma.policyConversation.deleteMany({ where: { userId: req.user.id } }),
+      prisma.policyEvent.deleteMany({ where: { userId: req.user.id } })
+    ]);
+    return res.json({ deleted: true });
+  } catch (err) { return next(err); }
+}
+module.exports = { getMySessions, saveSession, deleteSession, deleteMyData };

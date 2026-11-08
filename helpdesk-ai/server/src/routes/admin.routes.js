@@ -34,8 +34,15 @@ function validatePlainLanguageRule(value, { req }) {
   return true;
 }
 
-router.use(verifyToken, requireAdmin);
+router.use(verifyToken, requireAdmin, require("../middleware/adminAudit"));
+router.get("/audit", async (_req, res, next) => {
+  try { const rows = await require("../prisma").adminAuditLog.findMany({ take: 200, orderBy: { at: "desc" } }); return res.json({ events: rows.map(row => ({ ...row, id: String(row.id) })) }); }
+  catch (err) { return next(err); }
+});
 
+const labRecovery = require("../controllers/simulationSessionController");
+router.get("/simulation-sessions/stuck", labRecovery.listStuckSessions);
+router.post("/simulation-sessions/:id/retry-termination", [param("id").isLength({ min: 1, max: 120 })], validateRequest, labRecovery.retryTermination);
 router.get("/users", listUsers);
 router.post(
   "/users",
@@ -49,7 +56,7 @@ router.post(
       .isLength({ min: 8 })
       .withMessage("Password must be at least 8 characters"),
     body("role").optional().isIn(["USER", "ADMIN"]).withMessage("Role must be USER or ADMIN"),
-    body("isActive").optional().isBoolean().withMessage("isActive must be boolean")
+    body("isActive").optional().isBoolean().withMessage("isActive must be boolean").toBoolean()
   ],
   validateRequest,
   createUser
@@ -69,7 +76,7 @@ router.patch(
       .isLength({ min: 8 })
       .withMessage("Password must be at least 8 characters"),
     body("role").optional().isIn(["USER", "ADMIN"]).withMessage("Role must be USER or ADMIN"),
-    body("isActive").optional().isBoolean().withMessage("isActive must be boolean")
+    body("isActive").optional().isBoolean().withMessage("isActive must be boolean").toBoolean()
   ],
   validateRequest,
   updateUser
@@ -85,7 +92,12 @@ router.delete(
 router.get("/policy/events", getPolicyEvents);
 router.get("/policy/summary", getPolicySummaryAdmin);
 router.get("/policy/config", getPolicyConfigAdmin);
-router.put("/policy/config", replacePolicyConfigAdmin);
+router.put("/policy/config", [
+  ...["greetingPatterns", "inScopeKeywords", "outOfScopeKeywords", "inScopeIntentPatterns"].flatMap(name => [
+    body(name).isArray({ max: 500 }), body(`${name}.*`).isString().isLength({ min: 1, max: 200 })
+  ]),
+  body("messages").optional().isObject(), body("messages.*").optional().isString().isLength({ max: 1000 })
+], validateRequest, replacePolicyConfigAdmin);
 router.post("/policy/config/reset", resetPolicyConfigAdmin);
 router.post(
   "/policy/config/:listName",
@@ -150,7 +162,7 @@ router.post(
     body("mode").optional().isIn(["manual", "from_prompt"]).withMessage("mode must be manual or from_prompt"),
     body("title").optional().isString().trim().notEmpty().withMessage("title cannot be empty"),
     body("category").optional().isString().trim().notEmpty().withMessage("category cannot be empty"),
-    body("enabled").optional().isBoolean().withMessage("enabled must be boolean"),
+    body("enabled").optional().isBoolean().withMessage("enabled must be boolean").toBoolean(),
     body("sourcePrompt").optional().isString().trim().notEmpty().withMessage("sourcePrompt cannot be empty"),
     body("simulation").optional().isObject().withMessage("simulation must be an object"),
     body("occurrences").optional().isInt({ min: 1 }).withMessage("occurrences must be a positive integer")
@@ -162,8 +174,11 @@ router.patch(
   "/simulation-modules/:id",
   [
     param("id").isString().notEmpty().withMessage("Valid module id is required"),
-    body("enabled").optional().isBoolean().withMessage("enabled must be boolean"),
-    body("difficulty").optional().isIn(["Easy", "Medium", "Hard"]).withMessage("difficulty must be Easy, Medium, or Hard")
+    body("enabled").optional().isBoolean().withMessage("enabled must be boolean").toBoolean(),
+    body("difficulty").optional().isIn(["Easy", "Medium", "Hard"]).withMessage("difficulty must be Easy, Medium, or Hard"),
+    body("title").optional().isString().trim().isLength({ min: 1, max: 160 }),
+    body("category").optional().isString().trim().isLength({ min: 1, max: 80 }),
+    body("simulation").optional().isObject()
   ],
   validateRequest,
   updateSimulationModule

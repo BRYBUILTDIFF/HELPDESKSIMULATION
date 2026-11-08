@@ -12,7 +12,10 @@
     "migrate:deploy": "prisma migrate deploy",
     "start": "node src/server.js",
     "test:db": "node --test test/database.integration.js",
-    "security:flag-legacy-passwords": "node scripts/flag-legacy-passwords.js"
+    "security:flag-legacy-passwords": "node scripts/flag-legacy-passwords.js",
+    "lint": "node scripts/check-syntax.js",
+    "test:review-db": "node --test test/review.database.integration.js",
+    "security:rotate-legacy-passwords": "node scripts/rotate-legacy-passwords.js --apply"
   },
   "dependencies": {
     "@aws-sdk/client-ec2": "^3.1095.0",
@@ -31,5 +34,13 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
+  },
+  "engines": {
+    "node": ">=22.12 <25"
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.0",
+    "minimatch": "^11.0.1",
+    "qs": "^6.16.1"
   }
 }

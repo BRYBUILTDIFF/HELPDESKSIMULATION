@@ -2,13 +2,16 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
-const rateLimit = require("express-rate-limit");
 const dotenv = require("dotenv");
 
 dotenv.config();
 require("./utils/security").validateSecurityConfig();
 if (!process.env.NODE_ENV && process.env.npm_lifecycle_event === "dev") process.env.NODE_ENV = "development";
 if (!["development", "test", "production"].includes(process.env.NODE_ENV)) throw new Error("Set NODE_ENV to development, test, or production.");
+
+const { requestLimit, emailKey } = require("./middleware/requestLimits");
+const { verifyToken } = require("./middleware/authMiddleware");
+const errorHandler = require("./middleware/errorHandler");
 
 const authRoutes = require("./routes/auth.routes");
 const adminRoutes = require("./routes/admin.routes");
@@ -81,56 +84,35 @@ app.use(
   })
 );
 app.use(helmet());
-app.use(express.json());
+app.use(express.json({ limit: "256kb" }));
 app.use(cookieParser());
 
-const authLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { message: "Too many requests, please try again later." }
-});
-
-const aiLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { message: "Too many AI requests, please try again later." }
-});
-
-app.use("/api/auth/login", authLimiter);
-app.use("/api/auth/register", authLimiter);
-app.use("/api/auth/refresh", rateLimit({ windowMs: 60000, max: 60, standardHeaders: true, legacyHeaders: false }));
-app.use("/api/auth/change-password", authLimiter);
+const perUser = req => String(req.user.id);
+const authLimiter = requestLimit("password-change", { max: 10, windowMs: 60000, key: perUser });
+const aiLimiter = requestLimit("ai", { max: 20, windowMs: 60000, key: perUser });
+app.use("/api/auth/login",
+  requestLimit("login-account", { max: 20, windowMs: 15 * 60000, key: emailKey }),
+  requestLimit("login-pair", { max: 8, windowMs: 15 * 60000, key: req => `${req.ip}:${emailKey(req)}` }));
+app.use("/api/auth/refresh", requestLimit("refresh", { max: 120, windowMs: 60000, key: req => req.cookies.refreshToken || req.ip }));
+app.use("/api/auth/change-password", verifyToken, authLimiter);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
-app.use("/api/ai", aiLimiter, aiRoutes);
+app.use("/api/ai", verifyToken, aiLimiter, aiRoutes);
 app.use("/api/sessions", sessionRoutes);
 app.use("/api/simulations", simulationRoutes);
 app.use("/api/simulation-sessions", simulationSessionRoutes);
 
-app.get("/api/health", (_req, res) => {
-  res.status(200).json({ ok: true });
+app.get("/api/health", (_req, res) => res.status(200).json({ ok: true }));
+app.get("/api/ready", async (_req, res) => {
+  try { await require("./prisma").$queryRaw`SELECT 1`; return res.json({ ok: true }); }
+  catch (_) { return res.status(503).json({ ok: false }); }
 });
 
 app.use((req, res) => {
   res.status(404).json({ message: "Not found" });
 });
 
-app.use((err, _req, res, _next) => {
-  console.error(err);
-  if (err.message === "Not allowed by CORS") {
-    return res.status(403).json({ message: "CORS origin forbidden" });
-  }
-
-  const isProd = process.env.NODE_ENV !== "development";
-  res.status(500).json({
-    message: "Internal server error",
-    ...(isProd ? {} : { error: err.message, stack: err.stack })
-  });
-});
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

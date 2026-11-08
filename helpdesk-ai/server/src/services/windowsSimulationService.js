@@ -65,7 +65,8 @@ async function createWindowsSimulationSession(session) {
         MinCount: 1,
         MaxCount: 1,
         ClientToken: session.id,
-        LaunchTemplate: { LaunchTemplateId: launchTemplateId, Version: "$Default" },
+        LaunchTemplate: { LaunchTemplateId: launchTemplateId, Version: process.env.AWS_SIMULATION_LAUNCH_TEMPLATE_VERSION || "$Default" },
+        MetadataOptions: { HttpTokens: "required", HttpPutResponseHopLimit: 1, InstanceMetadataTags: "disabled" },
         TagSpecifications: [{ ResourceType: "instance", Tags: expectedTags(session) }]
       })
     );
@@ -163,8 +164,20 @@ async function cleanupExpiredWindowsSimulationSessions() {
     take: 100
   });
   await Promise.all(expired.map((session) => terminateWindowsSimulationSession(session).catch(() => null)));
+  const failures = expired.filter(session => session.status === "TERMINATING" && session.updatedAt && Date.now() - new Date(session.updatedAt) > 15 * 60000);
+  if (failures.length) console.error("Windows cleanup requires administrator attention", { sessionIds: failures.map(session => session.id) });
   await reconcileWindowsSimulationInstances();
   return expired.length;
+}
+
+const polling = new Map();
+async function pollWindowsSimulationSession(session) {
+  const cached = polling.get(session.id);
+  if (cached && cached.expiresAt > Date.now()) return cached.pending;
+  if (polling.size >= 1000) polling.delete(polling.keys().next().value);
+  const pending = refreshWindowsSimulationSession(session).catch(err => { polling.delete(session.id); throw err; });
+  polling.set(session.id, { pending, expiresAt: Date.now() + 4000 });
+  return pending;
 }
 
 // Reconcile AWS independently of DB instance IDs, including launches interrupted
@@ -201,6 +214,7 @@ async function reconcileWindowsSimulationInstances() {
 }
 
 module.exports = {
+  pollWindowsSimulationSession,
   countLiveWindowsInstances,
   ACTIVE_STATUSES,
   LIVE_STATUSES,

@@ -1,3 +1,4 @@
+import { passwordAllowed } from "../../utils/passwordPolicy";
 import { useState } from "react";
 import { useAuth } from "../../hooks/useAuth";
 import { useAxios } from "../../hooks/useAxios";
@@ -12,10 +13,9 @@ export default function ChangePasswordPage() {
   const [passwords, setPasswords] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [visible, setVisible] = useState({});
   const requirements = [
-    ["At least 8 characters", passwords.newPassword.length >= 8],
-    ["One uppercase letter", /[A-Z]/.test(passwords.newPassword)],
-    ["One number", /\d/.test(passwords.newPassword)],
-    ["One special character", /[^A-Za-z0-9]/.test(passwords.newPassword)]
+    ["At least 12 characters", passwords.newPassword.length >= 12],
+    ["At most 72 UTF-8 bytes", new TextEncoder().encode(passwords.newPassword).length <= 72],
+    ["Avoid common passwords", passwordAllowed(passwords.newPassword)]
   ];
   const matches = passwords.newPassword === passwords.confirmPassword;
   const canSubmit = passwords.currentPassword && requirements.every(([, met]) => met) && passwords.confirmPassword && matches;
@@ -46,7 +46,7 @@ export default function ChangePasswordPage() {
         {[["currentPassword", "Current password", "Enter your current password"], ["newPassword", "New password", "Create a new password"], ["confirmPassword", "Confirm new password", "Re-enter your new password"]].map(([name, label, placeholder]) => <div className="password-setup-field" key={name}>
           <label htmlFor={`setup-${name}`}>{label}</label>
           <div className="password-setup-input">
-            <input id={`setup-${name}`} name={name} type={visible[name] ? "text" : "password"} autoComplete={name === "currentPassword" ? "current-password" : "new-password"} placeholder={placeholder} value={passwords[name]} onChange={(event) => setPasswords((previous) => ({ ...previous, [name]: event.target.value }))} minLength={name === "currentPassword" ? undefined : 8} required disabled={busy} aria-describedby={name === "newPassword" ? "setup-requirements" : name === "confirmPassword" && passwords.confirmPassword ? "setup-match" : undefined} aria-invalid={name === "confirmPassword" && !!passwords.confirmPassword && !matches} />
+            <input id={`setup-${name}`} name={name} type={visible[name] ? "text" : "password"} autoComplete={name === "currentPassword" ? "current-password" : "new-password"} placeholder={placeholder} value={passwords[name]} onChange={(event) => setPasswords((previous) => ({ ...previous, [name]: event.target.value }))} minLength={name === "currentPassword" ? undefined : 12} required disabled={busy} aria-describedby={name === "newPassword" ? "setup-requirements" : name === "confirmPassword" && passwords.confirmPassword ? "setup-match" : undefined} aria-invalid={name === "confirmPassword" && !!passwords.confirmPassword && !matches} />
             <button type="button" className="password-setup-toggle" onClick={() => setVisible((previous) => ({ ...previous, [name]: !previous[name] }))} aria-label={`${visible[name] ? "Hide" : "Show"} ${label.toLowerCase()}`} aria-pressed={!!visible[name]} disabled={busy}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" />{visible[name] ? <path d="m3 3 18 18" /> : null}</svg></button>
           </div>
           {name === "currentPassword" ? <small>Use the password provided by your administrator.</small> : null}

@@ -320,14 +320,9 @@ function toKeywordRegExpList(keywords) {
 }
 
 async function getPolicyConfig() {
-  try {
-    await initializePolicyConfig();
-    cachedConfig = await readConfigFromDb();
-    return clone(cachedConfig);
-  } catch (error) {
-    console.error("[PolicyConfig] Database unavailable; using read-only legacy configuration.", error?.message || error);
-    return loadLegacyConfig();
-  }
+  if (!cachedConfig) return initializePolicyConfig();
+  cachedConfig = await readConfigFromDb();
+  return clone(cachedConfig);
 }
 
 let runtimeKey = "";
@@ -339,7 +334,7 @@ async function getPolicyRuntimeConfig() {
     const row = await prisma.policyConfig.findUnique({ where: { id: 1 }, select: { version: true } });
     version = row?.version ?? null;
     if (runtimeConfig && version !== null && version === runtimeVersion) return runtimeConfig;
-  } catch (_) { /* Read-only legacy fallback remains available below. */ }
+  } catch (error) { throw error; }
   const config = await getPolicyConfig();
   const key = JSON.stringify(config);
   if (runtimeConfig && runtimeKey === key) return runtimeConfig;
@@ -393,6 +388,7 @@ async function addPolicyListEntry(listName, value, updatedById = null) {
     return current;
   }
 
+  if (current[listName].length >= 500 || storedValue.length > 200) { const error = new Error("Policy limit exceeded"); error.status = 400; throw error; }
   const type = POLICY_RULE_TYPES[listName];
   await prisma.$transaction(async (tx) => {
     const aggregate = await tx.policyRule.aggregate({ where: { type }, _max: { position: true } });

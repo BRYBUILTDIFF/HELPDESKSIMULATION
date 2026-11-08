@@ -1,0 +1,42 @@
+name: HelpDesk checks
+on:
+  push:
+    paths: ['helpdesk-ai/**', '.github/workflows/helpdesk-checks.yml']
+  pull_request:
+    paths: ['helpdesk-ai/**', '.github/workflows/helpdesk-checks.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: review
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: review
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://review:ci-only-password@localhost:5432/review
+      JWT_ACCESS_SECRET: ci-access-secret-at-least-32-characters
+      JWT_REFRESH_SECRET: ci-refresh-secret-at-least-32-characters
+      VITE_GUACAMOLE_ORIGIN: https://lab.example.invalid
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: helpdesk-ai/server
+      - run: npm run generate && npm run lint && npm test
+        working-directory: helpdesk-ai/server
+      - run: node --test test/review.database.integration.js
+        working-directory: helpdesk-ai/server
+      - run: npm audit --omit=dev --audit-level=high
+        working-directory: helpdesk-ai/server
+      - run: npm ci && npm run build
+        working-directory: helpdesk-ai/client
+      - run: npm audit --audit-level=high
+        working-directory: helpdesk-ai/client

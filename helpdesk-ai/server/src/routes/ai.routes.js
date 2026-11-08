@@ -1,6 +1,5 @@
 const express = require("express");
 const { body } = require("express-validator");
-const { verifyToken } = require("../middleware/authMiddleware");
 const validateRequest = require("../middleware/validateRequest");
 const { chat, getRelatedTickets, getSuggestedTickets } = require("../controllers/aiController");
 
@@ -8,7 +7,6 @@ const router = express.Router();
 
 router.post(
   "/chat",
-  verifyToken,
   [
     body("message")
       .isString()
@@ -16,6 +14,7 @@ router.post(
       .trim()
       .isLength({ min: 1, max: 4000 })
       .withMessage("Message must be between 1 and 4000 characters"),
+    body("resetHistory").optional().isBoolean(),
     body("history").optional().isArray({ max: 20 }).withMessage("History must be an array"),
     body("history.*.role")
       .optional()
@@ -35,7 +34,6 @@ router.post(
 
 router.post(
   "/related-tickets",
-  verifyToken,
   [
     body("query").isString().trim().isLength({ min: 2, max: 300 }).withMessage("query must be between 2 and 300 characters"),
     body("candidates").isArray({ min: 1, max: 12 }).withMessage("candidates must contain 1 to 12 items"),
@@ -48,6 +46,6 @@ router.post(
   getRelatedTickets
 );
 
-router.get("/suggested-tickets", verifyToken, getSuggestedTickets);
+router.get("/suggested-tickets", getSuggestedTickets);
 
 module.exports = router;

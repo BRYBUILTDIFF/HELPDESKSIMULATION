@@ -1,6 +1,9 @@
 const crypto = require("crypto");
 
-const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+const commonPasswords = new Set(["password123!", "password@123", "admin@1234", "user@1234", "qwerty123!", "password1234!"]);
+const PASSWORD_REGEX = { test(value) {
+  return typeof value === "string" && value.length >= 12 && Buffer.byteLength(value, "utf8") <= 72 && !commonPasswords.has(value.toLowerCase());
+} };
 const hashToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
 
 // Descriptions are plain text throughout the application. React escapes output.

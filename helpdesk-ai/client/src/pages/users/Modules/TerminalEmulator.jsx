@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { WebLinksAddon } from "@xterm/addon-web-links";
+
 import "@xterm/xterm/css/xterm.css";
 
 function normalizeCommand(input = "") {
@@ -180,10 +180,8 @@ export default function TerminalEmulator({
       convertEol: true
     });
     const fitAddon = new FitAddon();
-    const webLinksAddon = new WebLinksAddon();
 
     term.loadAddon(fitAddon);
-    term.loadAddon(webLinksAddon);
     term.open(container);
     fitAddon.fit();
     if (autoFocus) {
@@ -819,7 +817,10 @@ export default function TerminalEmulator({
       };
     };
 
-    const submitCommand = (command) => {
+    let commandInFlight = false;
+    const submitCommand = async (command) => {
+      commandInFlight = true;
+      try {
       const builtInResult = handleBuiltInCommand(command);
       let result = builtInResult;
       if (!builtInResult.known && typeof resolveUnknownCommandRef.current === "function") {
@@ -847,7 +848,7 @@ export default function TerminalEmulator({
 
       let callbackLines = [];
       if (typeof onCommandRef.current === "function") {
-        const callbackResult = onCommandRef.current({
+        const callbackResult = await onCommandRef.current({
           command,
           normalizedCommand: result.normalized,
           result
@@ -865,9 +866,12 @@ export default function TerminalEmulator({
       if (!result.ended) {
         writePrompt();
       }
+      } catch (_) { writeLines("Command verification failed. Please retry."); writePrompt(); }
+      finally { commandInFlight = false; }
     };
 
     const onEnter = () => {
+      if (commandInFlight) return;
       const command = inputBufferRef.current;
       term.write("\r\n");
       inputBufferRef.current = "";

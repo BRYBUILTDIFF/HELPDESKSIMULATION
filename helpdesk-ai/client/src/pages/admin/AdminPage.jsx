@@ -1,3 +1,4 @@
+import { passwordAllowed } from "../../utils/passwordPolicy";
 import { plainDescription } from "../../utils/plainDescription";
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -27,7 +28,7 @@ const PAGE_META = {
   sims: { title: "Simulation Modules", nav: "Simulation Modules" }
 };
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+const PASSWORD_REGEX = { test: passwordAllowed };
 function generateUserPassword() { return "Aa1!" + Array.from(crypto.getRandomValues(new Uint8Array(18)), (value) => value.toString(16).padStart(2, "0")).join(""); }
 const USERS_PER_PAGE = 8;
 const POLICY_EVENTS_PER_PAGE = 10;
@@ -180,7 +181,7 @@ function validateUserForm(mode, form) {
 
   if (mode === "create") {
     if (!PASSWORD_REGEX.test(form.password)) {
-      return "Password must be at least 8 chars and include uppercase, number, and special character.";
+      return "Password must be at least 12 characters, at most 72 UTF-8 bytes, and not a common password.";
     }
     if (form.password !== form.confirmPassword) {
       return "Passwords do not match.";
@@ -189,7 +190,7 @@ function validateUserForm(mode, form) {
 
   if (mode === "edit" && form.password) {
     if (!PASSWORD_REGEX.test(form.password)) {
-      return "Password must be at least 8 chars and include uppercase, number, and special character.";
+      return "Password must be at least 12 characters, at most 72 UTF-8 bytes, and not a common password.";
     }
     if (form.password !== form.confirmPassword) {
       return "Passwords do not match.";
@@ -937,7 +938,7 @@ export default function AdminPage() {
       return;
     }
     if (!PASSWORD_REGEX.test(accountPasswordForm.newPassword)) {
-      setAccountSettingsError("Use at least 8 characters with an uppercase letter, number, and special character.");
+      setAccountSettingsError("Use at least 12 characters, at most 72 UTF-8 bytes, and avoid common passwords.");
       return;
     }
     if (accountPasswordForm.newPassword !== accountPasswordForm.confirmPassword) {
@@ -1316,7 +1317,7 @@ export default function AdminPage() {
           surface: modulePreviewSurface,
           terminalType: modulePreviewSurface === "windows-terminal" || modulePreviewSurface === "mac-terminal" ? modulePreviewSurface : null
         },
-        enabled: true
+        enabled: false
       });
       closeModulePreview();
       await Promise.all([loadModules(), loadPromptInsights()]);
@@ -2748,7 +2749,7 @@ jumpcloud@JumpCloud ~ % _`}</pre>
                       <div className="account-input-icon-wrap">
                         <input
                           type={showCreatePassword ? "text" : "password"}
-                          placeholder={userModalMode === "create" ? "Min. 8 characters" : "Leave blank to keep current"}
+                          placeholder={userModalMode === "create" ? "Min. 12 characters" : "Leave blank to keep current"}
                           value={userForm.password}
                           disabled={userModalMode === "create" && useDefaultPassword}
                           onChange={(event) => setUserForm((prev) => ({ ...prev, password: event.target.value }))}
@@ -2891,7 +2892,7 @@ jumpcloud@JumpCloud ~ % _`}</pre>
 
             <div className="account-modal-body admin-account-settings-body">
               <h4>Change password</h4>
-              <p className="admin-account-password-note">Use at least 8 characters, including an uppercase letter, number, and special character.</p>
+              <p className="admin-account-password-note">Use at least 12 characters, at most 72 UTF-8 bytes, and avoid common passwords.</p>
               {accountSettingsError ? <div className="admin-alert error">{accountSettingsError}</div> : null}
               {accountSettingsSuccess ? <div className="admin-account-success">{accountSettingsSuccess}</div> : null}
               <div className="admin-account-password-fields">

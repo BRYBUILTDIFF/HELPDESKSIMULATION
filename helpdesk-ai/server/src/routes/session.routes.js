@@ -1,19 +1,13 @@
 const express = require("express");
-const { body } = require("express-validator");
+const { body, param } = require("express-validator");
 const { verifyToken } = require("../middleware/authMiddleware");
 const validateRequest = require("../middleware/validateRequest");
-const { getMySessions, saveMySessions } = require("../controllers/sessionController");
-
+const controller = require("../controllers/sessionController");
 const router = express.Router();
-
 router.use(verifyToken);
-
-router.get("/", getMySessions);
-router.put(
-  "/",
-  [body("sessions").isArray().withMessage("sessions must be an array")],
-  validateRequest,
-  saveMySessions
-);
-
+router.get("/", controller.getMySessions);
+router.delete("/", controller.deleteMyData);
+const idRule = () => param("id").isString().isLength({ min: 1, max: 120 });
+router.put("/:id", [idRule(), body("session").isObject()], validateRequest, controller.saveSession);
+router.delete("/:id", [idRule()], validateRequest, controller.deleteSession);
 module.exports = router;

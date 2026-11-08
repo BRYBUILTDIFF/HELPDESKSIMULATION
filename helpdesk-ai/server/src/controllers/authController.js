@@ -1,6 +1,6 @@
 const jwt = require("jsonwebtoken");
 const prisma = require("../prisma");
-const { generateAccessToken, generateRefreshToken } = require("../utils/jwt");
+const { generateAccessToken, generateRefreshToken, verifyOptions } = require("../utils/jwt");
 const { hashPassword, comparePassword } = require("../utils/password");
 
 const { PASSWORD_REGEX, hashToken } = require("../utils/security");
@@ -16,79 +16,14 @@ function tokenKey(token) {
   return `${payload?.familyId || "legacy"}:${hashToken(token)}`;
 }
 
-function getCookieOptions() {
+function getCookieOptions(token) {
   return {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 7 * 24 * 60 * 60 * 1000
+    sameSite: "strict",
+    path: "/api/auth",
+    ...(token ? { maxAge: Math.max(0, getRefreshExpiryDate(token).getTime() - Date.now()) } : {})
   };
-}
-
-async function register(req, res, next) {
-  try {
-    const { email, password, firstName, lastName } = req.body;
-
-    if (!PASSWORD_REGEX.test(password)) {
-      return res.status(400).json({
-        errors: [
-          {
-            field: "password",
-            message:
-              "Password must be at least 8 characters and include uppercase, number, and special character."
-          }
-        ]
-      });
-    }
-
-    const existing = await prisma.user.findUnique({
-      where: { email }
-    });
-
-    if (existing) {
-      return res.status(409).json({ message: "Email already exists" });
-    }
-
-    const passwordHash = await hashPassword(password);
-    const user = await prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        firstName,
-        lastName,
-        role: "USER"
-      }
-    });
-
-    const payload = { id: user.id, email: user.email, role: user.role };
-    const accessToken = generateAccessToken(payload);
-    const refreshToken = generateRefreshToken(payload);
-
-    await prisma.refreshToken.create({
-      data: {
-        token: tokenKey(refreshToken),
-        userId: user.id,
-        expiresAt: getRefreshExpiryDate(refreshToken)
-      }
-    });
-
-    res.cookie("refreshToken", refreshToken, getCookieOptions());
-    return res.status(201).json({
-      accessToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-        isActive: user.isActive,
-        mustChangePassword: user.mustChangePassword,
-        createdAt: user.createdAt
-      }
-    });
-  } catch (err) {
-    return next(err);
-  }
 }
 
 async function login(req, res, next) {
@@ -101,7 +36,7 @@ async function login(req, res, next) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    const payload = { id: user.id, email: user.email, role: user.role };
+    const payload = { id: user.id, tokenVersion: user.tokenVersion || 0 };
     const accessToken = generateAccessToken(payload);
     const refreshToken = generateRefreshToken(payload);
 
@@ -113,7 +48,8 @@ async function login(req, res, next) {
       }
     });
 
-    res.cookie("refreshToken", refreshToken, getCookieOptions());
+    res.clearCookie("refreshToken", { path: "/" });
+    res.cookie("refreshToken", refreshToken, getCookieOptions(refreshToken));
     return res.status(200).json({
       accessToken,
       user: {
@@ -141,7 +77,7 @@ async function refresh(req, res, next) {
 
     let payload;
     try {
-      payload = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
+      payload = jwt.verify(token, process.env.JWT_REFRESH_SECRET, verifyOptions);
     } catch (err) {
       return res.status(401).json({ message: "Unauthenticated" });
     }
@@ -155,20 +91,22 @@ async function refresh(req, res, next) {
         if (payload.familyId) await tx.refreshToken.deleteMany({ where: { userId: payload.id, token: { startsWith: payload.familyId + ":" } } });
         return null;
       }
-      if (dbToken.expiresAt <= new Date() || !dbToken.user?.isActive) return null;
+      if (dbToken.expiresAt <= new Date() || !dbToken.user?.isActive || payload.tokenVersion !== (dbToken.user.tokenVersion || 0) || !payload.familyCreatedAt || Date.now() >= payload.familyCreatedAt + 30 * 86400000) return null;
       const consumed = await tx.refreshToken.deleteMany({ where: { id: dbToken.id } });
       if (!consumed.count) return null;
       const user = dbToken.user;
-      const currentPayload = { id: user.id, email: user.email, role: user.role, familyId: payload.familyId };
+      const currentPayload = { id: user.id, tokenVersion: user.tokenVersion || 0, familyId: payload.familyId, familyCreatedAt: payload.familyCreatedAt };
       const refreshToken = generateRefreshToken(currentPayload);
       await tx.refreshToken.create({ data: { token: tokenKey(refreshToken), userId: user.id, expiresAt: getRefreshExpiryDate(refreshToken) } });
-      return { accessToken: generateAccessToken({ id: user.id, email: user.email, role: user.role }), refreshToken };
+      return { accessToken: generateAccessToken(currentPayload), refreshToken };
     });
     if (!result) {
+      res.clearCookie("refreshToken", { path: "/" });
       res.clearCookie("refreshToken", getCookieOptions());
       return res.status(401).json({ message: "Unauthenticated" });
     }
-    res.cookie("refreshToken", result.refreshToken, getCookieOptions());
+    res.clearCookie("refreshToken", { path: "/" });
+    res.cookie("refreshToken", result.refreshToken, getCookieOptions(result.refreshToken));
     return res.status(200).json({ accessToken: result.accessToken });
   } catch (err) {
     return next(err);
@@ -185,6 +123,7 @@ async function logout(req, res, next) {
       });
     }
 
+    res.clearCookie("refreshToken", { path: "/" });
     res.clearCookie("refreshToken", getCookieOptions());
     return res.status(200).json({ message: "Logged out" });
   } catch (err) {
@@ -225,7 +164,7 @@ async function changePassword(req, res, next) {
 
     if (!PASSWORD_REGEX.test(newPassword)) {
       return res.status(400).json({
-        message: "New password must be at least 8 characters and include uppercase, number, and special character."
+        message: "New password must be at least 12 characters, at most 72 UTF-8 bytes, and not be a common password."
       });
     }
 
@@ -244,27 +183,39 @@ async function changePassword(req, res, next) {
     }
 
     const passwordHash = await hashPassword(newPassword);
-    await prisma.$transaction([
-      prisma.user.update({ where: { id: user.id }, data: { passwordHash, mustChangePassword: false } }),
-      prisma.refreshToken.deleteMany({ where: { userId: user.id } })
-    ]);
-
-    const payload = { id: user.id, email: user.email, role: user.role };
-    const accessToken = generateAccessToken(payload);
-    const refreshToken = generateRefreshToken(payload);
-    await prisma.refreshToken.create({
-      data: { token: tokenKey(refreshToken), userId: user.id, expiresAt: getRefreshExpiryDate(refreshToken) }
+    const credentials = await prisma.$transaction(async tx => {
+      const updated = await tx.user.update({ where: { id: user.id }, data: { passwordHash, mustChangePassword: false, tokenVersion: { increment: 1 } } });
+      await tx.refreshToken.deleteMany({ where: { userId: user.id } });
+      const payload = { id: updated.id, tokenVersion: updated.tokenVersion };
+      const accessToken = generateAccessToken(payload);
+      const refreshToken = generateRefreshToken(payload);
+      await tx.refreshToken.create({ data: { token: tokenKey(refreshToken), userId: user.id, expiresAt: getRefreshExpiryDate(refreshToken) } });
+      return { accessToken, refreshToken };
     });
+    const { accessToken, refreshToken } = credentials;
 
-    res.cookie("refreshToken", refreshToken, getCookieOptions());
+    res.clearCookie("refreshToken", { path: "/" });
+    res.cookie("refreshToken", refreshToken, getCookieOptions(refreshToken));
     return res.status(200).json({ accessToken, message: "Password changed successfully." });
   } catch (err) {
     return next(err);
   }
 }
 
+async function logoutAll(req, res, next) {
+  try {
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: req.user.id }, data: { tokenVersion: { increment: 1 } } }),
+      prisma.refreshToken.deleteMany({ where: { userId: req.user.id } })
+    ]);
+    res.clearCookie("refreshToken", { path: "/" });
+    res.clearCookie("refreshToken", getCookieOptions());
+    return res.json({ message: "Signed out everywhere" });
+  } catch (err) { return next(err); }
+}
+
 module.exports = {
-  register,
+  logoutAll,
   login,
   refresh,
   logout,

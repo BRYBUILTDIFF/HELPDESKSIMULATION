@@ -14,6 +14,7 @@ function parseError(error) {
   if (error.response.status === 401) {
     return "Invalid email or password.";
   }
+  if (error.response.status === 429) return "Too many sign-in attempts. Please wait before trying again.";
   return "Unable to login. Please try again.";
 }
 
@@ -22,8 +23,7 @@ export default function LoginPage() {
   const { user, login } = useAuth();
   const [form, setForm] = useState({
     email: "",
-    password: "",
-    remember: false
+    password: ""
   });
   const [showPassword, setShowPassword] = useState(false);
   const [passwordHelpOpen, setPasswordHelpOpen] = useState(false);
@@ -55,7 +55,6 @@ export default function LoginPage() {
     try {
       const loggedInUser = await login({ email: form.email.trim(), password: form.password });
       setSigningIn(true);
-      await new Promise((resolve) => setTimeout(resolve, 3000));
       navigate(loggedInUser?.role === "ADMIN" ? "/admin" : "/dashboard", {
         replace: true,
         state: loggedInUser?.role === "ADMIN" ? undefined : { startNewChat: true }
@@ -89,29 +88,6 @@ export default function LoginPage() {
             <span>♧&nbsp; Simulation workflow</span>
           </div>
           <img className="login-workspace-hero" src={workspaceHero} alt="IT support workspace with laptop and headset" />
-          <div className="demo-credentials">
-            <div className="demo-credentials-title"><span>♙</span> Demo accounts <small>Use the credentials below to explore the platform.</small></div>
-            <div className="demo-credentials-grid">
-              <div className="demo-cred-item">
-                <div className="demo-cred-role"><span>♛</span> Admin</div>
-                <div className="demo-cred-row">
-                  <span>Email:</span> <code>admin@helpdesk.com</code>
-                </div>
-                <div className="demo-cred-row">
-                  <span>Password:</span> <code>Admin@1234</code>
-                </div>
-              </div>
-              <div className="demo-cred-item">
-                <div className="demo-cred-role user"><span>♙</span> User</div>
-                <div className="demo-cred-row">
-                  <span>Email:</span> <code>user@helpdesk.com</code>
-                </div>
-                <div className="demo-cred-row">
-                  <span>Password:</span> <code>User@1234</code>
-                </div>
-              </div>
-            </div>
-          </div>
         </section>
 
         <form className="login-card" onSubmit={onSubmit}>
@@ -174,9 +150,6 @@ export default function LoginPage() {
           </div>
 
           <div className="row-between login-row">
-            <label className="login-remember">
-              <input name="remember" type="checkbox" checked={form.remember} onChange={onChange} /> Remember me
-            </label>
             <button className="login-forgot" type="button" onClick={() => setPasswordHelpOpen(true)}>Forgot password?</button>
           </div>
 
@@ -184,20 +157,6 @@ export default function LoginPage() {
             {loading ? "Signing in..." : "Login"}
           </button>
 
-          <div className="login-divider"><span>or</span></div>
-          <details className="mobile-demo-credentials">
-            <summary>View demo accounts</summary>
-            <div className="mobile-demo-account">
-              <strong>Administrator</strong>
-              <code>admin@helpdesk.com</code>
-              <code>Admin@1234</code>
-            </div>
-            <div className="mobile-demo-account">
-              <strong>User</strong>
-              <code>user@helpdesk.com</code>
-              <code>User@1234</code>
-            </div>
-          </details>
           <p className="auth-footer login-footer">♢&nbsp; Account creation is managed by administrators.</p>
         </form>
       </div>

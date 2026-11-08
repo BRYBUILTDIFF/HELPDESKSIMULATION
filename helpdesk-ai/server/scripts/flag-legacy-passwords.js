@@ -17,7 +17,7 @@ async function main() {
       }
       if (retired) {
         await prisma.$transaction([
-          prisma.user.update({ where: { id: user.id }, data: { mustChangePassword: true } }),
+          prisma.user.update({ where: { id: user.id }, data: { mustChangePassword: true, tokenVersion: { increment: 1 } } }),
           prisma.refreshToken.deleteMany({ where: { userId: user.id } })
         ]);
         flagged += 1;

@@ -7,6 +7,7 @@ const {
   SimulationServiceError,
   createWindowsSimulationSession,
   refreshWindowsSimulationSession,
+  pollWindowsSimulationSession,
   terminateWindowsSimulationSession
 } = require("../services/windowsSimulationService");
 const { createGuacamoleUrl } = require("../services/guacamoleJsonService");
@@ -43,6 +44,12 @@ async function createSimulationSession(req, res, next) {
         orderBy: { createdAt: "desc" }
       });
       if (existing) return { session: existing, resumed: true };
+      const midnight = new Date(); midnight.setUTCHours(0, 0, 0, 0);
+      const daily = await tx.simulationSession.count({ where: { userId: req.user.id, createdAt: { gte: midnight } } });
+      if (daily >= limit("SIMULATION_DAILY_MAX", 3)) throw new SimulationServiceError("Your daily Windows lab allowance has been reached.", 429);
+      const recent = await tx.simulationSession.findFirst({ where: { userId: req.user.id,
+        createdAt: { gt: new Date(Date.now() - limit("SIMULATION_COOLDOWN_MINUTES", 5) * 60000) } }, orderBy: { createdAt: "desc" } });
+      if (recent) throw new SimulationServiceError("Please wait a few minutes before starting another Windows lab.", 429);
       const perUser = await tx.simulationSession.count({ where: { userId: req.user.id, ...activeWhere } });
       const global = await tx.simulationSession.count({ where: activeWhere });
       if (perUser >= limit("SIMULATION_MAX_PER_USER", 1)) throw new SimulationServiceError("You already have an active Windows simulation.", 409);
@@ -84,7 +91,7 @@ async function getSimulationSession(req, res, next) {
       await terminateWindowsSimulationSession(session).catch(() => null);
       session = await prisma.simulationSession.findUnique({ where: { id: session.id } });
     } else if (session.status === "PROVISIONING") {
-      session = await refreshWindowsSimulationSession(session);
+      session = await pollWindowsSimulationSession(session);
     }
     return res.status(200).json(safeSession(session));
   } catch (error) {
@@ -131,4 +138,18 @@ async function endSimulationSession(req, res, next) {
   }
 }
 
-module.exports = { createSimulationSession, getSimulationSession, connectSimulationSession, endSimulationSession };
+async function listStuckSessions(_req, res, next) {
+  try {
+    const sessions = await prisma.simulationSession.findMany({ where: { status: "TERMINATING" }, take: 100, orderBy: { updatedAt: "asc" } });
+    return res.json({ sessions: sessions.map(session => ({ ...safeSession(session), userId: session.userId, updatedAt: session.updatedAt })) });
+  } catch (err) { return next(err); }
+}
+async function retryTermination(req, res, next) {
+  try {
+    const session = await prisma.simulationSession.findUnique({ where: { id: req.params.id } });
+    if (!session) return res.status(404).json({ message: "Simulation session not found" });
+    const ended = await terminateWindowsSimulationSession(session);
+    return res.json(safeSession(ended));
+  } catch (err) { return next(err); }
+}
+module.exports = { listStuckSessions, retryTermination, createSimulationSession, getSimulationSession, connectSimulationSession, endSimulationSession };
