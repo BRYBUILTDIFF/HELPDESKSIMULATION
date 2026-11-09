@@ -65,3 +65,7 @@ Both dependency trees reported zero known vulnerabilities after compatible fixes
 The current local environment has a classifier configured but no hosted moderation credential. Strict safety checks therefore return an availability message until a moderation key is configured. For isolated development only, MODERATION_FAILURE_MODE=baseline permits the documented reduced baseline checks; production always fails closed. No key was invented or added to .env.
 
 One active local account using a retired demo password was rotated to a unique temporary password, with token revocation and mandatory change at next login. Its recovery credential was written only to a private local temporary file, not chat or the repository. Historical cloud/API secret rotation remains an operational task.
+
+## Scope classifier availability fix
+
+If the separate Ollama classifier is unreachable, scope checking now falls back to the already configured AI provider (DeepSeek in this installation), including output checks. Failed local connections are cooled down for 30 seconds. If neither classifier can return a valid decision, the API reports a 503 availability error instead of asking users to clarify an otherwise valid IT issue. Keyword bypasses remain disabled. Live checks accepted an English printer ticket and a Filipino Wi-Fi ticket, while rejecting a poem request mentioning VPN. No .env values were changed for this fix.

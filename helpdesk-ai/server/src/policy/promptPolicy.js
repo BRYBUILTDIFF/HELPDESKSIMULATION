@@ -1,5 +1,6 @@
 const { getPolicyRuntimeConfig } = require("../store/policyConfigStore");
 const { evaluateContentSafety } = require("./contentSafety");
+const { getOpenAIClient, getAIProvider, getDefaultModel } = require("../utils/openai");
 
 const DEEPSEEK_URL = process.env.POLICY_CLASSIFIER_URL || "http://localhost:11434/api/chat";
 const DEEPSEEK_MODEL = process.env.POLICY_CLASSIFIER_MODEL || "deepseek-r1:7b";
@@ -9,6 +10,7 @@ const CLARIFY_MESSAGE_FALLBACK =
 const FOLLOW_UP_NO_CONTEXT_REGEX =
   /\b(what now|next step|next steps|and then|then what|how about now|didn't work|didnt work|still not working|same issue|again|repeat that|continue)\b/i;
 
+let localRetryAfter = 0;
 let cachedFetchImpl = typeof globalThis.fetch === "function" ? globalThis.fetch.bind(globalThis) : null;
 
 function listPreview(values, limit = 24) {
@@ -176,7 +178,7 @@ function findClassifierPayloadInText(rawContent) {
  * @param {Array<{role: string, content: string}>} history
  * @returns {Promise<{classification: "in_scope" | "out_of_scope" | "greeting", confidence: number, reason: string}>}
  */
-async function classifyWithDeepSeek(message, history, policy) {
+async function classifyWithLocalDeepSeek(message, history, policy) {
   const fetchImpl = await getFetchImpl();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), CLASSIFIER_TIMEOUT_MS);
@@ -214,7 +216,7 @@ async function classifyWithDeepSeek(message, history, policy) {
       throw new Error("Malformed classifier response.");
     }
 
-    const rawModelContent = String(envelope?.message?.content || "").trim();
+    const rawModelContent = String(envelope?.message?.content || envelope?.choices?.[0]?.message?.content || "").trim();
     if (!rawModelContent) {
       console.error("[PolicyClassifier] Invalid classifier response; content redacted.");
       throw new Error("Classifier returned empty output.");
@@ -241,12 +243,45 @@ async function classifyWithDeepSeek(message, history, policy) {
     return { classification, confidence, reason };
   } catch (err) {
     if (err?.name === "AbortError") {
-      throw new Error("Classifier timeout after 8 seconds.");
+      throw new Error(`Classifier timeout after ${CLASSIFIER_TIMEOUT_MS}ms.`);
     }
     throw err;
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+// The optional Ollama classifier and the configured answer provider are distinct services.
+// If Ollama is offline, retain classification through the configured DeepSeek API.
+async function classifyWithDeepSeek(message, history, policy) {
+  if (Date.now() >= localRetryAfter) {
+    try {
+      const decision = await classifyWithLocalDeepSeek(message, history, policy);
+      localRetryAfter = 0;
+      return decision;
+    } catch (_) {
+      localRetryAfter = Date.now() + 30000;
+      console.warn("[PolicyClassifier] Local classifier unavailable; trying configured AI provider.");
+    }
+  }
+  const client = getOpenAIClient();
+  if (!client) throw new Error("No scope classifier is available.");
+  const completion = await client.chat.completions.create({
+    model: getDefaultModel(getAIProvider()),
+    temperature: 0,
+    max_tokens: 250,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: getClassifierSystemPrompt(policy) },
+      ...sanitizeHistory(history),
+      { role: "user", content: String(message || "").trim() }
+    ]
+  }, { timeout: Math.max(1000, Number(process.env.POLICY_PROVIDER_TIMEOUT_MS) || 15000), maxRetries: 0 });
+  const parsed = findClassifierPayloadInText(completion.choices?.[0]?.message?.content);
+  if (!parsed) throw new Error("Configured provider returned an invalid scope decision.");
+  const confidence = Number(parsed.confidence);
+  if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) throw new Error("Scope confidence is invalid.");
+  return { classification: parsed.classification.trim(), confidence, reason: String(parsed.reason || "Scope classification.").slice(0, 500) };
 }
 
 /**
@@ -332,10 +367,11 @@ async function evaluatePromptPolicy(message, history = [], context = {}) {
   } catch (err) {
     console.error("[PolicyClassifier] Unavailable", { code: err?.code || "UNAVAILABLE" });
     return {
-      allowed: true,
+      allowed: false,
+      httpStatus: 503,
       code: "SCOPE_CLASSIFIER_UNAVAILABLE",
-      reason: `Scope classifier unavailable; response is redirected to HelpDesk scope. ${err?.message || "Classifier error."}`,
-      directReply: policy.messages.clarifyMessage || CLARIFY_MESSAGE_FALLBACK
+      reason: "The scope classification services are unavailable.",
+      userMessage: "IT scope checks are temporarily unavailable. Please try again shortly."
     };
   }
 }

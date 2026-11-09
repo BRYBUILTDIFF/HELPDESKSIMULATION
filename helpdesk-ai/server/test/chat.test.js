@@ -2,6 +2,7 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 let sentMessages, savedTurn, providerError;
 let outputAllowed = true;
+let policyDecision = { allowed: true, code: "ALLOWED" };
 require.cache[require.resolve("../src/utils/openai")] = { exports: {
   getAIProvider: () => "test", getDefaultModel: () => "test",
   getOpenAIClient: () => ({ chat: { completions: { create: async ({ messages }) => {
@@ -14,7 +15,7 @@ require.cache[require.resolve("../src/store/chatHistoryStore")] = { exports: {
   getChatHistory: async () => [{ role: "assistant", content: "Trusted server turn" }],
   appendChatTurn: async (...args) => { savedTurn = args; }
 } };
-require.cache[require.resolve("../src/policy/promptPolicy")] = { exports: { evaluatePromptPolicy: async () => ({ allowed: true, code: "ALLOWED" }), evaluateResponsePolicy: async () => outputAllowed } };
+require.cache[require.resolve("../src/policy/promptPolicy")] = { exports: { evaluatePromptPolicy: async () => policyDecision, evaluateResponsePolicy: async () => outputAllowed } };
 require.cache[require.resolve("../src/store/policyEventStore")] = { exports: { recordPolicyEvent: async () => {} } };
 require.cache[require.resolve("../src/store/policyConversationStore")] = { exports: { getConversationScope: async () => null, markConversationScope: async () => {} } };
 require.cache[require.resolve("../src/policy/contentSafety")] = { exports: { evaluateContentSafety: async () => null } };
@@ -46,4 +47,15 @@ test("an out-of-scope answer is withheld and the safe replacement is saved", asy
     assert.notEqual(res.body.reply, "Check the VPN connection.");
     assert.equal(savedTurn[3], res.body.reply);
   } finally { outputAllowed = true; }
+});
+
+test("a classifier outage returns HTTP 503 with a service message and never calls answer generation", async () => {
+  policyDecision = { allowed: false, httpStatus: 503, code: "SCOPE_CLASSIFIER_UNAVAILABLE", userMessage: "IT scope checks are temporarily unavailable." };
+  sentMessages = null;
+  const res = { status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; } };
+  try {
+    await chat({ user: { id: 1 }, body: { message: "Help with VPN", sessionId: "service-test" } }, res, err => { throw err; });
+    assert.equal(res.statusCode, 503); assert.equal(res.body.message, policyDecision.userMessage);
+    assert.equal(sentMessages, null);
+  } finally { policyDecision = { allowed: true, code: "ALLOWED" }; }
 });

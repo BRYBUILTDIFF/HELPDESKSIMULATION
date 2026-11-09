@@ -12,6 +12,7 @@ require.cache[require.resolve("../src/store/policyConfigStore")] = { exports: { 
   messages: { outOfScopeMessage: "Please ask an IT support question." },
   greetingPatternRegex: [], inScopeKeywordRegex: [/\bvpn\b/i], inScopeIntentRegex: [], outOfScopeKeywordRegex: [/\bessay\b/i]
 }) } };
+require.cache[require.resolve("../src/utils/openai")] = { exports: { getOpenAIClient: () => null, getAIProvider: () => "deepseek", getDefaultModel: () => "deepseek-chat" } };
 require.cache[require.resolve("../src/policy/contentSafety")] = { exports: { evaluateContentSafety: async () => null } };
 const { evaluatePromptPolicy } = require("../src/policy/promptPolicy");
 test("established IT conversations still classify unfamiliar short requests", async () => {
@@ -37,11 +38,14 @@ test("mixed keywords defer to context classification instead of hard rejection",
     assert.equal(result.code, "ALLOWED");
   } finally { classification = "out_of_scope"; }
 });
-test("classifier outages return a fixed clarification instead of generating an answer", async () => {
+test("classifier outages report availability rather than questioning a valid IT prompt", async () => {
   unavailable = true;
   try {
     const result = await evaluatePromptPolicy("Help with VPN", []);
     assert.equal(result.code, "SCOPE_CLASSIFIER_UNAVAILABLE");
-    assert.ok(result.directReply);
+    assert.equal(result.allowed, false);
+    assert.equal(result.httpStatus, 503);
+    assert.equal(result.directReply, undefined);
+    assert.match(result.userMessage, /temporarily unavailable/);
   } finally { unavailable = false; }
 });

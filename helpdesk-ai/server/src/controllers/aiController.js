@@ -257,7 +257,8 @@ async function chat(req, res, next) {
         reason: policyResult.reason,
         hasHistory: history.length > 0
       });
-      return res.status(200).json({
+      return res.status(policyResult.httpStatus || 200).json({
+        ...(policyResult.httpStatus ? { message: policyResult.userMessage } : {}),
         reply: policyResult.userMessage,
         policy: {
           blocked: true,
