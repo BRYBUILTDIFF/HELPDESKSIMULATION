@@ -234,10 +234,13 @@ async function classifyWithLocalDeepSeek(message, history, policy) {
       throw new Error("Classifier returned unsupported classification.");
     }
 
+    // Missing/invalid confidence is a malformed classifier response, not ambiguity
+    // in the user's question. Let the configured-provider fallback verify it.
     const numericConfidence = Number(parsed?.confidence);
-    const confidence = Number.isFinite(numericConfidence)
-      ? Math.max(0, Math.min(1, numericConfidence))
-      : 0;
+    if (typeof parsed?.confidence !== "number" || !Number.isFinite(numericConfidence) || numericConfidence < 0 || numericConfidence > 1) {
+      throw new Error("Local classifier confidence is invalid.");
+    }
+    const confidence = numericConfidence;
     const reason = String(parsed?.reason || "").trim() || "Classifier decision.";
 
     return { classification, confidence, reason };
@@ -257,11 +260,12 @@ async function classifyWithDeepSeek(message, history, policy) {
   if (Date.now() >= localRetryAfter) {
     try {
       const decision = await classifyWithLocalDeepSeek(message, history, policy);
+      if (decision.confidence < 0.75) throw new Error("Local classifier decision needs verification.");
       localRetryAfter = 0;
       return decision;
     } catch (_) {
       localRetryAfter = Date.now() + 30000;
-      console.warn("[PolicyClassifier] Local classifier unavailable; trying configured AI provider.");
+      console.warn("[PolicyClassifier] Local classifier unavailable or uncertain; trying configured AI provider.");
     }
   }
   const client = getOpenAIClient();
