@@ -15,7 +15,8 @@
     "security:flag-legacy-passwords": "node scripts/flag-legacy-passwords.js",
     "lint": "node scripts/check-syntax.js",
     "test:review-db": "node --test test/review.database.integration.js",
-    "security:rotate-legacy-passwords": "node scripts/rotate-legacy-passwords.js --apply"
+    "security:rotate-legacy-passwords": "node scripts/rotate-legacy-passwords.js --apply",
+    "diagnose:db": "node scripts/diagnose-db.js"
   },
   "dependencies": {
     "@aws-sdk/client-ec2": "^3.1095.0",
