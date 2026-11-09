@@ -20,6 +20,24 @@ async function main() {
       }
     }
   }
+  const indexes = await prisma.$queryRaw`
+    SELECT t.relname::text AS table_name, array_agg(a.attname::text ORDER BY k.ordinality) AS columns
+    FROM pg_index i JOIN pg_class t ON t.oid = i.indrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    JOIN LATERAL unnest(i.indkey) WITH ORDINALITY k(attnum, ordinality) ON k.ordinality <= i.indnkeyatts
+    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+    WHERE n.nspname = ${schema} AND i.indisunique AND i.indpred IS NULL AND i.indisvalid
+    GROUP BY t.relname, i.indexrelid`;
+  for (const model of Prisma.dmmf.datamodel.models) {
+    const uniqueSets = [...(model.uniqueFields || []), ...(model.primaryKey ? [model.primaryKey.fields] : []),
+      ...model.fields.filter(field => field.isId || field.isUnique).map(field => [field.name])];
+    for (const fields of uniqueSets) {
+      const names = fields.map(name => model.fields.find(field => field.name === name)?.dbName || name).sort();
+      if (!indexes.some(index => index.table_name === (model.dbName || model.name) && [...index.columns].sort().join(",") === names.join(","))) {
+        console.log(`MISSING UNIQUE INDEX: ${model.name}(${names.join(", ")})`); issues++;
+      }
+    }
+  }
   console.log("Schema discrepancies:", issues);
   console.log("Prisma client version:", Prisma.prismaVersion.client);
   if (issues) process.exitCode = 1;

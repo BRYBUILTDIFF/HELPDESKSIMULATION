@@ -20,7 +20,7 @@ function requestLimit(namespace, { max, windowMs, key }) {
         return res.status(429).json({ message: "Too many requests. Please wait and try again." });
       }
       return next();
-    } catch (err) { return next(err); }
+    } catch (err) { err.operation = `request-limit:${namespace}`; return next(err); }
   };
 }
 const emailKey = req => String(req.body?.email || "").trim().toLowerCase().slice(0, 254);

@@ -216,6 +216,7 @@ async function getRelatedTickets(req, res) {
 }
 
 async function chat(req, res, next) {
+  let operation = "read-chat-history";
   try {
     const message = redactSecrets(req.body.message).trim();
 
@@ -224,10 +225,13 @@ async function chat(req, res, next) {
       await prisma.policyConversation.deleteMany({ where: { userId: req.user.id, sessionId } });
     }
     const history = await getChatHistory(req.user.id, sessionId);
+    operation = "read-conversation-scope";
     const conversationScope = sessionId ? await getConversationScope(req.user?.id, sessionId) : null;
 
+    operation = "evaluate-policy";
     const policyResult = await evaluatePromptPolicy(message, history, { conversationScope });
     if (policyResult.directReply) {
+      operation = "record-policy-event";
       await recordPolicyEvent({
         userId: req.user?.id,
         userEmail: req.user?.email,
@@ -248,6 +252,7 @@ async function chat(req, res, next) {
     }
 
     if (!policyResult.allowed) {
+      operation = "record-policy-event";
       await recordPolicyEvent({
         userId: req.user?.id,
         userEmail: req.user?.email,
@@ -288,6 +293,7 @@ async function chat(req, res, next) {
       }));
 
     const provider = getAIProvider();
+    operation = "generate-answer";
     const completion = await client.chat.completions.create({
       model: getDefaultModel(provider),
       temperature: 0.3,
@@ -302,6 +308,7 @@ async function chat(req, res, next) {
     if (!reply) {
       return res.status(500).json({ message: "AI did not return a response." });
     }
+    operation = "check-answer";
     const outputSafety = await evaluateContentSafety(reply);
     const outputInScope = !outputSafety && await evaluateResponsePolicy(reply);
     const filtered = Boolean(outputSafety) || !outputInScope;
@@ -311,6 +318,7 @@ async function chat(req, res, next) {
     const responseCode = outputSafety ? "OUTPUT_SAFETY_FILTERED" : !outputInScope ? "OUTPUT_SCOPE_FILTERED" : policyResult.code || "ALLOWED";
     const responseReason = filtered ? "AI response did not pass safety and scope checks." : policyResult.reason || "Allowed request.";
 
+    operation = "record-policy-event";
     await recordPolicyEvent({
       userId: req.user?.id,
       userEmail: req.user?.email,
@@ -320,8 +328,10 @@ async function chat(req, res, next) {
       reason: responseReason,
       hasHistory: history.length > 0
     });
+    operation = "save-chat-history";
     await appendChatTurn(req.user.id, sessionId, message, safeReply);
     if (sessionId && !filtered) {
+      operation = "save-conversation-scope";
       await markConversationScope(req.user?.id, sessionId, "it_support");
     }
 
@@ -333,6 +343,7 @@ async function chat(req, res, next) {
       }
     });
   } catch (err) {
+    if (err && typeof err === "object") err.operation = operation;
     if (err?.status === 401 || err?.code === "invalid_api_key") {
       return res.status(502).json({
         message:
