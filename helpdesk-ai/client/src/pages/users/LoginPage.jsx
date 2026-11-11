@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import helpdeskLogo from "../../IMG/HELPDESKAI.png";
-import workspaceHero from "../../IMG/login-workspace-hero.png";
+import "./auth-entry.css";
 
 function parseError(error) {
   if (!error.response) {
@@ -68,34 +68,29 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="login-shell">
+    <div className="login-shell auth-entry">
       <div className="login-grid">
         <section className="login-brand">
           <div className="login-logo">
             <img className="login-logo-mark" src={helpdeskLogo} alt="HelpDesk AI" />
             <div>
-              <h2>HELPDESK SIMULATION</h2>
+              <h2>HelpDesk AI</h2>
               <p>IT Support Platform</p>
             </div>
           </div>
-          <h1>Professional IT troubleshooting assistant</h1>
+          <h1>Get back to solving.</h1>
           <p className="login-brand-sub">
-            Manage support sessions, run guided simulations, and resolve technical issues with policy-aware AI guidance.
+            Troubleshoot an IT problem, pick up a previous conversation, or practice with a guided simulation.
           </p>
-          <div className="login-brand-points">
-            <span>◈&nbsp; Role-based access</span>
-            <span>◷&nbsp; Session history</span>
-            <span>♧&nbsp; Simulation workflow</span>
-          </div>
-          <img className="login-workspace-hero" src={workspaceHero} alt="IT support workspace with laptop and headset" />
+          <p className="login-brand-note">Support for the issue in front of you.<br />Practice for the next one.</p>
         </section>
 
-        <form className="login-card" onSubmit={onSubmit}>
+        <form className="login-card" onSubmit={onSubmit} aria-busy={loading} aria-label="Sign in">
           <div className="login-form-heading">
             <span className="login-lock-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /><path d="M12 14v2" /></svg>
             </span>
-            <div><h3>Sign in</h3><p>Use your account credentials to continue.</p></div>
+            <div><h3>Sign in</h3><p>Welcome back. Enter your email and password.</p></div>
           </div>
 
           {error ? <p className="login-error" role="alert">{error}</p> : null}
@@ -106,7 +101,7 @@ export default function LoginPage() {
               id="email"
               name="email"
               type="email"
-              autoComplete="email"
+              autoComplete="email" required disabled={loading}
               placeholder="Enter your email"
               value={form.email}
               onChange={onChange}
@@ -120,7 +115,7 @@ export default function LoginPage() {
                 id="password"
                 name="password"
                 type={showPassword ? "text" : "password"}
-                autoComplete="current-password"
+                autoComplete="current-password" required disabled={loading}
                 placeholder="Enter your password"
                 value={form.password}
                 onChange={onChange}
@@ -154,10 +149,10 @@ export default function LoginPage() {
           </div>
 
           <button className="btn login-submit" type="submit" disabled={!canSubmit || loading}>
-            {loading ? "Signing in..." : "Login"}
+            {loading ? "Signing in..." : "Sign in"}
           </button>
 
-          <p className="auth-footer login-footer">♢&nbsp; Account creation is managed by administrators.</p>
+          <p className="auth-footer login-footer">Need an account? Contact your administrator.</p>
         </form>
       </div>
       {passwordHelpOpen ? (

@@ -1,8 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export default function SimulationWalkthrough({ type = "terminal", onDone }) {
   const [step, setStep] = useState(0);
+  const calloutRef = useRef(null);
+  const [calloutHeight, setCalloutHeight] = useState(300);
+  useLayoutEffect(() => {
+    const element = calloutRef.current;
+    if (!element) return;
+    const measure = () => setCalloutHeight(element.getBoundingClientRect().height);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   const windows = type === "windows";
   const dashboardTerminal = type === "dashboard-terminal";
   const items = useMemo(() => windows
@@ -41,10 +52,10 @@ export default function SimulationWalkthrough({ type = "terminal", onDone }) {
   const walkthrough = <div className="simulation-walkthrough" role="dialog" aria-modal="true" aria-label="Simulation walkthrough">
     <div className="simulation-walkthrough-backdrop" />
     {target ? <div className="simulation-walkthrough-spotlight" style={{ top: target.top - 8, left: target.left - 8, width: target.width + 16, height: target.height + 16 }} /> : null}
-    <div className="simulation-walkthrough-callout" style={target ? { top: Math.min(window.innerHeight - 190, Math.max(18, target.bottom + 18)), left: Math.max(18, Math.min(window.innerWidth - 388, target.left)) } : undefined}>
-      <div className="simulation-walkthrough-kicker">Guide · {step + 1} of {items.length}</div>
+    <div ref={calloutRef} className="simulation-walkthrough-callout" style={target ? { top: Math.max(18, Math.min(window.innerHeight - calloutHeight - 18, target.bottom + 18)), left: Math.max(18, Math.min(window.innerWidth - 388, target.left)) } : undefined}>
       <h2>{items[step][1]}</h2>
       <p>{items[step][2]}</p>
+      <div className="simulation-walkthrough-kicker">Guide · {step + 1} of {items.length}</div>
       <div className="simulation-walkthrough-progress">{items.map((_, index) => <i key={index} className={index <= step ? "active" : ""} />)}</div>
       <div className="simulation-walkthrough-actions">
         <button type="button" className="btn-sm simulation-walkthrough-skip" onClick={() => onDone?.()}>Skip all</button>

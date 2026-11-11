@@ -1395,7 +1395,9 @@
 }
 
 .account-settings-modal {
-  width: min(100%, 500px);
+  width: min(100%, 820px);
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
   max-height: min(760px, calc(100vh - 40px));
   overflow-y: auto;
   border: 1px solid var(--border2);
@@ -1405,12 +1407,117 @@
 }
 
 .account-settings-modal-head {
+  grid-column: 1 / -1;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   padding: 22px 22px 18px;
   border-bottom: 1px solid var(--border);
+}
+
+.account-data-settings {
+  display: grid;
+  gap: 10px;
+  padding: 4px 24px 24px;
+  border-left: 1px solid var(--border);
+  align-content: start;
+}
+
+.account-data-settings h3 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text);
+}
+
+.account-data-settings p {
+  margin: 0 0 4px;
+  color: var(--text2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.account-data-action {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  background: var(--bg3);
+  color: var(--text);
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.account-data-action:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: #ef4444;
+}
+
+.account-action-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--cyan-dim);
+  color: var(--cyan);
+}
+
+.account-action-icon svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.account-action-copy { display: grid; gap: 6px; }
+.account-action-copy strong { font-size: 13px; }
+.account-action-copy > span {
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+.account-action-label {
+  grid-column: 2;
+  justify-self: start;
+  padding: 6px 10px;
+  border: 1px solid var(--border2);
+  border-radius: 7px;
+  font-size: 11px;
+}
+
+.account-data-action:first-of-type .account-action-icon {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.account-data-action:first-of-type .account-action-label { color: #ef4444; }
+.account-data-action:focus-visible,
+.account-settings-close:focus-visible,
+.account-settings-actions button:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .account-settings-modal { grid-template-columns: minmax(0, 1fr); }
+  .account-data-settings {
+    padding: 22px;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+  .account-details-card { grid-template-columns: auto minmax(0, 1fr); }
+  .account-details-card .account-role-badge { grid-column: 2; justify-self: start; }
 }
 
 .account-settings-eyebrow {
@@ -1451,6 +1558,7 @@
 }
 
 .account-details-card {
+  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: auto 1fr auto;
   gap: 12px;

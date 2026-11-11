@@ -46,7 +46,11 @@ async function createSimulationSession(req, res, next) {
       if (existing) return { session: existing, resumed: true };
       const midnight = new Date(); midnight.setUTCHours(0, 0, 0, 0);
       const daily = await tx.simulationSession.count({ where: { userId: req.user.id, createdAt: { gte: midnight } } });
-      if (daily >= limit("SIMULATION_DAILY_MAX", 3)) throw new SimulationServiceError("Your daily Windows lab allowance has been reached.", 429);
+      if (daily >= limit("SIMULATION_DAILY_MAX", 3)) {
+        const error = new SimulationServiceError("You have reached your daily Windows lab limit. Try again after the daily reset at 8:00 AM Philippine time (00:00 UTC).", 429);
+        error.code = "SIMULATION_DAILY_LIMIT";
+        throw error;
+      }
       const recent = await tx.simulationSession.findFirst({ where: { userId: req.user.id,
         createdAt: { gt: new Date(Date.now() - limit("SIMULATION_COOLDOWN_MINUTES", 5) * 60000) } }, orderBy: { createdAt: "desc" } });
       if (recent) throw new SimulationServiceError("Please wait a few minutes before starting another Windows lab.", 429);
@@ -78,7 +82,7 @@ async function createSimulationSession(req, res, next) {
     }
     return res.status(202).json(safeSession(session));
   } catch (error) {
-    if (error instanceof SimulationServiceError) return res.status(error.status).json({ message: error.message });
+    if (error instanceof SimulationServiceError) return res.status(error.status).json({ message: error.message, ...(error.code ? { code: error.code } : {}) });
     return next(error);
   }
 }

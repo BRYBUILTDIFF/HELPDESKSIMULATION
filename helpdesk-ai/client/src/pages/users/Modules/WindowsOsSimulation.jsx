@@ -29,6 +29,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
     return () => window.clearTimeout(timer);
   }, [revealAt]);
   const [error, setError] = useState("");
+  const [launchNotice, setLaunchNotice] = useState(null);
   const [activeStep, setActiveStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState(() => new Set(completedStepIndexes));
   const [completing, setCompleting] = useState(false);
@@ -49,6 +50,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
     setDesktopRevealed(false);
     retryDeadlineRef.current = Date.now() + 10 * 60 * 1000;
     connectInFlightRef.current = false;
+    setLaunchNotice(null);
     setError(""); setGuacamoleUrl(""); setSession(null); setStatus("PROVISIONING");
     try {
       const response = await api.post("/api/simulation-sessions", { moduleId });
@@ -62,6 +64,12 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
       setSession(response.data); setStatus(response.data?.status || "PROVISIONING");
       onSessionReady?.(response.data);
     } catch (err) {
+      if ([409, 429].includes(err.response?.status)) {
+        setLaunchNotice({
+          dailyLimit: err.response?.data?.code === "SIMULATION_DAILY_LIMIT",
+          message: messageFrom(err, "Windows labs are temporarily unavailable. Please try again later.")
+        });
+      }
       setStatus("FAILED"); setError(messageFrom(err, "Unable to prepare your Windows workspace."));
     }
   }, [api, moduleId, onSessionReady]);
@@ -221,10 +229,10 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
 
   return <div className="windows-os-overlay" aria-label="Windows OS simulation">
     <section className="windows-os-shell">
-      <header className="windows-os-header"><div><span className="windows-os-kicker">Windows OS Simulation</span><h2>{title}</h2></div><div className="windows-os-controls">{remainingMinutes !== null ? <span>{remainingMinutes} min remaining</span> : null}<button type="button" className="windows-os-end-btn btn-sm" onClick={end}>End Simulation</button><button type="button" className="windows-os-complete-btn btn-sm" onClick={complete} disabled={!session?.id || completing} title={!session?.id ? "A live workspace is required to record completion" : "Complete simulation"}>✓ <span>{completing ? "Completing..." : "Complete Simulation"}</span></button></div></header>
-      {["IDLE", "PROVISIONING", "READY", "TERMINATING"].includes(status) ? <div className="windows-os-status"><div className="windows-os-spinner" aria-hidden="true" /><h3>{status === "TERMINATING" ? "Ending your Windows Server 2025 workspace..." : "Preparing your Windows Server 2025 workspace..."}</h3><p>We are getting your lab ready. This may take a few minutes. Please keep this page open.</p></div> : null}
+      <header className="windows-os-header"><div><h2>{title}</h2><span className="windows-os-lab-label">Windows lab</span></div><div className="windows-os-controls">{remainingMinutes !== null ? <span>{remainingMinutes} min remaining</span> : null}<button type="button" className="windows-os-end-btn btn-sm" onClick={end}>End Simulation</button><button type="button" className="windows-os-complete-btn btn-sm" onClick={complete} disabled={!session?.id || completing} title={!session?.id ? "A live workspace is required to record completion" : "Complete simulation"}>✓ <span>{completing ? "Completing..." : "Complete Simulation"}</span></button></div></header>
+      {["IDLE", "PROVISIONING", "READY", "TERMINATING"].includes(status) ? <div className="windows-os-status" role="status"><div className="windows-os-spinner" aria-hidden="true" /><h3>{status === "TERMINATING" ? "Ending your Windows Server 2025 workspace..." : "Preparing your Windows Server 2025 workspace..."}</h3><p>We are getting your lab ready. This may take a few minutes. Please keep this page open.</p></div> : null}
       {["CONNECTING", "ACTIVE"].includes(status) && guacamoleUrl ? <div className="windows-os-workspace" style={{ position: "relative" }}>
-        {!desktopRevealed ? <div className="windows-os-status" role="status" style={{ position: "absolute", inset: 0, zIndex: 10, background: "#f7f9fc" }}>
+        {!desktopRevealed ? <div className="windows-os-status" role="status" style={{ position: "absolute", inset: 0, zIndex: 10, background: "var(--bg2, #ffffff)" }}>
           <div className="windows-os-spinner" aria-hidden="true" />
           <h3>Preparing your Windows Server 2025 workspace...</h3>
           <p>We are getting your lab ready. This may take a few minutes. Please keep this page open.</p>
@@ -237,7 +245,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
               <span><strong>{step?.title || `Step ${index + 1}`}</strong><small>{plainText(step?.action || step?.instruction || step?.desc || step?.description) || "Follow the task instructions."}</small></span>
             </button>)}
           </div> : <p className="windows-os-no-steps">This module does not include guided steps yet.</p>}
-          <div className="windows-os-help-card"><strong>◌&nbsp; Need Help?</strong><span>Follow each step carefully. You can navigate back and forth between steps at any time.</span></div>
+          <div className="windows-os-help-card"><strong>Working through the guide</strong><span>Follow each step carefully. You can navigate back and forth between steps at any time.</span></div>
         </aside>
         <section inert={!desktopRevealed ? "" : undefined} className="windows-os-desktop">
           {currentStep ? <div className="windows-os-instruction">
@@ -259,7 +267,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
         <div className="windows-os-footer-progress"><span>{completedSteps.size} of {guidedSteps.length} complete</span><div className="windows-os-progress-line">{guidedSteps.map((_, index) => <i key={index} className={completedSteps.has(index) ? "done" : index === activeStep ? "active" : ""} />)}</div></div>
         <button type="button" className="windows-os-nav-btn is-next btn-sm" disabled={!currentStep || activeStep === guidedSteps.length - 1} onClick={() => setActiveStep((step) => step + 1)}><span>Next Step</span> →</button>
       </footer> : null}
-      {status === "FAILED" ? <div className="windows-os-status is-error" role="alert"><h3>We could not start the live Windows lab</h3><p>{error || "The Windows workspace failed to start. Please try again."}</p><div className="windows-os-error-actions"><button type="button" className="btn-sm" onClick={retry}>Try Again</button><button type="button" className="btn-sm" onClick={end}>Return to Modules</button></div></div> : null}
+      {status === "FAILED" ? <div className="windows-os-status is-error" role="alert"><div className="windows-os-state-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8m-4-4v4m0-13v3m0 3h.01" /></svg></div><h3>{launchNotice?.dailyLimit ? "Daily Windows lab limit reached" : launchNotice ? "Windows lab unavailable" : "Your Windows lab could not start"}</h3><p>{launchNotice?.message || "Try again to reconnect. If the problem continues, contact your administrator and share the details below."}</p>{error && !launchNotice ? <details className="windows-os-error-details"><summary>Error details</summary><p>{error}</p></details> : null}<div className="windows-os-error-actions">{!launchNotice?.dailyLimit ? <button type="button" className="btn-sm" onClick={retry}>Try Again</button> : null}<button type="button" className="btn-sm" onClick={end}>Return to Modules</button></div></div> : null}
       {error && status === "ACTIVE" ? <div className="windows-os-completion-error" role="alert">{error}</div> : null}
       {desktopRevealed && guacamoleUrl && showWalkthrough ? <SimulationWalkthrough type="windows" onDone={() => setShowWalkthrough(false)} /> : null}
     </section>

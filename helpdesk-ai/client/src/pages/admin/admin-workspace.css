@@ -1,0 +1,292 @@
+/* Shared HelpDesk identity, with denser controls for administrative work. */
+.admin-console-root.admin-ui .badge-policy-neutral { background: var(--color-background-primary); color: var(--color-text-secondary); border: 1px solid var(--color-border-tertiary); }
+.admin-ui .policy-outcome-summary { display: flex; flex-wrap: wrap; gap: 16px 32px; margin-bottom: 24px; padding: 16px 0; border-bottom: 1px solid var(--color-border-tertiary); }
+.admin-ui .policy-outcome-summary > div { display: flex; gap: 12px; align-items: baseline; font-size: 13px; color: var(--color-text-secondary); }
+.admin-ui .policy-outcome-summary strong { color: var(--color-text-primary); font-size: 20px; font-variant-numeric: tabular-nums; }
+.admin-ui .policy-outcome-summary p { flex-basis: 100%; margin: 0; font-size: 12px; line-height: 1.7; color: var(--color-text-secondary); }
+.admin-console-root.admin-ui .sim-preview-topbar,
+.admin-console-root.admin-ui .sim-preview-footer,
+.admin-console-root.admin-ui .sim-runtime-footer { background: var(--color-background-secondary); border-color: var(--color-border-tertiary); padding: 16px 20px; height: auto; min-height: 60px; gap: 16px; }
+.admin-ui .sim-preview-topbar-left { color: var(--color-text-primary); font-size: 14px; line-height: 1.5; }
+.admin-ui .sim-preview-window-dots { display: none; }
+.admin-ui .sim-preview-body { background: var(--color-background-secondary); }
+.admin-console-root.admin-ui .sim-preview-sidebar,
+.admin-console-root.admin-ui .sim-runtime-steps { background: var(--color-background-tertiary); padding: 20px 14px; border-color: var(--color-border-tertiary); align-content: start; }
+.admin-ui .sim-preview-sidebar { gap: 6px; }
+.admin-ui .sim-preview-step, .admin-ui .sim-runtime-step { padding: 12px 10px; gap: 12px; border: 1px solid transparent; background: transparent; border-radius: 8px; }
+.admin-console-root.admin-ui .sim-preview-step.active,
+.admin-console-root.admin-ui .sim-runtime-step.active { background: var(--color-background-info); border-color: var(--color-border-secondary); }
+.admin-ui .sim-preview-step:hover, .admin-ui .sim-runtime-step:hover { background: var(--color-background-primary); }
+.admin-console-root.admin-ui .sim-preview-step .sim-preview-step-label,
+.admin-ui .sim-runtime-step-title { color: var(--color-text-primary); font: 500 14px/1.5 var(--font-sans); }
+.admin-console-root.admin-ui .sim-preview-step .sim-preview-step-sub,
+.admin-ui .sim-runtime-step-sub { color: var(--color-text-secondary); font: 12px/1.6 var(--font-sans); white-space: normal; }
+.admin-console-root.admin-ui .sim-preview-step-num,
+.admin-ui .sim-runtime-step-num,
+.admin-ui .sim-runtime-current-num { width: 24px; height: 24px; color: var(--color-text-secondary); background: var(--color-background-secondary); border: 1px solid var(--color-border-secondary); font: 600 12px var(--font-sans); }
+.admin-console-root.admin-ui .sim-preview-step.active .sim-preview-step-num { background: var(--color-text-info); color: var(--color-background-secondary); border-color: transparent; }
+.admin-ui .sim-preview-main-content { padding: 24px; }
+.admin-ui .sim-preview-title { color: var(--color-text-primary); font-size: 21px; line-height: 1.4; letter-spacing: -.02em; }
+.admin-ui .sim-preview-desc { color: var(--color-text-secondary); font-size: 14px; line-height: 1.8; margin: 12px 0 24px; }
+.admin-console-root.admin-ui .sim-preview-scenario-box,
+.admin-console-root.admin-ui .sim-preview-info-card { background: var(--color-background-primary); border: 0; border-radius: 8px; padding: 16px; box-shadow: none; }
+.admin-ui .sim-preview-scenario-label, .admin-ui .sim-preview-info-card-label { color: var(--color-text-secondary); font: 500 12px var(--font-sans); letter-spacing: 0; text-transform: none; margin-bottom: 10px; }
+.admin-ui .sim-preview-scenario-box pre { color: var(--color-text-primary); font-size: 13px; line-height: 1.7; overflow-x: auto; }
+.admin-ui .sim-preview-info-card-value { color: var(--color-text-primary); font-size: 14px; line-height: 1.7; }
+.admin-console-root.admin-ui .sim-preview-right { background: var(--color-background-tertiary); border-color: var(--color-border-tertiary); padding: 20px; }
+.admin-ui .sim-preview-sim-title { color: var(--color-text-primary); font: 600 14px var(--font-sans); }
+.admin-ui .sim-preview-env-label { color: var(--color-text-secondary); font: 12px var(--font-sans); }
+.admin-ui .sim-preview-footer-nav { color: var(--color-text-secondary); font: 12px var(--font-sans); }
+.admin-ui .sim-runtime-body { background: var(--color-background-secondary); grid-template-columns: minmax(240px, 28%) minmax(0, 1fr); }
+.admin-ui .sim-runtime-canvas { padding: 24px; gap: 20px; background: var(--color-background-secondary); min-width: 0; }
+.admin-ui .sim-runtime-steps h3, .admin-ui .sim-runtime-canvas h3 { color: var(--color-text-secondary); font: 600 13px var(--font-sans); letter-spacing: 0; text-transform: none; margin-bottom: 16px; }
+.admin-ui .sim-runtime-step-list { gap: 6px; }
+.admin-console-root.admin-ui .sim-runtime-current { background: transparent; border: 0; border-bottom: 1px solid var(--color-border-tertiary); padding: 0 0 20px; border-radius: 0; }
+.admin-ui .sim-runtime-current-label { color: var(--color-text-secondary); font: 12px var(--font-sans); letter-spacing: 0; text-transform: none; margin-bottom: 10px; }
+.admin-ui .sim-runtime-current-title { color: var(--color-text-primary); font: 600 18px/1.5 var(--font-sans); letter-spacing: -.015em; text-transform: none; }
+.admin-ui .sim-runtime-current-text { color: var(--color-text-primary); font-size: 14px; line-height: 1.75; }
+.admin-ui .sim-runtime-current-subtext { color: var(--color-text-secondary); font-size: 13px; margin-top: 8px; }
+.admin-ui .sim-runtime-status-pill { background: var(--color-background-primary); color: var(--color-text-secondary); border-color: var(--color-border-tertiary); font: 12px var(--font-sans); text-transform: none; letter-spacing: 0; }
+.admin-ui .sim-runtime-terminal { border-radius: 8px; box-shadow: none; border-color: #35453e; }
+.admin-ui .sim-preview-terminal-head { background: #1d2925; color: #c2d1c8; padding: 10px 14px; letter-spacing: 0; text-transform: none; }
+.admin-console-root.admin-ui .sim-preview-approve,
+.admin-console-root.admin-ui .sim-runtime-start-btn { background: #285c43; color: #fff; border-color: #285c43; }
+.admin-ui .sim-preview-progress-fill, .admin-ui .sim-preview-step-dot.active { background: var(--color-text-info); }
+@media (max-width: 900px) {
+  .admin-ui .sim-runtime-body { grid-template-columns: minmax(200px, 32%) minmax(0, 1fr); }
+  .admin-ui .sim-runtime-canvas { padding: 18px; }
+}
+@media (max-width: 640px) {
+  .admin-ui .sim-runtime-body { display: flex; flex-direction: column; overflow-y: auto; }
+  .admin-ui .sim-runtime-steps { max-height: 230px; flex-shrink: 0; overflow-y: auto; }
+  .admin-ui .sim-runtime-canvas { overflow: visible; flex-shrink: 0; }
+  .admin-ui .sim-preview-topbar, .admin-ui .sim-preview-footer, .admin-ui .sim-runtime-footer { flex-wrap: wrap; }
+  .admin-ui .sim-preview-main-content { padding: 18px; }
+}
+.admin-ui .admin-tab-intro { margin-bottom: 26px; }
+.admin-ui .admin-tab-intro h1 { margin: 0 0 8px; color: var(--color-text-primary); font: 600 25px/1.35 var(--font-sans); letter-spacing: -.025em; }
+.admin-ui .admin-tab-intro p { margin: 0; color: var(--color-text-secondary); font-size: 14px; line-height: 1.7; max-width: 72ch; }
+.admin-ui .metrics-grid { gap: 16px; margin-bottom: 24px; }
+.admin-ui .overview-grid { gap: 20px; margin-bottom: 20px; }
+.admin-ui .overview-chart-shell { margin-top: 12px; }
+.admin-ui .topmods-legend { gap: 8px; margin-top: 20px; }
+.admin-ui .topmods-legend-item { padding: 10px 0; border-bottom: 1px solid var(--color-border-tertiary); background: none; border-radius: 0; }
+.admin-ui .topmods-legend-item strong { font-size: 13px; font-weight: 500; line-height: 1.5; }
+.admin-ui .activity-text { font-size: 13px; line-height: 1.65; }
+.admin-ui .status-row { padding: 14px 0; font-size: 13px; }
+.admin-ui .pagination { padding-top: 18px; gap: 12px; flex-wrap: wrap; }
+.admin-ui .action-row { gap: 8px; flex-wrap: wrap; }
+.admin-ui .policy-kpi-grid { gap: 16px; margin-bottom: 24px; }
+.admin-ui .policy-kpi-card { padding: 18px 20px; }
+.admin-ui .policy-kpi-card span { font: 500 12px/1.5 var(--font-sans); color: var(--color-text-secondary); text-transform: none; letter-spacing: 0; }
+.admin-ui .policy-kpi-card strong { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.admin-ui .policy-workspace-tabs, .admin-ui .sim-view-tabs { margin-bottom: 20px; gap: 8px; overflow-x: auto; }
+.admin-ui .policy-workspace-tab, .admin-ui .sim-view-tabs button { padding: 12px 16px; min-height: 42px; white-space: nowrap; }
+.admin-ui .policy-workspace { gap: 20px; }
+.admin-ui .policy-decisions { padding: 20px; }
+.admin-ui .policy-workspace-head { margin-bottom: 18px; gap: 12px; flex-wrap: wrap; }
+.admin-ui .policy-workspace-title { font-size: 16px; font-weight: 600; }
+.admin-ui .policy-filter-grid { gap: 12px; margin-bottom: 20px; grid-template-columns: minmax(180px, 2fr) repeat(3, minmax(110px, 1fr)) auto; }
+.admin-ui .policy-rule-editor { padding: 22px; gap: 16px; }
+.admin-ui .policy-rule-editor-head h4 { font-size: 16px; }
+.admin-ui .policy-rule-editor-head p { font-size: 13px; line-height: 1.7; margin-top: 8px; }
+.admin-ui .policy-rule-nav { padding: 16px 12px; background: var(--color-background-primary); gap: 6px; }
+.admin-ui .policy-rule-nav-label { font: 500 12px var(--font-sans); letter-spacing: 0; text-transform: none; }
+.admin-ui .policy-rule-nav-item { min-height: 42px; padding: 10px; font-size: 13px; }
+.admin-ui .policy-messages-pane { padding: 20px; gap: 20px; }
+.admin-ui .policy-messages-head h4 { font-size: 16px; }
+.admin-ui .policy-messages-head p { font-size: 13px; line-height: 1.7; }
+.admin-ui .policy-sticky-actions { padding: 16px 20px; gap: 12px; background: var(--color-background-secondary); border-color: var(--color-border-tertiary); box-shadow: none; }
+.admin-ui .policy-entry-edit-save, .admin-ui .policy-confirm-submit.is-add { background: #285c43; color: #fff; border-color: #285c43; }
+.admin-ui .sim-layout { gap: 20px; }
+.admin-ui .sim-summary-bar { margin-bottom: 22px; gap: 12px; }
+.admin-ui .sim-summary-bar > div { padding: 16px 20px; background: var(--color-background-secondary); border: 1px solid var(--color-border-tertiary); border-radius: 10px; }
+.admin-ui .sim-summary-bar span { font-size: 12px; color: var(--color-text-secondary); }
+.admin-ui .sim-workspace { padding: 22px; border-color: var(--color-border-tertiary); background: var(--color-background-secondary); box-shadow: none; }
+.admin-ui .sim-workspace-head { gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
+.admin-ui .sim-toolbar-title { font-size: 16px; font-weight: 600; }
+.admin-ui .sim-module-filters { gap: 12px; }
+.admin-ui .sim-module-filters select { min-height: 40px; padding: 8px 12px; }
+.admin-ui .sim-grid { gap: 16px; }
+.admin-ui .sim-card { background: var(--color-background-secondary); border: 1px solid var(--color-border-tertiary); border-radius: 10px; padding: 20px; box-shadow: none; }
+.admin-ui .sim-title { font-size: 15px; line-height: 1.55; font-weight: 600; }
+.admin-ui .sim-cat { font-size: 12px; color: var(--color-text-secondary); letter-spacing: 0; text-transform: none; margin-top: 6px; }
+.admin-ui .sim-stats { gap: 16px; padding: 16px 0; }
+.admin-ui .sim-actions { gap: 10px; flex-wrap: wrap; padding-top: 14px; }
+.admin-ui .sim-suggestion-list { gap: 10px; }
+.admin-ui .sim-suggestion-row { background: var(--color-background-secondary); border-color: var(--color-border-tertiary); border-radius: 8px; }
+.admin-ui .sim-suggestion-row summary { padding: 16px; }
+.admin-ui .sim-suggestion-main strong { font-size: 14px; font-weight: 500; line-height: 1.5; white-space: normal; }
+.admin-ui .sim-suggestion-main span, .admin-ui .sim-suggestion-count span { font-size: 12px; line-height: 1.5; }
+.admin-ui .sim-suggestion-details { padding: 16px; gap: 14px; }
+.admin-ui .sim-prompt-card { padding: 16px; border-radius: 8px; background: var(--color-background-primary); box-shadow: none; }
+.admin-ui .sim-prompt-text { font-size: 13px; line-height: 1.75; }
+.admin-ui .sim-prompt-meta { margin-top: 12px; gap: 10px; }
+@media (max-width: 1100px) {
+  .admin-ui .policy-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-ui .policy-filter-grid > :first-child { grid-column: 1 / -1; }
+}
+@media (max-width: 700px) {
+  .admin-ui .admin-tab-intro h1 { font-size: 22px; }
+  .admin-ui .admin-tab-intro { margin-bottom: 20px; }
+  .admin-ui .policy-filter-grid { grid-template-columns: minmax(0, 1fr); }
+  .admin-ui .policy-decisions, .admin-ui .sim-workspace, .admin-ui .policy-rule-editor { padding: 16px; }
+  .admin-ui .sim-summary-bar > div { padding: 12px; }
+  .admin-ui .sim-card { padding: 16px; }
+}
+.admin-console-root.admin-ui .sidebar .profile-menu { --color-background-secondary: #182724; --color-background-primary: #20322e; --color-text-primary: #eef3ef; --color-text-secondary: #bdcec4; --color-border-tertiary: #354b43; --color-border-secondary: #4c655b; --color-text-info: #b0d5bc; background: var(--color-background-secondary); border: 0; border-radius: 12px; padding: 8px; gap: 2px; max-height: calc(100dvh - 110px); overflow-y: auto; box-shadow: 0 10px 32px rgb(0 0 0 / 22%); }
+.admin-console-root.admin-ui.theme-light .sidebar .profile-menu { --color-background-secondary: #fff; --color-background-primary: #f0f3ed; --color-text-primary: #22362e; --color-text-secondary: #4f6256; --color-border-tertiary: #dde4da; --color-border-secondary: #b5c2b6; --color-text-info: #285c43; }
+.admin-ui .profile-menu-identity { padding: 10px 10px 14px; margin-bottom: 6px; border-bottom: 1px solid var(--color-border-tertiary); }
+.admin-ui .profile-menu-identity strong { display: block; color: var(--color-text-primary); font-size: 13px; font-weight: 600; }
+.admin-ui .profile-menu-identity span { display: block; margin-top: 4px; color: var(--color-text-secondary); font-size: 12px; overflow-wrap: anywhere; }
+.admin-ui .profile-menu-row { padding: 8px 10px; min-height: 44px; color: var(--color-text-primary); font-size: 13px; }
+.admin-ui .profile-theme-switch { min-width: 44px; min-height: 36px; padding: 4px; justify-content: center; }
+.admin-ui .profile-theme-state { display: none; }
+.admin-ui .profile-theme-track { width: 34px; height: 20px; border: 0; padding: 2px; background: var(--color-border-secondary); }
+.admin-ui .profile-theme-thumb { width: 16px; height: 16px; background: #fff; }
+.admin-ui .profile-theme-switch.is-on .profile-theme-track { background: var(--color-text-info); }
+.admin-ui .profile-theme-switch.is-on .profile-theme-thumb { background: #fff; }
+.admin-console-root.admin-ui .profile-menu .profile-account-btn,
+.admin-console-root.admin-ui .profile-menu .profile-logout-btn { display: flex; align-items: center; justify-content: flex-start; gap: 10px; min-height: 44px; width: 100%; margin: 0; padding: 10px; border: 0; border-radius: 6px; background: none; color: var(--color-text-primary); font: 500 13px var(--font-sans); text-align: left; }
+.admin-ui .profile-menu button svg { width: 17px; height: 17px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.admin-console-root.admin-ui .profile-menu .profile-logout-btn { border-top: 1px solid var(--color-border-tertiary); border-radius: 0 0 6px 6px; margin-top: 6px; padding-top: 14px; color: #fca5a5; }
+.admin-console-root.admin-ui.theme-light .profile-menu .profile-logout-btn { color: #b42318; }
+.admin-console-root.admin-ui .profile-menu .profile-account-btn:hover,
+.admin-console-root.admin-ui .profile-menu .profile-logout-btn:hover { background: var(--color-background-primary); }
+.admin-ui .profile-menu button:focus-visible { outline-color: var(--color-text-info); }
+.admin-ui .admin-account-settings-modal .account-modal-head { padding: 24px; }
+.admin-ui .admin-account-details { margin: 0 24px; padding: 14px; background: var(--color-background-primary); border: 0; border-radius: 10px; gap: 12px; }
+.admin-ui .admin-account-details strong { font-size: 14px; }
+.admin-ui .admin-account-details span { font-size: 12px; line-height: 1.5; margin-top: 4px; }
+.admin-ui .admin-account-settings-body { padding: 24px; gap: 16px; }
+.admin-ui .admin-account-settings-body h4 { font-size: 16px; }
+.admin-ui .admin-account-password-note { margin: -6px 0 0; font-size: 12px; line-height: 1.7; }
+.admin-ui .admin-account-password-fields { gap: 18px; }
+.admin-console-root.admin-ui .admin-account-password-fields input { min-height: 46px; padding: 12px 44px 12px 12px; }
+.admin-ui .admin-account-settings-actions { padding-top: 8px; gap: 10px; }
+.admin-console-root.admin-ui .admin-account-settings-actions .btn-sm { min-height: 42px; }
+.admin-console-root.admin-ui {
+  --color-background-primary: #20322e;
+  --color-background-secondary: #182724;
+  --color-background-tertiary: #111c1b;
+  --color-background-info: #294c3a;
+  --color-border-secondary: #4c655b;
+  --color-border-tertiary: #354b43;
+  --color-border-info: #7cae8e;
+  --color-text-primary: #eef3ef;
+  --color-text-secondary: #bdcec4;
+  --color-text-tertiary: #a0b6aa;
+  --color-text-info: #b0d5bc;
+  padding: 0;
+  background: var(--color-background-tertiary);
+  scrollbar-color: var(--color-border-secondary) var(--color-background-tertiary);
+}
+.admin-console-root.admin-ui.theme-light {
+  --color-background-primary: #f0f3ed;
+  --color-background-secondary: #fff;
+  --color-background-tertiary: #f8f9f6;
+  --color-background-info: #e5efe5;
+  --color-border-secondary: #b5c2b6;
+  --color-border-tertiary: #dde4da;
+  --color-border-info: #387452;
+  --color-text-primary: #22362e;
+  --color-text-secondary: #4f6256;
+  --color-text-tertiary: #5e7063;
+  --color-text-info: #285c43;
+  background: var(--color-background-tertiary);
+}
+.admin-ui ::selection { background: #d5e7ce; color: #183d3b; }
+.admin-ui button:focus-visible, .admin-ui a:focus-visible { outline: 2px solid var(--color-text-info); outline-offset: 3px; }
+.admin-console-root.admin-ui .shell { height: 100dvh; border: 0; border-radius: 0; box-shadow: none; background: var(--color-background-tertiary); }
+.admin-console-root.admin-ui .sidebar {
+  --color-background-primary: #234b47;
+  --color-background-secondary: #183d3b;
+  --color-border-tertiary: #345b55;
+  --color-border-secondary: #52766b;
+  --color-text-primary: #f1f5ef;
+  --color-text-secondary: #d0ded3;
+  --color-text-tertiary: #b1c8bb;
+  --color-text-info: #d3e8c9;
+  background: #183d3b;
+  border: 0;
+}
+.admin-ui .sidebar-header { padding: 20px 18px; }
+.admin-ui .admin-brand-text { font-size: 18px; letter-spacing: -.02em; }
+.admin-ui .admin-brand-text span { font: 12px var(--font-sans); text-transform: none; letter-spacing: 0; }
+.admin-ui .nav-section { padding: 20px 20px 8px; font: 12px var(--font-sans); letter-spacing: 0; text-transform: none; }
+.admin-console-root.admin-ui .nav-item { margin: 2px 12px; width: calc(100% - 24px); min-height: 44px; padding: 12px; border: 0; border-radius: 8px; color: #d0ded3; background: transparent; gap: 12px; }
+.admin-console-root.admin-ui .nav-item:hover,
+.admin-console-root.admin-ui .nav-item.active { background: #2c5750; color: #fff; border: 0; }
+.admin-ui .sidebar-footer { padding: 16px; }
+.admin-ui .sidebar .avatar { background: #d5e7ce; color: #183d3b; border: 0; }
+.admin-console-root.admin-ui .admin-topbar { background: var(--color-background-tertiary); border-bottom: 1px solid var(--color-border-tertiary); box-shadow: none; padding: 18px 28px; }
+.admin-ui .admin-topbar-title { font-size: 18px; font-weight: 600; letter-spacing: -.02em; text-transform: none; }
+.admin-ui .online-pill { background: transparent; border: 0; color: var(--color-text-secondary); }
+.admin-ui .online-dot { box-shadow: none; }
+.admin-ui .content { padding: 28px; }
+.admin-console-root.admin-ui .panel,
+.admin-console-root.admin-ui .metric-card,
+.admin-console-root.admin-ui .policy-kpi-card { background: var(--color-background-secondary); border: 1px solid var(--color-border-tertiary); border-radius: 12px; box-shadow: none; }
+.admin-ui .panel { padding: 22px; }
+.admin-ui .panel-title { font: 600 15px/1.5 var(--font-sans); letter-spacing: 0; text-transform: none; margin-bottom: 20px; }
+.admin-ui .panel-title span { font-size: 12px; color: var(--color-text-secondary); }
+.admin-ui .metric-card { padding: 20px; }
+.admin-ui .metric-label { font: 500 12px/1.5 var(--font-sans); letter-spacing: 0; text-transform: none; color: var(--color-text-secondary); }
+.admin-ui .metric-val { font-size: 30px; font-weight: 600; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
+.admin-ui .metric-sub, .admin-ui .metric-delta { font-size: 12px; line-height: 1.6; }
+.admin-ui .toolbar { gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+.admin-console-root.admin-ui input,
+.admin-console-root.admin-ui select,
+.admin-console-root.admin-ui textarea { background: var(--color-background-secondary); color: var(--color-text-primary); border: 1px solid var(--color-border-secondary); border-radius: 8px; font-family: var(--font-sans); font-size: 14px; min-height: 40px; box-shadow: none; }
+.admin-ui input::placeholder, .admin-ui textarea::placeholder { color: var(--color-text-tertiary); }
+.admin-console-root.admin-ui input:focus,
+.admin-console-root.admin-ui select:focus,
+.admin-console-root.admin-ui textarea:focus { outline: 2px solid var(--color-border-info); outline-offset: 2px; box-shadow: none; }
+.admin-console-root.admin-ui .search-box { background: var(--color-background-secondary); border: 1px solid var(--color-border-secondary); border-radius: 8px; height: 40px; min-width: 0; padding: 0; }
+.admin-console-root.admin-ui .search-box input { border: 0; border-radius: inherit; background: transparent; height: 100%; min-height: 0; min-width: 0; padding: 10px 14px; }
+.admin-console-root.admin-ui .search-box:focus-within { outline: 2px solid var(--color-border-info); outline-offset: 2px; }
+.admin-console-root.admin-ui .search-box input:focus { outline: none; box-shadow: none; }
+.admin-console-root.admin-ui .btn-sm,
+.admin-console-root.admin-ui .filter-btn,
+.admin-ui .pagination-btn { min-height: 36px; padding: 8px 12px; border: 1px solid var(--color-border-secondary); border-radius: 7px; background: var(--color-background-secondary); color: var(--color-text-primary); font: 500 12px var(--font-sans); box-shadow: none; }
+.admin-console-root.admin-ui .create-user-btn,
+.admin-console-root.admin-ui .pagination-btn.active { background: #285c43; border-color: #285c43; color: #fff; }
+.admin-ui .btn-sm:hover:not(:disabled), .admin-ui .filter-btn:hover { filter: brightness(.97); }
+.admin-console-root.admin-ui .btn-danger { background: var(--color-background-danger); color: var(--color-text-danger); border-color: var(--color-border-danger); }
+.admin-ui button:disabled { opacity: .5; cursor: not-allowed; }
+.admin-console-root.admin-ui .table { background: var(--color-background-secondary); border-color: var(--color-border-tertiary); }
+.admin-ui .table th { background: var(--color-background-primary); color: var(--color-text-secondary); font: 600 12px/1.5 var(--font-sans); text-transform: none; letter-spacing: 0; padding: 14px 16px; }
+.admin-ui .table td { padding: 16px; color: var(--color-text-primary); font-size: 13px; line-height: 1.6; border-color: var(--color-border-tertiary); }
+.admin-ui .table tbody tr:hover { background: var(--color-background-primary); }
+.admin-ui .badge { font: 500 11px/1.5 var(--font-sans); letter-spacing: 0; padding: 4px 8px; }
+.admin-console-root.admin-ui .badge-admin,
+.admin-console-root.admin-ui .badge-user { background: var(--color-background-info); color: var(--color-text-info); border-color: var(--color-border-tertiary); }
+.admin-ui .activity-item { padding-block: 14px; }
+.admin-ui .activity-time, .admin-ui .pagination, .admin-ui .user-meta { font: 12px/1.6 var(--font-sans); color: var(--color-text-secondary); }
+.admin-console-root.admin-ui .admin-modal { background: var(--color-background-secondary); color: var(--color-text-primary); border: 0; border-radius: 14px; box-shadow: 0 18px 50px rgb(0 0 0 / 20%); }
+.admin-ui .admin-modal-overlay { backdrop-filter: none; background: rgb(10 25 20 / 50%); }
+.admin-ui .account-modal-head { border-color: var(--color-border-tertiary); }
+.admin-ui .account-modal-head h3 { color: var(--color-text-primary); font-size: 20px; letter-spacing: -.02em; }
+.admin-ui .account-modal-icon { color: var(--color-text-info); background: var(--color-background-info); }
+.admin-ui .admin-field { gap: 8px; }
+.admin-ui .admin-field > span { color: var(--color-text-secondary); font-size: 12px; }
+.admin-ui .profile-menu { background: var(--color-background-secondary); border-color: var(--color-border-secondary); border-radius: 10px; padding: 8px; }
+.admin-ui .profile-account-btn, .admin-ui .profile-logout-btn { min-height: 40px; border: 0; background: transparent; padding: 10px; }
+.admin-ui .sim-view-tabs button,
+.admin-ui .policy-workspace-tab { font: 500 13px var(--font-sans); letter-spacing: 0; }
+.admin-console-root.admin-ui .sim-view-tabs button.active,
+.admin-console-root.admin-ui .policy-workspace-tab.active { background: var(--color-background-info); color: var(--color-text-info); border-color: var(--color-border-info); }
+@media (max-width: 900px) {
+  .admin-ui .content { padding: 18px; }
+  .admin-console-root.admin-ui .admin-topbar { padding: 16px 18px; }
+  .admin-ui .panel { padding: 16px; }
+}
+@media (max-width: 600px) {
+  .admin-ui .content { padding: 12px; }
+  .admin-console-root.admin-ui .nav-item { margin: 2px 4px; width: calc(100% - 8px); padding: 10px; }
+  .admin-ui .table th, .admin-ui .table td { padding: 12px; }
+  .admin-ui .toolbar > * { max-width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-ui *, .admin-ui *::before, .admin-ui *::after { animation: none; transition: none; scroll-behavior: auto; }
+}

@@ -315,7 +315,7 @@ async function chat(req, res, next) {
     const safeReply = filtered
       ? "I cannot provide that response. I can help with a safe IT support question instead."
       : reply;
-    const responseCode = outputSafety ? "OUTPUT_SAFETY_FILTERED" : !outputInScope ? "OUTPUT_SCOPE_FILTERED" : policyResult.code || "ALLOWED";
+    const responseCode = outputSafety?.code === "SAFETY_UNAVAILABLE" ? "OUTPUT_CHECK_UNAVAILABLE" : outputSafety ? "OUTPUT_SAFETY_FILTERED" : !outputInScope ? "OUTPUT_SCOPE_FILTERED" : policyResult.code || "ALLOWED";
     const responseReason = filtered ? "AI response did not pass safety and scope checks." : policyResult.reason || "Allowed request.";
 
     operation = "record-policy-event";

@@ -1,0 +1,76 @@
+/* Shared public entry and required password setup. */
+.auth-entry { font-family: "DM Sans", Arial, sans-serif; color-scheme: light; }
+.auth-entry ::selection { background: #d5e7ce; color: #183d3b; }
+.login-shell.auth-entry { background: #f8f9f6; padding: 32px; min-height: 100dvh; }
+.auth-entry .login-grid { width: min(1060px, 100%); min-height: 620px; height: auto; grid-template-columns: 1fr 1fr; background: #fff; border: 1px solid #dde4da; border-radius: 16px; box-shadow: none; }
+.auth-entry .login-brand { background: #183d3b; color: #f1f5ef; padding: 44px; border: 0; display: flex; flex-direction: column; justify-content: flex-start; }
+.auth-entry .login-logo { margin-bottom: 90px; gap: 12px; }
+.auth-entry .login-logo-mark { width: 44px; height: 44px; }
+.auth-entry .login-logo h2 { color: #f1f5ef; font-size: 18px; letter-spacing: -.02em; }
+.auth-entry .login-logo p { color: #b1c8bb; font-size: 12px; }
+.auth-entry .login-brand h1 { color: #f1f5ef; font-size: clamp(30px, 3vw, 42px); line-height: 1.15; letter-spacing: -.03em; margin: 0 0 20px; max-width: 340px; }
+.auth-entry .login-brand-sub { color: #d0ded3; font-size: 15px; line-height: 1.8; max-width: 360px; margin: 0; }
+.auth-entry .login-brand-note { margin: auto 0 0; padding-top: 44px; color: #b1c8bb; font-size: 13px; line-height: 1.8; }
+.auth-entry .login-card { width: 100%; min-height: 0; border: 0; border-radius: 0; box-shadow: none; padding: 48px; background: #fff; margin: auto; }
+.auth-entry .login-form-heading { display: block; margin-bottom: 30px; }
+.auth-entry .login-lock-icon { display: none; }
+.auth-entry .login-form-heading h3 { font-size: 28px; font-weight: 600; letter-spacing: -.025em; color: #22362e; margin: 0 0 10px; }
+.auth-entry .login-form-heading p { color: #4f6256; font-size: 14px; line-height: 1.65; margin: 0; }
+.auth-entry .login-card .field { margin-bottom: 20px; }
+.auth-entry .login-card .field label { color: #22362e; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.auth-entry .login-card .field input { font: 14px "DM Sans", Arial, sans-serif; color: #22362e; background: #fff; border: 1px solid #b5c2b6; border-radius: 8px; min-height: 48px; padding: 12px 14px; box-shadow: none; }
+.auth-entry .login-card .password-wrap input { padding-right: 48px; }
+.auth-entry .login-card .field input::placeholder { color: #5e7063; }
+.auth-entry .login-card .field input:focus { outline: 2px solid #387452; outline-offset: 2px; border-color: #387452; }
+.auth-entry .password-wrap input { padding-right: 48px; }
+.auth-entry input::placeholder { color: #5e7063; }
+.auth-entry input:focus { outline: 2px solid #387452; outline-offset: 2px; border-color: #387452; box-shadow: none; }
+.auth-entry button:focus-visible { outline: 2px solid #387452; outline-offset: 3px; }
+.auth-entry .login-eye-btn { color: #4f6256; background: none; }
+.auth-entry .login-forgot { color: #285c43; font-size: 13px; }
+.auth-entry .login-row { margin: 0 0 24px; }
+.auth-entry .login-submit { min-height: 48px; background: #285c43; color: #fff; box-shadow: none; border-radius: 8px; font: 600 14px "DM Sans", sans-serif; }
+.auth-entry .login-submit:hover:not(:disabled) { background: #183d3b; transform: none; }
+.auth-entry .login-submit:disabled { background: #e6ece3; color: #5e7063; opacity: 1; }
+.auth-entry .login-card .login-footer { font-size: 12px; line-height: 1.6; color: #4f6256; margin-top: 24px; padding: 0; border: 0; background: none; }
+.auth-entry .password-help-modal { background: #fff; color: #22362e; border: 0; border-radius: 14px; }
+.auth-entry .password-help-confirm { background: #285c43; color: #fff; }
+.auth-entry .password-help-icon { background: #e5efe5; color: #285c43; }
+.password-setup-page.auth-entry { background: #f8f9f6; color: #22362e; padding: 32px 20px; }
+.auth-entry .password-setup-container { max-width: 480px; }
+.auth-entry .password-setup-brand { justify-content: flex-start; margin-bottom: 24px; padding-left: 4px; }
+.auth-entry .password-setup-brand strong { color: #22362e; font-size: 18px; letter-spacing: -.02em; }
+.auth-entry .password-setup-brand span { color: #4f6256; }
+.auth-entry .password-setup-card { border: 1px solid #dde4da; box-shadow: none; border-radius: 14px; padding: 32px; }
+.auth-entry .password-setup-icon { background: #e5efe5; color: #285c43; width: 40px; height: 40px; border-radius: 10px; }
+.auth-entry .password-setup-card h1 { color: #22362e; font-size: 28px; letter-spacing: -.025em; margin: 0 0 12px; }
+.auth-entry .password-setup-intro,
+.auth-entry .password-setup-field small,
+.auth-entry .password-setup-note,
+.auth-entry .password-setup-footer { color: #4f6256; }
+.auth-entry .password-setup-field label { color: #22362e; font-weight: 600; }
+.auth-entry .password-setup-input input { color: #22362e; border-color: #b5c2b6; }
+.auth-entry .password-setup-toggle { color: #4f6256; }
+.auth-entry .password-setup-requirements { grid-template-columns: 1fr; gap: 8px; color: #4f6256; font-size: 12px; }
+.auth-entry .password-setup-requirements svg { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.auth-entry .password-setup-requirements .is-met { color: #285c43; }
+.auth-entry .password-setup-submit { background: #285c43; }
+.auth-entry .password-setup-submit:hover:not(:disabled) { background: #183d3b; }
+.auth-entry .password-setup-submit:disabled { background: #e6ece3; color: #5e7063; }
+.auth-entry .password-setup-field .password-setup-mismatch { color: #b42318; }
+@media (max-width: 760px) {
+  .login-shell.auth-entry { padding: 20px; }
+  .auth-entry .login-grid { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+  .auth-entry .login-brand { padding: 24px; }
+  .auth-entry .login-logo { margin-bottom: 24px; }
+  .auth-entry .login-brand h1 { font-size: 28px; max-width: none; margin-bottom: 12px; }
+  .auth-entry .login-brand-sub { max-width: none; font-size: 14px; }
+  .auth-entry .login-brand-note { display: none; }
+  .auth-entry .login-card { padding: 28px 24px; }
+  .auth-entry .login-card input, .auth-entry .password-setup-input input { font-size: 16px; }
+}
+@media (max-width: 420px) {
+  .login-shell.auth-entry { padding: 12px; }
+  .password-setup-page.auth-entry { padding: 24px 14px; }
+  .auth-entry .password-setup-card { padding: 24px 20px; }
+}

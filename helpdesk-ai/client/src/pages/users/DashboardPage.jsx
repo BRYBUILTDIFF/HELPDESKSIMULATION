@@ -9,6 +9,7 @@ import SimulationWalkthrough from "./Modules/SimulationWalkthrough";
 import helpdeskLogo from "../../IMG/HELPDESKAI.png";
 import { simulations } from "./helpdeskData";
 import "./dashboard.css";
+import "./workspace.css";
 
 const CHAT_CHARACTER_LIMIT = 4000;
 
@@ -1412,8 +1413,10 @@ export default function DashboardPage() {
   const isSimulationSession = Boolean(currentSession?.isSimulationSession);
   const messages = currentSession?.messages || [];
   const showWelcome = messages.length === 0;
-  const topbarSessionTitle = currentSession?.title || (showSimulationCatalog ? "Simulation Tickets" : "New Chat");
-  const chatSessions = useMemo(() => sessions.filter((session) => !session.isSimulationSession), [sessions]);
+  const topbarSessionTitle = currentSession?.title || (showSimulationCatalog ? "Practice simulations" : "New Chat");
+  const chatSessions = useMemo(() => sessions.filter((session) =>
+    !session.isSimulationSession && session.messages.length > 0
+  ), [sessions]);
   const simulationSessions = useMemo(() => sessions.filter((session) => session.isSimulationSession), [sessions]);
   const searchActive = sidebarSearch.trim().length > 0;
   const simulationDefinitions = useMemo(() => {
@@ -2427,12 +2430,11 @@ export default function DashboardPage() {
     if (blockNavigationDuringWindowsLab()) return;
     setActiveWindowsOsModule(null);
     loadedWorkspaceSessionRef.current = "";
-    const freshSession = createSession();
     setShowSimulationCatalog(false);
     setPendingSimulationCreation(false);
     setOpenSessionMenuId(null);
-    setSessions((currentSessions) => [freshSession, ...currentSessions]);
-    setActiveSessionId(freshSession.id);
+    // A blank chat is a draft. ensureSession creates it when a message is sent.
+    setActiveSessionId("");
     setInput("");
     setTyping(false);
     setStepModalOpen(false);
@@ -2517,7 +2519,6 @@ export default function DashboardPage() {
   }
 
   const deleteSession = async (sessionId) => {
-    if (activeWindowsOsModule?.sessionId === sessionId && blockNavigationDuringWindowsLab()) return;
     setOpenSessionMenuId(null);
     const isDeletingWindowsWorkspace = activeWindowsOsModule?.sessionId === sessionId;
 
@@ -3348,18 +3349,17 @@ export default function DashboardPage() {
       <>
         {renderAsProcess ? (
           <div className="response-shell">
-            <div className="response-card">
+            <div className="response-card guided-checklist">
             <div className="step-header">
-              <small>Step {activeStepNum} of {totalSteps}</small>
               <h2>{parsed.intro || "Follow these troubleshooting steps"}</h2>
             </div>
 
             <div className="progress-wrap">
               <div className="progress-info">
-                <span>{completedCount === stepItems.length && stepItems.length > 0 ? "Completed" : "In progress"}</span>
-                <span>{progressPct}%</span>
+                <span>{completedCount === stepItems.length && stepItems.length > 0 ? "All steps complete" : `Step ${activeStepNum} of ${totalSteps}`}</span>
+                <span>{completedCount} of {stepItems.length} completed</span>
               </div>
-              <div className="progress-track">
+              <div className="progress-track" role="progressbar" aria-label="Troubleshooting progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPct}>
                 <div
                   className="progress-fill"
                   style={{
@@ -3382,9 +3382,7 @@ export default function DashboardPage() {
                       <div className={`check-number ${completion[idx] ? "is-complete" : ""}`}>{idx + 1}</div>
                       <div>
                         <h3>{step.title}</h3>
-                        <p style={{ whiteSpace: "pre-wrap" }}>
-                          {hasDesc ? step.content : "Follow this step and confirm the result."}
-                        </p>
+                        {hasDesc ? <p style={{ whiteSpace: "pre-wrap" }}>{step.content}</p> : null}
                       </div>
                     </div>
                     <button
@@ -3392,11 +3390,13 @@ export default function DashboardPage() {
                       type="button"
                       onClick={() => toggleStepCompletion(msg.id, idx, stepItems.length)}
                       aria-label={`Mark step ${idx + 1} as ${completion[idx] ? "incomplete" : "complete"}`}
+                      aria-pressed={completion[idx]}
                       title={completion[idx] ? "Completed" : "Mark complete"}
                     >
                       <svg viewBox="0 0 24 24" aria-hidden="true">
                         {completion[idx] ? <path d="M5 13l4 4L19 7" /> : null}
                       </svg>
+                      <span>{completion[idx] ? "Completed" : "Mark complete"}</span>
                     </button>
                   </li>
                 );
@@ -3541,7 +3541,7 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className={`helpdesk-root ${theme === "light" ? "theme-light" : ""}`}>
+    <div className={`helpdesk-root workspace-ui ${theme === "light" ? "theme-light" : ""}`}>
       {sessionSyncError && <div role="alert" className="session-sync-alert">{sessionSyncError} <button type="button" onClick={() => sessionsHydrated ? setSyncRetry(value => value + 1) : window.location.reload()}>Retry</button></div>}
       <dialog
         ref={labNavigationDialogRef}
@@ -3551,7 +3551,7 @@ export default function DashboardPage() {
         onCancel={() => setLabNavigationNoticeOpen(false)}
         onClose={() => setLabNavigationNoticeOpen(false)}
       >
-        <div className="lab-navigation-icon" aria-hidden="true">!</div>
+        <div className="lab-navigation-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8m-4-4v4m0-13v3m0 3h.01" /></svg></div>
         <h2 id="lab-navigation-title">Your Windows lab is still open</h2>
         <p id="lab-navigation-description">Choose <strong>End Simulation</strong> or <strong>Complete Simulation</strong> in the lab before opening another chat or simulation.</p>
         <button type="button" className="lab-navigation-return" onClick={() => setLabNavigationNoticeOpen(false)}>Back to lab</button>
@@ -3713,9 +3713,9 @@ export default function DashboardPage() {
           >
             <div className="account-settings-modal-head">
               <div>
-                <p className="account-settings-eyebrow">Settings</p>
+
                 <h2 id="account-settings-title">Account settings</h2>
-                <p>Review your account and update your password.</p>
+                <p>Manage your account, password, chat data, and sessions.</p>
               </div>
               <button type="button" className="account-settings-close hd-btn-reset" onClick={closeAccountSettings} aria-label="Close account settings">
                 ×
@@ -3806,6 +3806,33 @@ export default function DashboardPage() {
                 </button>
               </div>
             </form>
+            <section className="account-data-settings" aria-labelledby="account-data-title">
+              <h3 id="account-data-title">Data and sessions</h3>
+              <p>Manage your saved chat data and sign out on all devices.</p>
+                <button type="button" className="account-data-action hd-btn-reset" onClick={async () => {
+                  if (!window.confirm("Delete your saved chats and prompt history? This cannot be undone.")) return;
+                  deletingChatDataRef.current = true;
+                  try {
+                    if (sessionsSaveTimerRef.current) window.clearTimeout(sessionsSaveTimerRef.current);
+                    await sessionSyncQueueRef.current.catch(() => {});
+                    await api.delete("/api/sessions");
+                    savedSessionsRef.current.clear(); setSessions([]); setActiveSessionId(""); setSessionSyncError("");
+                  } catch (_) { setSessionSyncError("Could not delete your chat data. Please retry."); }
+                  finally { deletingChatDataRef.current = false; }
+                }}>
+                  <span className="account-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" /></svg></span>
+                  <span className="account-action-copy"><strong>Delete my chat data</strong><span>Permanently remove your saved chats and prompt history.</span></span>
+                  <span className="account-action-label">Delete data</span>
+                </button>
+                <button type="button" className="account-data-action hd-btn-reset" onClick={async () => {
+                  try { await api.post("/api/auth/logout-all"); await logout(); }
+                  catch (_) { setSessionSyncError("Could not sign out all sessions. Please retry."); }
+                }}>
+                  <span className="account-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 17v3H4V4h6v3M8 12h13m-4-4 4 4-4 4" /></svg></span>
+                  <span className="account-action-copy"><strong>Sign out everywhere</strong><span>End your sessions on all devices, including this one.</span></span>
+                  <span className="account-action-label">Sign out</span>
+                </button>
+            </section>
           </section>
         </div>
       ) : null}
@@ -3822,7 +3849,7 @@ export default function DashboardPage() {
             <div className="sidebar-logo">
               <div className="sidebar-logo-icon"><img src={helpdeskLogo} alt="HelpDesk AI" /></div>
               <div className="sidebar-logo-text">
-                Helpdesk <span>Simulation</span>
+                HelpDesk <span>AI</span>
               </div>
             </div>
             <button
@@ -3947,7 +3974,7 @@ export default function DashboardPage() {
 
           <div className="hd-sidebar-footer" ref={accountMenuRef}>
             <div className="sidebar-footer-row">
-              <button className="avatar-menu-btn hd-btn-reset" onClick={toggleAccountMenu}>
+              <button className="avatar-menu-btn hd-btn-reset" onClick={toggleAccountMenu} aria-expanded={accountMenuOpen} aria-controls="user-account-popover">
                 <div className="avatar-dot">{(user?.firstName || "U").slice(0, 1).toUpperCase()}</div>
                 <div className="avatar-labels">
                   <div className="avatar-name">{user?.firstName || "User"} {user?.lastName || ""}</div>
@@ -3956,7 +3983,7 @@ export default function DashboardPage() {
               </button>
               <button
                 className="sidebar-settings-btn hd-btn-reset"
-                onClick={toggleAccountMenu}
+                onClick={openAccountSettings}
                 aria-label="Account settings"
                 title="Account settings"
               >
@@ -3967,11 +3994,11 @@ export default function DashboardPage() {
               </button>
             </div>
             {accountMenuOpen ? (
-              <div className="avatar-popover">
+              <div id="user-account-popover" className="avatar-popover" role="region" aria-label="Your account">
                 <div className="avatar-popover-name">{user?.firstName || ""} {user?.lastName || ""}</div>
                 <div className="avatar-popover-email">{user?.email || ""}</div>
                 <div className="avatar-theme-row">
-                  <span className="avatar-theme-label">Dark Mode</span>
+                  <span className="avatar-theme-label">Dark mode</span>
                   <button
                     className={`avatar-theme-switch hd-btn-reset ${theme === "dark" ? "is-on" : ""}`}
                     onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
@@ -3985,23 +4012,9 @@ export default function DashboardPage() {
                   </button>
                 </div>
                 <button className="avatar-popover-btn hd-btn-reset" onClick={openAccountSettings}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M5 21v-2a7 7 0 0 1 14 0v2" /></svg>
                   Account settings
                 </button>
-                <button className="avatar-popover-btn danger hd-btn-reset" onClick={async () => {
-                  if (!window.confirm("Delete your saved chats and prompt history? This cannot be undone.")) return;
-                  deletingChatDataRef.current = true;
-                  try {
-                    if (sessionsSaveTimerRef.current) window.clearTimeout(sessionsSaveTimerRef.current);
-                    await sessionSyncQueueRef.current.catch(() => {});
-                    await api.delete("/api/sessions");
-                    savedSessionsRef.current.clear(); setSessions([]); setActiveSessionId(""); setSessionSyncError("");
-                  } catch (_) { setSessionSyncError("Could not delete your chat data. Please retry."); }
-                  finally { deletingChatDataRef.current = false; }
-                }}>Delete my chat data</button>
-                <button className="avatar-popover-btn danger hd-btn-reset" onClick={async () => {
-                  try { await api.post("/api/auth/logout-all"); await logout(); }
-                  catch (_) { setSessionSyncError("Could not sign out all sessions. Please retry."); }
-                }}>Sign out everywhere</button>
                 <button className="avatar-popover-btn danger hd-btn-reset" onClick={async () => {
                   const ids = new Set(sessions.map(session => session.windowsOsSimulation?.simulationSessionId).filter(Boolean));
                   if (activeWindowsOsModule?.simulationSessionId) ids.add(activeWindowsOsModule.simulationSessionId);
@@ -4012,7 +4025,8 @@ export default function DashboardPage() {
                   }
                   await logout();
                 }}>
-                  Logout
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17v3H4V4h6v3M9 12h12m-4-4 4 4-4 4" /></svg>
+                  Log out
                 </button>
               </div>
             ) : null}
@@ -4086,11 +4100,11 @@ export default function DashboardPage() {
                 {showSimulationCatalog ? (
                   <div className="messages messages-welcome">
                     <div className="welcome">
-                      <h1>Simulation Tickets</h1>
-                      <p>Select an admin-published module below to launch guided simulation.</p>
-                      <div className="welcome-related-label">Related Tickets and Common Problems</div>
+                      <h1>Practice simulations</h1>
+                      <p>Choose a scenario and work through it step by step.</p>
+                      <div className="welcome-related-label">Available scenarios</div>
                       {simulationSuggestions.length === 0 ? (
-                        <div className="muted-cell">No simulation modules published by Admin yet.</div>
+                        <div className="muted-cell">No simulations are available yet. Check back later.</div>
                       ) : (
                         <div className="quick-grid">
                           {simulationSuggestions.map((q) => (
@@ -4245,11 +4259,11 @@ export default function DashboardPage() {
             <div className={`messages ${showWelcome || showSimulationCatalog ? "messages-welcome" : ""}`}>
               {showSimulationCatalog ? (
                 <div className="welcome">
-                  <h1>Simulation Tickets</h1>
-                  <p>Select an admin-published module below to launch guided simulation.</p>
-                  <div className="welcome-related-label">Related Tickets and Common Problems</div>
+                  <h1>Practice simulations</h1>
+                  <p>Choose a scenario and work through it step by step.</p>
+                  <div className="welcome-related-label">Available scenarios</div>
                   {simulationSuggestions.length === 0 ? (
-                    <div className="muted-cell">No simulation modules published by Admin yet.</div>
+                    <div className="muted-cell">No simulations are available yet. Check back later.</div>
                   ) : (
                     <div className="quick-grid">
                       {simulationSuggestions.map((q) => (
@@ -4268,8 +4282,8 @@ export default function DashboardPage() {
 
               {!showSimulationCatalog && showWelcome ? (
                 <div className="welcome">
-                  <h1>Hello, {user?.firstName || "there"}.</h1>
-                  <p>What IT issue can I help you troubleshoot today?</p>
+                  <h1>Describe your IT problem.</h1>
+                  <p>Tell us what happened and what you have already tried.</p>
                   <div className="welcome-composer">
                     <div className="welcome-input-box composer-shell">
                       <textarea
@@ -4288,7 +4302,7 @@ export default function DashboardPage() {
                           }
                         }}
                         rows={1}
-                        placeholder="Do not paste passwords or API keys. Ask about password reset, VPN, printer, internet, BSOD..."
+                        aria-label="Describe your IT problem" placeholder="For example, my laptop connects to Wi-Fi but websites will not load."
                       />
                       <button
                         className="send-btn hd-btn-reset"
@@ -4296,11 +4310,11 @@ export default function DashboardPage() {
                         disabled={typing || !input.trim()}
                         aria-label="Send message"
                       >
-                        ↑
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6" /></svg>
                       </button>
                     </div>
                     <div className="composer-meta">
-                      <span className="composer-limit-label">Message length</span>
+                      <span className="composer-limit-label">Keep passwords and API keys out of chat.</span>
                       <span
                         id="welcome-chat-character-count"
                         className={`composer-character-count ${input.length >= CHAT_CHARACTER_LIMIT * 0.9 ? "is-near-limit" : ""}`}
@@ -4311,10 +4325,10 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   {!input.trim() && aiSuggestedTicketsLoading ? (
-                    <div className="welcome-autocomplete-empty">Preparing AI help desk suggestions...</div>
+                    <div className="welcome-autocomplete-empty">Loading common issues...</div>
                   ) : !input.trim() && displayedRelatedTicketSuggestions.length > 0 ? (
                     <>
-                      <div className="welcome-related-label">AI Suggested Help Desk Issues</div>
+                      <div className="welcome-related-label">Or start with a common issue</div>
                       <div className="quick-grid">
                         {displayedRelatedTicketSuggestions.map((q) => (
                           <button key={q.title} className="quick-card hd-btn-reset" onClick={() => sendMessage(pickSuggestionQuestion(q))}>
@@ -4350,7 +4364,7 @@ export default function DashboardPage() {
                       <div className="ai-content">
                         <div className="ai-label">
                           <span aria-hidden="true" />
-                          Helpdesk Simulation Response
+                          HelpDesk AI
                         </div>
                         <div className="msg-meta">{msg.time}</div>
                         {renderMessageBody(msg, idx)}
@@ -4403,8 +4417,8 @@ export default function DashboardPage() {
                     disabled={typing || !input.trim()}
                     aria-label="Send message"
                   >
-                    ↑
-                  </button>
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6" /></svg>
+                      </button>
                 </div>
                 <div className="composer-meta">
                   <span className="input-hint">Press Enter to send. Shift+Enter for newline.</span>

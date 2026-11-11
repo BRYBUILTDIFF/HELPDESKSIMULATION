@@ -1,0 +1,399 @@
+/* User workspace: clear wayfinding. Loaded after the existing feature styles. */
+.helpdesk-root.workspace-ui .lab-navigation-dialog { width: min(420px, calc(100vw - 32px)); padding: 28px; border: 0; border-radius: 14px; background: var(--bg2); color: var(--text); text-align: left; box-shadow: 0 20px 60px rgb(0 0 0 / 22%); }
+.helpdesk-root.workspace-ui .lab-navigation-dialog::backdrop { background: rgb(10 25 20 / 48%); backdrop-filter: none; }
+.helpdesk-root.workspace-ui .lab-navigation-icon { margin: 0 0 20px; width: 44px; height: 44px; border-radius: 10px; background: var(--cyan-dim); color: var(--cyan); }
+.helpdesk-root.workspace-ui .lab-navigation-icon svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.helpdesk-root.workspace-ui .lab-navigation-dialog h2 { margin: 0 0 12px; color: var(--text); font-size: 21px; font-weight: 600; line-height: 1.4; letter-spacing: -.02em; }
+.helpdesk-root.workspace-ui .lab-navigation-dialog p { color: var(--text2); font-size: 14px; line-height: 1.75; margin: 0 0 24px; }
+.helpdesk-root.workspace-ui .lab-navigation-return { min-height: 44px; padding: 12px 16px; border-radius: 8px; background: var(--cyan); color: var(--bg2); font-size: 14px; font-weight: 600; }
+.helpdesk-root.workspace-ui .lab-navigation-return:hover { background: var(--cyan2); }
+.helpdesk-root.workspace-ui .lab-navigation-return:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+.helpdesk-root.workspace-ui .windows-os-shell { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; box-shadow: none; }
+.helpdesk-root.workspace-ui .windows-os-header { background: var(--bg2); padding: 18px 20px; gap: 20px; border-color: var(--border); }
+.helpdesk-root.workspace-ui .windows-os-header h2 { color: var(--text); font-size: 16px; line-height: 1.5; margin: 0; }
+.helpdesk-root.workspace-ui .windows-os-lab-label { display: block; color: var(--text2); font-size: 12px; margin-top: 4px; }
+.helpdesk-root.workspace-ui .windows-os-controls { color: var(--text2); gap: 10px; flex-wrap: wrap; }
+.helpdesk-root.workspace-ui .windows-os-controls .btn-sm { border-style: solid; border-width: 1px; }
+.helpdesk-root.workspace-ui .windows-os-controls .btn-sm,
+.helpdesk-root.workspace-ui .windows-os-footer .btn-sm,
+.helpdesk-root.workspace-ui .windows-os-error-actions .btn-sm { min-height: 40px; padding: 10px 14px; border-radius: 8px; font: 600 12px/1.5 var(--sans); box-shadow: none; }
+.helpdesk-root.workspace-ui .windows-os-complete-btn,
+.helpdesk-root.workspace-ui .windows-os-nav-btn.is-next { background: var(--cyan) !important; color: var(--bg2) !important; border-color: transparent !important; }
+.helpdesk-root.workspace-ui .windows-os-end-btn { background: transparent !important; border-color: var(--border2) !important; color: var(--red) !important; }
+.helpdesk-root.workspace-ui .windows-os-controls .btn-sm:disabled,
+.helpdesk-root.workspace-ui .windows-os-footer .btn-sm:disabled { background: var(--bg3) !important; color: var(--text3) !important; border-color: var(--border) !important; opacity: .7; cursor: not-allowed; }
+.helpdesk-root.workspace-ui .windows-os-status { background: var(--bg2); color: var(--text2); padding: 40px 24px; gap: 16px; }
+.helpdesk-root.workspace-ui .windows-os-status h3 { max-width: 480px; color: var(--text); font-size: 23px; font-weight: 600; letter-spacing: -.02em; line-height: 1.35; }
+.helpdesk-root.workspace-ui .windows-os-status p { max-width: 460px; color: var(--text2); font-size: 14px; line-height: 1.8; }
+.helpdesk-root.workspace-ui .windows-os-state-icon { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 12px; background: var(--bg3); color: var(--text2); margin-bottom: 6px; }
+.helpdesk-root.workspace-ui .windows-os-state-icon svg { width: 27px; height: 27px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.helpdesk-root.workspace-ui .windows-os-error-details { width: min(460px, 100%); padding: 12px 16px; background: var(--bg3); border-radius: 8px; text-align: left; font-size: 12px; }
+.helpdesk-root.workspace-ui .windows-os-error-details summary { cursor: pointer; color: var(--text2); padding: 4px 0; }
+.helpdesk-root.workspace-ui .windows-os-error-details p { font-size: 12px; margin: 10px 0 0; overflow-wrap: anywhere; }
+.helpdesk-root.workspace-ui .windows-os-error-actions { flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 8px; }
+.helpdesk-root.workspace-ui .windows-os-error-actions .btn-sm { background: var(--bg2); border: 1px solid var(--border2); color: var(--text); }
+.helpdesk-root.workspace-ui .windows-os-error-actions .btn-sm:first-child { background: var(--cyan); color: var(--bg2); border-color: transparent; }
+.helpdesk-root.workspace-ui .windows-os-spinner { border-color: var(--border); border-top-color: var(--cyan2); }
+.helpdesk-root.workspace-ui .windows-os-workspace { grid-template-columns: minmax(240px, 28%) minmax(0, 1fr); background: var(--bg2); }
+.helpdesk-root.workspace-ui .windows-os-guide { background: var(--bg); border-color: var(--border); padding: 22px 16px; }
+.helpdesk-root.workspace-ui .windows-os-guide-heading,
+.helpdesk-root.workspace-ui .windows-os-guide-heading span { color: var(--text2); font: 600 13px/1.5 var(--sans); text-transform: none; letter-spacing: 0; }
+.helpdesk-root.workspace-ui .windows-os-step-list { gap: 6px; }
+.helpdesk-root.workspace-ui .windows-os-step { background: transparent; border: 1px solid transparent; color: var(--text2); padding: 12px 10px; gap: 10px; border-radius: 8px; }
+.helpdesk-root.workspace-ui .windows-os-step:hover { background: var(--bg3); border-color: var(--border); }
+.helpdesk-root.workspace-ui .windows-os-step.is-active { background: var(--cyan-dim); border-color: var(--border2); color: var(--text); }
+.helpdesk-root.workspace-ui .windows-os-step.is-complete { background: var(--bg3); border-color: var(--border); }
+.helpdesk-root.workspace-ui .windows-os-step strong { font-size: 14px; line-height: 1.55; font-weight: 500; }
+.helpdesk-root.workspace-ui .windows-os-step small { color: var(--text2); font-size: 12px; line-height: 1.6; }
+.helpdesk-root.workspace-ui .windows-os-step-number { color: var(--text2); background: var(--bg2); border-color: var(--border2); font: 600 12px var(--sans); }
+.helpdesk-root.workspace-ui .windows-os-step.is-active .windows-os-step-number { background: var(--cyan); color: var(--bg2); border-color: transparent; }
+.helpdesk-root.workspace-ui .windows-os-help-card { background: none; border: 0; border-top: 1px solid var(--border); border-radius: 0; color: var(--text2); padding: 16px 0 0; margin-top: 24px; font-size: 12px; line-height: 1.7; }
+.helpdesk-root.workspace-ui .windows-os-help-card strong { color: var(--text); }
+.helpdesk-root.workspace-ui .windows-os-desktop { background: var(--bg2); gap: 18px; padding: 20px; }
+.helpdesk-root.workspace-ui .windows-os-instruction { border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; padding: 0 0 20px; }
+.helpdesk-root.workspace-ui .windows-os-instruction > span { display: none; }
+.helpdesk-root.workspace-ui .windows-os-instruction h3 { color: var(--text); font-size: 18px; line-height: 1.5; margin: 0 0 10px; }
+.helpdesk-root.workspace-ui .windows-os-instruction p { color: var(--text2); font-size: 14px; line-height: 1.7; max-width: 74ch; }
+.helpdesk-root.workspace-ui .windows-os-mark-step { position: static; display: inline-flex; margin-top: 14px; background: var(--cyan); color: var(--bg2); border: 0; border-radius: 7px; }
+.helpdesk-root.workspace-ui .windows-os-mark-step:disabled { background: var(--bg3); color: var(--text3); }
+.helpdesk-root.workspace-ui .windows-os-frame { border-radius: 8px; min-height: 300px; }
+.helpdesk-root.workspace-ui .windows-os-footer { background: var(--bg2); border-color: var(--border); padding: 14px 20px; }
+.helpdesk-root.workspace-ui .windows-os-footer-progress { color: var(--text2); font: 12px var(--sans); }
+.helpdesk-root.workspace-ui .windows-os-progress-line i.active,
+.helpdesk-root.workspace-ui .windows-os-progress-line i.done,
+.helpdesk-root.workspace-ui .windows-os-progress-line i.active::after,
+.helpdesk-root.workspace-ui .windows-os-progress-line i.done::after { background: var(--cyan2); box-shadow: none; }
+@media (max-width: 900px) {
+  .helpdesk-root.workspace-ui .windows-os-workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(160px, 28%) minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .helpdesk-root.workspace-ui .windows-os-header { flex-wrap: wrap; padding: 16px; }
+  .helpdesk-root.workspace-ui .windows-os-controls { width: 100%; }
+  .helpdesk-root.workspace-ui .windows-os-status h3 { font-size: 20px; }
+  .helpdesk-root.workspace-ui .windows-os-desktop { padding: 12px; }
+  .helpdesk-root.workspace-ui .windows-os-footer { padding: 12px; gap: 10px; }
+}
+.helpdesk-root.workspace-ui .hd-sidebar-footer .avatar-popover {
+  --text: #eef3ef;
+  --text2: #bdcec4;
+  --text3: #a0b6aa;
+  --bg2: #182724;
+  --bg3: #20322e;
+  --border: #354b43;
+  --border2: #4c655b;
+  --cyan: #b0d5bc;
+  left: 12px;
+  right: 12px;
+  bottom: calc(100% + 8px);
+  padding: 8px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--bg2);
+  box-shadow: 0 10px 32px rgb(0 0 0 / 22%);
+  max-height: calc(100dvh - 110px);
+  overflow-y: auto;
+}
+.helpdesk-root.workspace-ui.theme-light .hd-sidebar-footer .avatar-popover {
+  --text: #22362e;
+  --text2: #4f6256;
+  --text3: #5e7063;
+  --bg2: #fff;
+  --bg3: #f0f3ed;
+  --border: #dde4da;
+  --border2: #b5c2b6;
+  --cyan: #285c43;
+}
+.helpdesk-root.workspace-ui .avatar-popover-name { padding: 10px 10px 0; color: var(--text); font-size: 13px; font-weight: 600; }
+.helpdesk-root.workspace-ui .avatar-popover-email { padding: 0 10px 14px; margin: 3px 0 6px; border-bottom: 1px solid var(--border); color: var(--text2); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; word-break: normal; }
+.helpdesk-root.workspace-ui .avatar-theme-row { margin: 0; padding: 8px 10px; min-height: 44px; border: 0; border-radius: 6px; background: none; }
+.helpdesk-root.workspace-ui .avatar-theme-label { color: var(--text); font-size: 13px; }
+.helpdesk-root.workspace-ui .avatar-theme-switch { border: 0; background: transparent; min-width: 44px; min-height: 36px; padding: 4px; justify-content: center; }
+.helpdesk-root.workspace-ui .avatar-theme-track { width: 34px; height: 20px; background: var(--border2); }
+.helpdesk-root.workspace-ui .avatar-theme-thumb { width: 16px; height: 16px; }
+.helpdesk-root.workspace-ui .avatar-theme-switch.is-on .avatar-theme-track { background: var(--cyan); }
+.helpdesk-root.workspace-ui .avatar-theme-switch.is-on .avatar-theme-thumb { transform: translateX(16px); }
+.helpdesk-root.workspace-ui .avatar-theme-state { display: none; }
+.helpdesk-root.workspace-ui .avatar-popover-btn { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 10px; margin: 2px 0 0; border: 0; border-radius: 6px; background: transparent; color: var(--text); font-size: 13px; }
+.helpdesk-root.workspace-ui .avatar-popover-btn:hover { background: var(--bg3); color: var(--text); }
+.helpdesk-root.workspace-ui .avatar-popover-btn svg { width: 17px; height: 17px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.helpdesk-root.workspace-ui .avatar-popover-btn.danger { border-top: 1px solid var(--border); border-radius: 0 0 6px 6px; margin-top: 6px; padding-top: 14px; color: #fca5a5; }
+.helpdesk-root.workspace-ui.theme-light .avatar-popover-btn.danger { color: #b42318; }
+.helpdesk-root.workspace-ui .hd-sidebar-footer { position: relative; }
+.helpdesk-root.workspace-ui .guided-checklist .step-header { margin-bottom: 20px; }
+.helpdesk-root.workspace-ui .guided-checklist .step-header h2 { margin: 0; color: var(--text); font-size: 20px; font-weight: 600; line-height: 1.45; letter-spacing: -.02em; }
+.helpdesk-root.workspace-ui .guided-checklist .progress-wrap { margin: 0 0 20px; }
+.helpdesk-root.workspace-ui .guided-checklist .progress-info { font-size: 12px; color: var(--text2); margin-bottom: 10px; gap: 12px; flex-wrap: wrap; }
+.helpdesk-root.workspace-ui .guided-checklist .progress-track { height: 4px; background: var(--bg4); }
+.helpdesk-root.workspace-ui .guided-checklist .progress-fill { background: var(--cyan2); }
+.helpdesk-root.workspace-ui .guided-checklist .check-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.helpdesk-root.workspace-ui .guided-checklist .check-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 16px; margin: 0; padding: 18px 16px; border: 1px solid var(--border); border-radius: 10px; background: transparent; box-shadow: none; animation: none; }
+.helpdesk-root.workspace-ui .guided-checklist .check-item.is-active { background: var(--cyan-dim); border-color: var(--border2); }
+.helpdesk-root.workspace-ui .guided-checklist .check-item.is-complete { background: var(--bg3); border-color: var(--border); }
+.helpdesk-root.workspace-ui .guided-checklist .check-item-main { gap: 12px; }
+.helpdesk-root.workspace-ui .guided-checklist .check-item-main > div:last-child { min-width: 0; }
+.helpdesk-root.workspace-ui .guided-checklist .check-number { width: 26px; height: 26px; margin-top: 1px; font: 600 12px/1 var(--sans); color: var(--text2); background: var(--bg2); border: 1px solid var(--border2); }
+.helpdesk-root.workspace-ui .guided-checklist .is-active .check-number { background: var(--cyan); color: var(--bg2); border-color: transparent; }
+.helpdesk-root.workspace-ui .guided-checklist .check-item h3 { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.65; }
+.helpdesk-root.workspace-ui .guided-checklist .check-item p { margin: 8px 0 0; font-size: 13px; line-height: 1.75; color: var(--text2); overflow-wrap: anywhere; }
+.helpdesk-root.workspace-ui .guided-checklist .check-toggle-btn { display: inline-flex; gap: 6px; width: auto; min-width: 116px; min-height: 36px; height: auto; padding: 8px 10px; border: 1px solid var(--border2); border-radius: 7px; background: var(--bg2); color: var(--text); font: 500 11px/1.5 var(--sans); box-shadow: none; animation: none; }
+.helpdesk-root.workspace-ui .guided-checklist .check-toggle-btn svg:empty { display: none; }
+.helpdesk-root.workspace-ui .guided-checklist .check-toggle-btn:hover { background: var(--bg4); filter: none; }
+.helpdesk-root.workspace-ui .guided-checklist .check-toggle-btn.is-complete { color: var(--text2); background: transparent; }
+@media (max-width: 640px) {
+  .helpdesk-root.workspace-ui .guided-checklist .check-item { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 16px 12px; }
+  .helpdesk-root.workspace-ui .guided-checklist .check-toggle-btn { justify-self: start; margin-left: 38px; min-height: 40px; }
+  .helpdesk-root.workspace-ui .guided-checklist .step-header h2 { font-size: 18px; }
+}
+.helpdesk-root.workspace-ui .hd-sidebar:not(.collapsed) .sidebar-group-header { margin-bottom: 10px; }
+.helpdesk-root.workspace-ui .hd-sidebar:not(.collapsed) .sidebar-create-card { flex-shrink: 0; margin-bottom: 10px; }
+.helpdesk-root.workspace-ui .hd-sidebar:not(.collapsed) .sidebar-group-list { gap: 4px; padding: 2px 0 8px; scroll-padding-block: 4px; }
+.helpdesk-root.workspace-ui .hd-sidebar:not(.collapsed) .sidebar-session-row { margin-left: 0; height: 52px; min-height: 52px; flex-shrink: 0; }
+.helpdesk-root.workspace-ui .sidebar-session-btn { padding: 8px 32px 8px 12px; gap: 10px; }
+.helpdesk-root.workspace-ui .sidebar-session-icon { width: 20px; min-width: 20px; height: 20px; }
+.helpdesk-root.workspace-ui .sidebar-session-icon svg { width: 17px; height: 17px; }
+.helpdesk-root.workspace-ui .sidebar-session-title { font-size: 13px; font-weight: 500; line-height: 1.4; }
+.helpdesk-root.workspace-ui .sidebar-session-row.active .sidebar-session-title { font-weight: 600; }
+.helpdesk-root.workspace-ui .sidebar-session-time { margin-top: 2px; font-size: 11px; line-height: 1.3; }
+.helpdesk-root.workspace-ui .check-item { background: transparent; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; padding: 18px 0; }
+.helpdesk-root.workspace-ui .check-item.is-active { background: var(--cyan-dim); box-shadow: none; animation: none; padding: 18px 12px; border-radius: 8px; }
+.helpdesk-root.workspace-ui .check-item p { color: var(--text2); font-size: 14px; line-height: 1.7; }
+.helpdesk-root.workspace-ui .check-number { color: var(--text); background: var(--bg3); border-color: var(--border2); }
+.helpdesk-root.workspace-ui .check-item h3 { font: 600 15px/1.5 var(--sans); margin: 0 0 6px; }
+.helpdesk-root.workspace-ui .messages:not(.messages-welcome) { width: min(880px, 100%); padding: 28px 24px 20px; gap: 32px; }
+.helpdesk-root.workspace-ui .input-inner { width: min(880px, 100%); }
+.helpdesk-root.workspace-ui .user-bubble { background: var(--bg4); color: var(--text); box-shadow: none; border-radius: 14px; padding: 14px 18px; font-size: 15px; line-height: 1.7; }
+.helpdesk-root.workspace-ui .user-bubble-wrap { width: fit-content; max-width: 82%; }
+.helpdesk-root.workspace-ui .ai-content { min-width: 0; max-width: 74ch; }
+.helpdesk-root.workspace-ui .ai-block { gap: 14px; animation: none; }
+.helpdesk-root.workspace-ui .message-row { animation: none; }
+.helpdesk-root.workspace-ui .message-meta,
+.helpdesk-root.workspace-ui .msg-meta { color: var(--text3); font: 11px/1.5 var(--sans); letter-spacing: 0; }
+.helpdesk-root.workspace-ui .msg-meta { margin: 4px 0 14px; }
+.helpdesk-root.workspace-ui .response-card,
+.helpdesk-root.workspace-ui .msg-bubble { background: transparent; color: var(--text); border: 0; border-radius: 0; padding: 0; box-shadow: none; backdrop-filter: none; font-size: 15px; line-height: 1.8; overflow-wrap: anywhere; }
+.helpdesk-root.workspace-ui .response-card p,
+.helpdesk-root.workspace-ui .msg-bubble p { margin: 0 0 16px; }
+.helpdesk-root.workspace-ui .response-card h3,
+.helpdesk-root.workspace-ui .msg-bubble h3 { font-size: 17px; line-height: 1.4; margin: 24px 0 10px; }
+.helpdesk-root.workspace-ui .response-card ul,
+.helpdesk-root.workspace-ui .response-card ol { padding-left: 24px; margin: 12px 0 20px; }
+.helpdesk-root.workspace-ui .response-card li { padding-left: 4px; margin: 8px 0; }
+.helpdesk-root.workspace-ui .response-actions { opacity: 1; pointer-events: auto; transform: none; margin-top: 14px; }
+.helpdesk-root.workspace-ui .response-card pre { max-width: 100%; overflow-x: auto; padding: 16px; background: var(--bg3); border-radius: 8px; font-size: 13px; line-height: 1.65; }
+.helpdesk-root.workspace-ui .simulation-inline-shell { padding: 16px; }
+.helpdesk-root.workspace-ui .step-modal.step-inline { border: 1px solid var(--border); border-radius: 12px; background: var(--bg2); box-shadow: none; backdrop-filter: none; }
+.helpdesk-root.workspace-ui .step-modal-header,
+.helpdesk-root.workspace-ui .step-modal-footer { background: var(--bg2); border-color: var(--border); padding: 14px 20px; gap: 16px; }
+.helpdesk-root.workspace-ui .step-modal-title { color: var(--text); font: 600 15px/1.5 var(--sans); letter-spacing: 0; overflow-wrap: anywhere; }
+.helpdesk-root.workspace-ui .step-modal-body { grid-template-columns: minmax(240px, 28%) minmax(0, 1fr); background: var(--bg2); }
+.helpdesk-root.workspace-ui .step-modal-left { padding: 24px 16px; background: var(--bg); border-color: var(--border); gap: 12px; }
+.helpdesk-root.workspace-ui .step-modal-right { padding: 24px; gap: 20px; background: var(--bg2); min-width: 0; }
+.helpdesk-root.workspace-ui .step-modal-left h3,
+.helpdesk-root.workspace-ui .step-modal-right h3 { font: 600 13px/1.5 var(--sans); letter-spacing: 0; text-transform: none; color: var(--text2); margin: 0 0 8px; }
+.helpdesk-root.workspace-ui .step-modal-list { gap: 4px; }
+.helpdesk-root.workspace-ui .step-modal-item { padding: 12px 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text2); gap: 12px; }
+.helpdesk-root.workspace-ui .step-modal-item:hover { background: var(--bg3); border-color: var(--border); }
+.helpdesk-root.workspace-ui .step-modal-item.active { background: var(--cyan-dim); border-color: var(--border2); color: var(--text); }
+.helpdesk-root.workspace-ui .step-modal-item.completed { background: var(--bg3); color: var(--text); border-color: transparent; }
+.helpdesk-root.workspace-ui .step-modal-item-num,
+.helpdesk-root.workspace-ui .step-modal-current-num { width: 24px; min-width: 24px; height: 24px; background: var(--bg2); color: var(--text2); border: 1px solid var(--border2); box-shadow: none; font: 600 12px var(--sans); }
+.helpdesk-root.workspace-ui .step-modal-item.active .step-modal-item-num { background: var(--cyan); color: var(--bg2); border-color: transparent; box-shadow: none; }
+.helpdesk-root.workspace-ui .step-modal-item.completed .step-modal-item-num { background: var(--cyan-dim); color: var(--text); }
+.helpdesk-root.workspace-ui .step-modal-item-title { font-size: 14px; font-weight: 500; line-height: 1.55; }
+.helpdesk-root.workspace-ui .step-modal-item-subtext,
+.helpdesk-root.workspace-ui .step-modal-item.active .step-modal-item-subtext,
+.helpdesk-root.workspace-ui .step-modal-item.completed .step-modal-item-subtext { font-size: 12px; line-height: 1.6; color: var(--text2); margin-top: 4px; }
+.helpdesk-root.workspace-ui .step-modal-current { padding: 0 0 20px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: none; }
+.helpdesk-root.workspace-ui .step-modal-current-label { color: var(--text3); font: 12px var(--sans); letter-spacing: 0; text-transform: none; margin-bottom: 10px; }
+.helpdesk-root.workspace-ui .step-modal-current-title { font: 600 18px/1.45 var(--sans); color: var(--text); letter-spacing: -.015em; text-transform: none; }
+.helpdesk-root.workspace-ui .step-modal-current-text { font-size: 14px; line-height: 1.75; color: var(--text); max-width: 74ch; }
+.helpdesk-root.workspace-ui .step-modal-current-subtext { color: var(--text2); font-size: 13px; }
+.helpdesk-root.workspace-ui .step-modal-canvas { background: transparent; border: 0; border-radius: 0; padding: 0; min-width: 0; }
+.helpdesk-root.workspace-ui .step-modal-canvas-title { font: 500 12px var(--sans); color: var(--text2); letter-spacing: 0; text-transform: none; margin-bottom: 10px; }
+.helpdesk-root.workspace-ui .terminal-shell { min-height: 300px; border-radius: 8px; box-shadow: none; border: 1px solid #35453e; overflow: hidden; }
+.helpdesk-root.workspace-ui .terminal-header { background: #1d2925; color: #c2d1c8; text-transform: none; letter-spacing: 0; padding: 10px 14px; }
+.helpdesk-root.workspace-ui .terminal-simulation-nav,
+.helpdesk-root.workspace-ui .terminal-simulation-complete { background: var(--cyan); border-color: transparent; color: var(--bg2); box-shadow: none; min-height: 38px; font: 600 12px var(--sans); }
+.helpdesk-root.workspace-ui .terminal-simulation-nav:disabled,
+.helpdesk-root.workspace-ui .terminal-simulation-complete:disabled { background: var(--bg3); color: var(--text3); opacity: .7; }
+.helpdesk-root.workspace-ui .terminal-simulation-end { background: transparent; border-color: var(--border2); color: var(--red); min-height: 38px; }
+.helpdesk-root.workspace-ui .step-modal-progress-fill { background: var(--cyan2); }
+.helpdesk-root.workspace-ui .step-result-card { background: var(--bg3); border: 0; padding: 16px; gap: 10px; color: var(--text); }
+@media (max-width: 1000px) {
+  .helpdesk-root.workspace-ui .step-modal-body { grid-template-columns: minmax(210px, 32%) minmax(0, 1fr); }
+  .helpdesk-root.workspace-ui .step-modal-right { padding: 18px; }
+}
+@media (max-width: 700px) {
+  .helpdesk-root.workspace-ui .messages:not(.messages-welcome) { padding: 22px 16px; gap: 26px; }
+  .helpdesk-root.workspace-ui .user-bubble-wrap { max-width: calc(100% - 40px); }
+  .helpdesk-root.workspace-ui .user-bubble { font-size: 14px; padding: 12px 14px; }
+  .helpdesk-root.workspace-ui .response-card, .helpdesk-root.workspace-ui .msg-bubble { font-size: 14px; }
+  .helpdesk-root.workspace-ui .simulation-inline-shell { padding: 8px; }
+  .helpdesk-root.workspace-ui .step-modal-body { display: flex; flex-direction: column; overflow-y: auto; }
+  .helpdesk-root.workspace-ui .step-modal-left { max-height: 230px; flex-shrink: 0; border-right: 0; border-bottom: 1px solid var(--border); padding: 16px; }
+  .helpdesk-root.workspace-ui .step-modal-right { overflow: visible; flex-shrink: 0; }
+  .helpdesk-root.workspace-ui .step-modal-header { flex-wrap: wrap; padding: 12px 16px; }
+  .helpdesk-root.workspace-ui .step-modal-footer { flex-wrap: wrap; padding: 12px; }
+  .helpdesk-root.workspace-ui .step-modal-footer-center { position: static; transform: none; }
+}
+
+/* Walkthrough is portaled outside the workspace theme. */
+.simulation-walkthrough-callout { border: 0; border-radius: 12px; padding: 20px; background: #fff; color: #22362e; box-shadow: 0 12px 36px rgb(0 0 0 / 18%); max-height: calc(100dvh - 36px); overflow-y: auto; }
+.simulation-walkthrough-callout::before { display: none; }
+.simulation-walkthrough-callout h2 { font: 600 17px/1.4 "DM Sans", sans-serif; margin: 0 0 10px; color: #22362e; }
+.simulation-walkthrough-callout p { font-size: 13px; line-height: 1.7; color: #4f6256; }
+.simulation-walkthrough-kicker { font: 12px/1.5 "DM Sans", sans-serif; color: #4f6256; letter-spacing: 0; text-transform: none; margin-top: 12px; }
+.simulation-walkthrough-spotlight { border-color: #7cae8e; box-shadow: 0 0 0 3px rgb(124 174 142 / 18%); }
+.simulation-walkthrough-progress i.active { background: #387452; }
+.simulation-walkthrough-actions .btn-sm.is-primary { background: #285c43; border-color: #285c43; color: #fff; }
+.helpdesk-root.workspace-ui {
+  font-family: var(--sans), Arial, sans-serif;
+  --bg: #111c1b;
+  --bg2: #182724;
+  --bg3: #20322e;
+  --bg4: #2a3e38;
+  --border: #354b43;
+  --border2: #4c655b;
+  --text: #eef3ef;
+  --text2: #bdcec4;
+  --text3: #a0b6aa;
+  --cyan: #b0d5bc;
+  --cyan2: #7cae8e;
+  --cyan-dim: #294c3a;
+  background: var(--bg);
+  accent-color: var(--cyan2);
+  scrollbar-color: var(--border2) var(--bg);
+}
+.helpdesk-root.workspace-ui.theme-light {
+  --bg: #f8f9f6;
+  --bg2: #ffffff;
+  --bg3: #f0f3ed;
+  --bg4: #e6ece3;
+  --border: #dde4da;
+  --border2: #b5c2b6;
+  --text: #22362e;
+  --text2: #4f6256;
+  --text3: #5e7063;
+  --cyan: #285c43;
+  --cyan2: #387452;
+  --cyan-dim: #e5efe5;
+  background: var(--bg);
+}
+.helpdesk-root.workspace-ui ::selection { background: #b6d5bd; color: #153a29; }
+.helpdesk-root.workspace-ui button:focus-visible,
+.helpdesk-root.workspace-ui a:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+.helpdesk-root.workspace-ui .hd-sidebar {
+  --color-text-primary: #f1f5ef;
+  --color-text-secondary: #d0ded3;
+  --color-text-tertiary: #b1c8bb;
+  --color-text-info: #d3e8c9;
+  --color-background-primary: #234b47;
+  --color-background-secondary: #183d3b;
+  --color-border-tertiary: #345b55;
+  --bg: #183d3b;
+  --bg2: #183d3b;
+  --bg3: #234b47;
+  --bg4: #2d5951;
+  --border: #345b55;
+  --border2: #52766b;
+  --text: #f1f5ef;
+  --text2: #d0ded3;
+  --text3: #b1c8bb;
+  --cyan: #d3e8c9;
+  --cyan2: #a8c3b0;
+  --cyan-dim: #315e4d;
+  background: #183d3b;
+  border-right: 0;
+}
+.helpdesk-root.workspace-ui .sidebar-logo-text { color: var(--text); font-size: 17px; letter-spacing: -.02em; }
+.helpdesk-root.workspace-ui .sidebar-logo-text span { color: var(--text2); }
+.helpdesk-root.workspace-ui .sidebar-logo-icon { background: transparent; box-shadow: none; }
+.helpdesk-root.workspace-ui .sidebar-search-wrap { background: #234b47; border-color: #52766b; border-radius: 8px; }
+.helpdesk-root.workspace-ui .sidebar-search-input { color: #f1f5ef; }
+.helpdesk-root.workspace-ui .sidebar-search-input::placeholder { color: #b1c8bb; }
+.helpdesk-root.workspace-ui .sidebar-group-label { font-family: var(--sans); font-size: 12px; letter-spacing: 0; text-transform: none; color: var(--text2); }
+.helpdesk-root.workspace-ui .hd-sidebar .sidebar-create-card.type-chat {
+  background: #d5e7ce;
+  color: #183d3b;
+  border: 0;
+  border-radius: 8px;
+  min-height: 42px;
+  box-shadow: none;
+}
+.helpdesk-root.workspace-ui .hd-sidebar .sidebar-create-card.type-simulation { background: transparent; color: #f1f5ef; border: 1px solid #52766b; }
+.helpdesk-root.workspace-ui .hd-sidebar .sidebar-create-card:hover { background: #bcd8b9; color: #183d3b; }
+.helpdesk-root.workspace-ui .sidebar-create-card-icon { background: none; border: 0; color: inherit; }
+.helpdesk-root.workspace-ui .sidebar-session-row { border: 0; border-radius: 7px; background: transparent; }
+.helpdesk-root.workspace-ui .sidebar-session-row::before { display: none; }
+.helpdesk-root.workspace-ui .sidebar-session-row:hover,
+.helpdesk-root.workspace-ui .sidebar-session-row.active { background: #2c5750; }
+.helpdesk-root.workspace-ui .sidebar-session-row.active .sidebar-session-title { color: #fff; }
+.helpdesk-root.workspace-ui .sidebar-session-icon { background: transparent; border: 0; color: #b1c8bb; }
+.helpdesk-root.workspace-ui .sidebar-empty-slot { border: 0; background: transparent; padding: 14px 8px; text-align: left; align-items: flex-start; justify-items: start; justify-content: flex-start; gap: 6px; min-height: 0; }
+.helpdesk-root.workspace-ui .sidebar-empty-icon { display: none; }
+.helpdesk-root.workspace-ui .sidebar-empty-title { font-size: 12px; color: var(--text2); }
+.helpdesk-root.workspace-ui .sidebar-empty-desc { font-size: 12px; color: var(--text3); }
+.helpdesk-root.workspace-ui .avatar-dot { background: #d5e7ce; color: #183d3b; border: 0; }
+.helpdesk-root.workspace-ui .avatar-popover { background: #183d3b; border-color: #52766b; }
+.helpdesk-root.workspace-ui .hd-topbar { background: var(--bg); backdrop-filter: none; box-shadow: none; border-bottom: 1px solid var(--border); }
+.helpdesk-root.workspace-ui .topbar-title { font-size: 13px; font-weight: 500; color: var(--text2); }
+.helpdesk-root.workspace-ui .messages-welcome { min-height: calc(100dvh - 120px); }
+.helpdesk-root.workspace-ui .welcome { max-width: 720px; text-align: left; padding: 48px 16px; }
+.helpdesk-root.workspace-ui .welcome,
+.helpdesk-root.workspace-ui .welcome-composer,
+.helpdesk-root.workspace-ui .composer-shell { min-width: 0; max-width: 100%; }
+.helpdesk-root.workspace-ui .welcome h1 { margin: 0 0 12px; font-size: clamp(26px, 3vw, 38px); line-height: 1.2; font-weight: 600; letter-spacing: -.03em; color: var(--text); }
+.helpdesk-root.workspace-ui .welcome p { margin: 0 0 30px; font-size: 15px; color: var(--text2); }
+.helpdesk-root.workspace-ui .welcome-input-box textarea,
+.helpdesk-root.workspace-ui .input-box textarea {
+  border-radius: 14px;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  font-family: var(--sans);
+  font-size: 15px;
+  caret-color: var(--cyan);
+  box-shadow: none;
+}
+.helpdesk-root.workspace-ui .welcome-input-box textarea { min-height: 130px; padding: 20px 62px 28px 20px; }
+.helpdesk-root.workspace-ui .welcome-input-box textarea:focus,
+.helpdesk-root.workspace-ui .input-box textarea:focus { border-color: var(--cyan2); outline: 2px solid var(--cyan2); outline-offset: 2px; box-shadow: none; }
+.helpdesk-root.workspace-ui .send-btn { border-radius: 9px; background: var(--cyan); color: var(--bg2); border: 0; box-shadow: none; }
+.helpdesk-root.workspace-ui .send-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.helpdesk-root.workspace-ui.theme-light .send-btn { background: #285c43; color: #fff; }
+.helpdesk-root.workspace-ui .send-btn:disabled { background: var(--bg4); color: var(--text3); }
+.helpdesk-root.workspace-ui .composer-meta { gap: 10px; align-items: baseline; }
+.helpdesk-root.workspace-ui .composer-limit-label,
+.helpdesk-root.workspace-ui .composer-character-count,
+.helpdesk-root.workspace-ui .input-hint { font: 11px/1.5 var(--sans); letter-spacing: 0; text-transform: none; }
+.helpdesk-root.workspace-ui .composer-character-count { border: 0; background: none; box-shadow: none; padding: 0; }
+.helpdesk-root.workspace-ui .welcome-related-label { margin: 32px 0 12px; font: 500 12px var(--sans); letter-spacing: 0; text-transform: none; color: var(--text2); }
+.helpdesk-root.workspace-ui .quick-grid { display: flex; flex-direction: column; gap: 0; }
+.helpdesk-root.workspace-ui .quick-card { display: grid; grid-template-columns: 135px minmax(0, 1fr); gap: 16px; align-items: center; padding: 15px 4px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; box-shadow: none; }
+.helpdesk-root.workspace-ui .quick-card:hover { background: var(--bg3); }
+.helpdesk-root.workspace-ui .quick-card-head { margin: 0; gap: 8px; }
+.helpdesk-root.workspace-ui .quick-icon-wrap { border: 0; background: transparent; color: var(--text2); }
+.helpdesk-root.workspace-ui .qc-label { margin: 0; font: 12px var(--sans); letter-spacing: 0; text-transform: none; color: var(--text2); }
+.helpdesk-root.workspace-ui .qc-title { font-size: 13px; font-weight: 500; line-height: 1.5; }
+.helpdesk-root.workspace-ui .ai-label { font: 600 12px var(--sans); letter-spacing: 0; text-transform: none; color: var(--text2); }
+.helpdesk-root.workspace-ui .ai-label > span { display: none; }
+.helpdesk-root.workspace-ui .ai-avatar { background: transparent; border: 0; box-shadow: none; }
+.helpdesk-root.workspace-ui .user-avatar { background: var(--cyan-dim); color: var(--text); border: 0; }
+.helpdesk-root.workspace-ui .account-settings-overlay { backdrop-filter: none; }
+.helpdesk-root.workspace-ui .account-settings-modal { border-radius: 16px; border: 0; }
+.helpdesk-root.workspace-ui .account-settings-submit { background: var(--cyan); color: var(--bg2); }
+.helpdesk-root.workspace-ui .account-data-action { border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: none; padding: 16px 0; }
+.helpdesk-root.workspace-ui .account-data-action:hover { background: var(--bg3); }
+.helpdesk-root.workspace-ui .account-details-card { background: var(--bg3); border: 0; border-radius: 10px; }
+@media (max-width: 640px) {
+  .helpdesk-root.workspace-ui .welcome { padding: 28px 0; }
+  .helpdesk-root.workspace-ui .messages { padding: 0 18px; }
+  .helpdesk-root.workspace-ui .messages-welcome { min-height: calc(100dvh - 100px); }
+  .helpdesk-root.workspace-ui .quick-card { grid-template-columns: 100px minmax(0, 1fr); gap: 8px; }
+  .helpdesk-root.workspace-ui .composer-meta { flex-wrap: wrap; }
+  .helpdesk-root.workspace-ui .composer-character-count { margin-left: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .helpdesk-root.workspace-ui *, .helpdesk-root.workspace-ui *::before, .helpdesk-root.workspace-ui *::after { scroll-behavior: auto; transition: none; animation: none; }
+}
+
+.helpdesk-root.workspace-ui .plain-answer { margin-top: 0; color: var(--text); font-size: 15px; line-height: 1.85; }

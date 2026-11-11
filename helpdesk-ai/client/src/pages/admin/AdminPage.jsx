@@ -20,9 +20,13 @@ import macOsPreviewImg from "../../IMG/MAC.jpg";
 import windowsOsPreviewImg from "../../IMG/WIN 11.webp";
 import helpdeskLogo from "../../IMG/HELPDESKAI.png";
 import "./admin.css";
+import "./admin-workspace.css";
 
+const POLICY_OUTCOME_LABELS = { ALLOWED: "Allowed", REDIRECTED: "Redirected", BLOCKED: "Blocked", OUTPUT_FILTERED: "Output filtered", UNAVAILABLE: "Unavailable" };
+function outcomeBadge(event) { return event.outcome === "BLOCKED" ? "badge-blocked" : event.outcome === "ALLOWED" ? "badge-allowed" : "badge-policy-neutral"; }
+function outcomeLabel(event) { return POLICY_OUTCOME_LABELS[event.outcome] || (event.blocked ? "Blocked" : "Allowed"); }
 const PAGE_META = {
-  overview: { title: "Overview Dashboard", nav: "Overview" },
+  overview: { title: "Overview", nav: "Overview" },
   users: { title: "User Management", nav: "User Management" },
   policy: { title: "Policy Monitor", nav: "Policy Monitor" },
   sims: { title: "Simulation Modules", nav: "Simulation Modules" }
@@ -39,10 +43,10 @@ const POLICY_LIST_META = {
   inScopeIntentPatterns: "In-Scope Intent Phrases"
 };
 const POLICY_LIST_HELP = {
-  greetingPatterns: "Add a normal greeting such as hello or good morning. No special pattern symbols are needed.",
-  inScopeKeywords: "Add one IT-related word or short phrase, such as printer or password reset.",
-  outOfScopeKeywords: "Add one unsupported topic, such as recipe or gambling.",
-  inScopeIntentPatterns: "Add one troubleshooting phrase, such as can't connect or steps to reset. Use plain English only."
+  greetingPatterns: "A greeting-only message matching a configured phrase receives your greeting reply after safety checks. Case, spacing, and trailing ! . ? are ignored. Messages with an added question are classified normally.",
+  inScopeKeywords: "Classifier guidance: all saved terms help identify IT support requests. A matching term does not automatically allow a request or bypass safety checks.",
+  outOfScopeKeywords: "Classifier guidance, not an exact blocklist: all saved topics help identify unrelated requests. Legitimate IT problems involving these topics can still be allowed.",
+  inScopeIntentPatterns: "Classifier guidance: all saved phrases help recognize troubleshooting intent in context. A phrase alone does not automatically allow a request."
 };
 const POLICY_LIST_PLACEHOLDERS = {
   greetingPatterns: "Example: good morning",
@@ -567,10 +571,7 @@ export default function AdminPage() {
     [policyEvents, todayStart]
   );
 
-  const blockedToday = useMemo(
-    () => policyEvents.filter((event) => event.blocked && new Date(event.at).getTime() >= todayStart).length,
-    [policyEvents, todayStart]
-  );
+  const blockedToday = policySummary.today?.blocked ?? 0;
 
   const filteredUsers = useMemo(() => {
     const query = userQuery.trim().toLowerCase();
@@ -688,8 +689,8 @@ export default function AdminPage() {
   }, [modules]);
 
   const aiResponseLineData = useMemo(() => {
-    const lineColor = theme === "light" ? "#0284c7" : "#38bdf8";
-    const fillColor = theme === "light" ? "rgba(2, 132, 199, 0.12)" : "rgba(56, 189, 248, 0.16)";
+    const lineColor = theme === "light" ? "#387452" : "#b0d5bc";
+    const fillColor = theme === "light" ? "rgba(56, 116, 82, 0.12)" : "rgba(176, 213, 188, 0.16)";
     return {
       labels: aiResponseWeekChart.labels,
       datasets: [
@@ -751,8 +752,8 @@ export default function AdminPage() {
   }, [theme]);
 
   const topModulesBarData = useMemo(() => {
-    const barColor = theme === "light" ? "rgba(2, 132, 199, 0.75)" : "rgba(56, 189, 248, 0.85)";
-    const barBorder = theme === "light" ? "rgba(2, 132, 199, 0.95)" : "rgba(56, 189, 248, 1)";
+    const barColor = theme === "light" ? "rgba(56, 116, 82, 0.75)" : "rgba(176, 213, 188, 0.85)";
+    const barBorder = theme === "light" ? "rgba(56, 116, 82, 0.95)" : "rgba(176, 213, 188, 1)";
     return {
       labels: topModules.map((module) => `#${module.rank}`),
       datasets: [
@@ -822,7 +823,7 @@ export default function AdminPage() {
       id: `policy-${event.id}`,
       at: event.at,
       type: event.blocked ? "blocked" : "allowed",
-      text: event.blocked ? "Policy blocked off-topic prompt" : "AI policy allowed IT prompt"
+      text: `Policy: ${outcomeLabel(event)}`
     }));
 
     return [...userEvents, ...policyActivity]
@@ -1354,7 +1355,7 @@ export default function AdminPage() {
         formatDateTime(event.at),
         event.userEmail || "Unknown",
         event.code || "UNKNOWN",
-        event.blocked ? "Blocked" : "Allowed",
+        outcomeLabel(event),
         event.message || "",
         event.reason || ""
       ])
@@ -1442,15 +1443,15 @@ export default function AdminPage() {
   );
 
   return (
-    <div className={`admin-console-root ${theme === "light" ? "theme-light" : ""}`}>
+    <div className={`admin-console-root admin-ui ${theme === "light" ? "theme-light" : ""}`}>
       <div className="shell">
         <aside className="sidebar">
           <div className="sidebar-header">
             <div className="admin-brand">
               <div className="admin-brand-icon"><img src={helpdeskLogo} alt="HelpDesk AI" /></div>
               <div className="admin-brand-text">
-                Help Desk
-                <span>Simulation</span>
+                HelpDesk AI
+                <span>Administration</span>
               </div>
             </div>
           </div>
@@ -1473,7 +1474,7 @@ export default function AdminPage() {
               type="button"
               className="profile-trigger"
               onClick={() => setProfileMenuOpen((prev) => !prev)}
-              aria-haspopup="menu"
+              aria-controls="admin-account-popover"
               aria-expanded={profileMenuOpen}
             >
               <div className="avatar">{(user?.firstName || "A").slice(0, 1).toUpperCase()}</div>
@@ -1487,10 +1488,10 @@ export default function AdminPage() {
             </button>
 
             {profileMenuOpen ? (
-              <div className="profile-menu" role="menu">
-                <div className="profile-menu-label">Preferences</div>
+              <div id="admin-account-popover" className="profile-menu" role="region" aria-label="Administrator account">
+                <div className="profile-menu-identity"><strong>{user?.firstName || "System"} {user?.lastName || "Admin"}</strong><span>{user?.email || ""}</span></div>
                 <div className="profile-menu-row">
-                  <span>Dark Mode</span>
+                  <span>Dark mode</span>
                   <button
                     type="button"
                     className={`profile-theme-switch ${theme === "dark" ? "is-on" : ""}`}
@@ -1504,8 +1505,8 @@ export default function AdminPage() {
                     <span className="profile-theme-state">{theme === "dark" ? "On" : "Off"}</span>
                   </button>
                 </div>
-                <button type="button" className="profile-account-btn" onClick={openAccountSettings}>Account settings</button>
-                <button type="button" className="logout-btn profile-logout-btn" onClick={logout}>Logout</button>
+                <button type="button" className="profile-account-btn" onClick={openAccountSettings}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M5 21v-2a7 7 0 0 1 14 0v2" /></svg>Account settings</button>
+                <button type="button" className="logout-btn profile-logout-btn" onClick={logout}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17v3H4V4h6v3M9 12h12m-4-4 4 4-4 4" /></svg>Log out</button>
               </div>
             ) : null}
           </div>
@@ -1526,6 +1527,7 @@ export default function AdminPage() {
 
             {!loading && activePage === "overview" ? (
               <div className="page active">
+                <div className="admin-tab-intro"><h1>Activity at a glance</h1><p>Review usage, recent activity, and simulation completions.</p></div>
                 <div className="metrics-grid">
                   <div className="metric-card">
                     <div className="metric-label">Users</div>
@@ -1540,7 +1542,7 @@ export default function AdminPage() {
                     <div className="metric-delta delta-up">{policySummary.allowed || 0} allowed total</div>
                   </div>
                   <div className="metric-card">
-                    <div className="metric-label">Policy Block Rate</div>
+                    <div className="metric-label" title="Blocked requests divided by evaluated requests. Service outages are excluded.">Policy Block Rate</div>
                     <div className="metric-val">{policySummary.blockRate || 0}%</div>
                     <div className="metric-sub">{blockedToday} blocked today</div>
                     <div className="metric-delta delta-dn">{policySummary.blocked || 0} blocked total</div>
@@ -1613,20 +1615,21 @@ export default function AdminPage() {
 
             {!loading && activePage === "users" ? (
               <div className="page active">
+                <div className="admin-tab-intro"><h1>Manage access</h1><p>Find accounts, update roles, and manage user access.</p></div>
                 <div className="toolbar">
                   <div className="search-box">
                     <input
                       value={userQuery}
                       onChange={(event) => setUserQuery(event.target.value)}
-                      placeholder="Search users by name or email"
+                      aria-label="Search users by name or email" placeholder="Search users by name or email"
                     />
                   </div>
-                  <select className="filter-btn select" value={userRoleFilter} onChange={(e) => setUserRoleFilter(e.target.value)}>
+                  <select className="filter-btn select" aria-label="Filter by role" value={userRoleFilter} onChange={(e) => setUserRoleFilter(e.target.value)}>
                     <option value="ALL">All roles</option>
                     <option value="USER">USER</option>
                     <option value="ADMIN">ADMIN</option>
                   </select>
-                  <select className="filter-btn select" value={userStatusFilter} onChange={(e) => setUserStatusFilter(e.target.value)}>
+                  <select className="filter-btn select" aria-label="Filter by status" value={userStatusFilter} onChange={(e) => setUserStatusFilter(e.target.value)}>
                     <option value="ALL">All status</option>
                     <option value="ACTIVE">Active</option>
                     <option value="INACTIVE">Inactive</option>
@@ -1722,6 +1725,7 @@ export default function AdminPage() {
 
             {!loading && activePage === "policy" ? (
               <div className="page active">
+                <div className="admin-tab-intro"><h1>Review policy decisions</h1><p>Inspect allowed and blocked requests, or adjust the policy configuration.</p></div>
                 <div className="policy-kpi-grid">
                   <div className="policy-kpi-card">
                     <span>Total Decisions</span>
@@ -1740,6 +1744,8 @@ export default function AdminPage() {
                     <strong>{policySummary.blockRate || 0}%</strong>
                   </div>
                 </div>
+
+                <div className="policy-outcome-summary">{[["Redirected", policySummary.redirected], ["Output filtered", policySummary.outputFiltered], ["Unavailable", policySummary.unavailable]].map(([label, count]) => <div key={label}><span>{label}</span><strong>{count ?? 0}</strong></div>)}<p>Block rate = blocked / evaluated requests. Service failures are excluded. Today uses Philippine time. Events refresh every 30 seconds.</p></div>
 
                 <div className="policy-workspace-tabs" role="tablist" aria-label="Policy workspace">
                   <button
@@ -1785,6 +1791,9 @@ export default function AdminPage() {
                           <option value="ALL">All status</option>
                           <option value="ALLOWED">Allowed</option>
                           <option value="BLOCKED">Blocked</option>
+                          <option value="REDIRECTED">Redirected</option>
+                          <option value="OUTPUT_FILTERED">Output filtered</option>
+                          <option value="UNAVAILABLE">Unavailable</option>
                         </select>
                         <select className="filter-btn select" value={policyTimeFilter} onChange={(event) => setPolicyTimeFilter(event.target.value)}>
                           <option value="ALL">All time</option>
@@ -1813,8 +1822,8 @@ export default function AdminPage() {
                               <div className="muted-cell event-cell event-col-user">{event.userEmail || "Unknown"}</div>
                               <div className="muted-cell event-cell event-col-code">{event.code || "UNKNOWN"}</div>
                               <div className="event-cell event-col-status event-status-cell">
-                                <span className={`badge ${event.blocked ? "badge-blocked" : "badge-allowed"}`}>
-                                  {event.blocked ? "Blocked" : "Allowed"}
+                                <span className={`badge ${outcomeBadge(event)}`}>
+                                  {outcomeLabel(event)}
                                 </span>
                               </div>
                               <div className="event-cell event-col-actions">
@@ -2460,13 +2469,13 @@ jumpcloud@JumpCloud ~ % _`}</pre>
             <header className="policy-event-modal-head">
               <div>
                 <span className="policy-event-modal-kicker">Policy decision details</span>
-                <h3 id="policy-event-modal-title">{selectedPolicyEvent.blocked ? "Blocked request" : "Allowed request"}</h3>
+                <h3 id="policy-event-modal-title">{`${outcomeLabel(selectedPolicyEvent)} request`}</h3>
               </div>
               <button type="button" className="account-modal-close" onClick={() => setSelectedPolicyEvent(null)} aria-label="Close policy event details">×</button>
             </header>
 
             <div className="policy-event-modal-meta">
-              <span className={`badge ${selectedPolicyEvent.blocked ? "badge-blocked" : "badge-allowed"}`}>{selectedPolicyEvent.blocked ? "Blocked" : "Allowed"}</span>
+              <span className={`badge ${outcomeBadge(selectedPolicyEvent)}`}>{outcomeLabel(selectedPolicyEvent)}</span>
               <span>{selectedPolicyEvent.code || "UNKNOWN"}</span>
               <span>{formatDateTime(selectedPolicyEvent.at)}</span>
             </div>
