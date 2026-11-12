@@ -41,6 +41,24 @@ require.cache[require.resolve("../src/prisma")] = { exports: prisma };
 require.cache[require.resolve("../src/store/simulationModuleStore")] = { exports: { getModuleById: async () => ({ id: "lab", enabled: true, simulation: { surface: "windows-os" } }) } };
 const service = require("../src/services/windowsSimulationService");
 const controller = require("../src/controllers/simulationSessionController");
+test("a cancelled lab cannot launch a new instance", async () => {
+  const row = {id:"cancelled-before-launch",userId:1,moduleId:"lab",status:"ENDED",expiresAt:new Date(Date.now()+60000)};
+  sessions.push(row);
+  await assert.rejects(service.createWindowsSimulationSession(row), error => error.status === 409);
+  assert.ok(!calls.some(command => command instanceof RunInstancesCommand));
+});
+test("cancellation racing AWS launch immediately terminates the late instance", async () => {
+  const row = {id:"cancelled-during-launch",userId:1,moduleId:"lab",status:"PROVISIONING",expiresAt:new Date(Date.now()+60000)};
+  sessions.push(row);
+  send = async command => {
+    if (command instanceof RunInstancesCommand) { row.status="ENDED"; return {Instances:[{InstanceId:"i-late"}]}; }
+    if (command instanceof DescribeInstancesCommand) return {Reservations:[{Instances:[{InstanceId:"i-late",State:{Name:"running"},Tags:[{Key:"SessionId",Value:row.id}]}]}]};
+    return {};
+  };
+  await assert.rejects(service.createWindowsSimulationSession(row), error => error.status === 409);
+  assert.ok(calls.some(command => command instanceof TerminateInstancesCommand));
+  assert.equal(row.status,"ENDED");
+});
 function response() { return { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } }; }
 function fail(err) { if (err) throw err; }
 beforeEach(() => { sessions = []; calls = []; expiredQuery = null; send = async () => ({}); });

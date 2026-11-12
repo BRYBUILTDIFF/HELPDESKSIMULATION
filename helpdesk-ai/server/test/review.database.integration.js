@@ -73,7 +73,7 @@ test("review migration, shared limits, session isolation and command evidence ag
     assert.equal(other.body.sessions.length, 1); assert.equal(other.body.sessions[0].id, "legacy-session");
     const saved = await db.chatSession.findUnique({ where: { userId_id: { userId: fixture.id, id: "owned" } } });
     assert.ok(!JSON.stringify(saved.data).includes("private-secret"));
-    const module = await db.simulationModule.create({ data: { id: "verified", title: "DNS", category: "Network", difficulty: "Easy", simulation: { surface: "windows-terminal", steps: [{ title: "Check", action: "Run: ipconfig" }, { title: "Test", action: "Run: ping localhost" }] } } });
+    const module = await db.simulationModule.create({ data: { id: "verified", title: "DNS", category: "Network", difficulty: "Easy", simulation: { surface: "windows-terminal", steps: [{ title: "Inspect DNS", type: "command", actionId: "network.inspect", expectedCommands: ["ipconfig /all"] }, { title: "Flush DNS", type: "command", actionId: "network.flush-dns", expectedCommands: ["ipconfig /flushdns"] }] } } });
     const attempts = require("../src/controllers/simulationAttemptController");
     const started = res(); await attempts.startAttempt({ user: fixture, params: { id: module.id } }, started, fail);
     const attemptKey = started.body.attemptKey;
@@ -81,15 +81,15 @@ test("review migration, shared limits, session isolation and command evidence ag
     await assert.rejects(() => completion({ moduleId: module.id, userId: fixture.id, attemptKey, surface: "windows-terminal", stepsCompleted: 2 }), /Complete each command/);
     const params = { id: module.id, attemptId: attemptKey };
     const forged = res(); await attempts.submitCommand({ user: { id: 10 }, params, body: { step: 0, command: "ipconfig" } }, forged, fail);
-    assert.equal(forged.code, 404);
+    assert.equal(forged.code, 410);
     const skipped = res(); await attempts.submitCommand({ user: fixture, params, body: { step: 1, command: "ping localhost" } }, skipped, fail);
     assert.equal(skipped.body.accepted, false);
-    for (const [step, command] of ["ipconfig", "ping localhost"].entries()) {
+    for (const [step, command] of ["ipconfig /all", "ipconfig /flushdns"].entries()) {
       const response = res(); await attempts.submitCommand({ user: fixture, params, body: { step, command } }, response, fail); assert.equal(response.body.accepted, true);
     }
     await completion({ moduleId: module.id, userId: fixture.id, attemptKey, surface: "windows-terminal", stepsCompleted: 0 });
     const row = await db.simulationCompletion.findUnique({ where: { attemptKey } });
-    assert.equal(row.stepsCompleted, 2); assert.equal(row.verification, "command-sequence");
+    assert.equal(row.stepsCompleted, 2); assert.equal(row.verification, "simulated-actions");
     await sessions.deleteMyData({ user: fixture }, res(), fail);
     assert.equal(await db.chatSession.count({ where: { userId: fixture.id } }), 0);
   } finally {

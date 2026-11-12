@@ -12,7 +12,7 @@ function plainText(value) {
   return String(value || "").replace(/<[^>]+>/g, "").trim();
 }
 
-export default function WindowsOsSimulation({ api, moduleId, title, steps = [], completedStepIndexes = [], walkthroughOnOpen = true, onEnded, onSessionReady, onStepProgress }) {
+export default function WindowsOsSimulation({ api, moduleId, chatSessionId, title, steps = [], completedStepIndexes = [], walkthroughOnOpen = true, onEnded, onSessionReady, onStepProgress }) {
   const [session, setSession] = useState(null);
   const [status, setStatus] = useState("IDLE");
   const [guacamoleUrl, setGuacamoleUrl] = useState("");
@@ -53,7 +53,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
     setLaunchNotice(null);
     setError(""); setGuacamoleUrl(""); setSession(null); setStatus("PROVISIONING");
     try {
-      const response = await api.post("/api/simulation-sessions", { moduleId });
+      const response = await api.post("/api/simulation-sessions", { moduleId, ...(chatSessionId ? {chatSessionId} : {}) });
       if (response.data?.revealAt) {
         const deadline = new Date(response.data.revealAt).getTime();
         if (Number.isFinite(deadline)) {
@@ -72,7 +72,7 @@ export default function WindowsOsSimulation({ api, moduleId, title, steps = [], 
       }
       setStatus("FAILED"); setError(messageFrom(err, "Unable to prepare your Windows workspace."));
     }
-  }, [api, moduleId, onSessionReady]);
+  }, [api, moduleId, chatSessionId, onSessionReady]);
 
   useEffect(() => { if (!startedRef.current) { startedRef.current = true; start(); } }, [start]);
   useEffect(() => {

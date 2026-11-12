@@ -5,7 +5,6 @@ import PrivateRoute from "./components/PrivateRoute";
 import AdminRoute from "./components/AdminRoute";
 import LoginPage from "./pages/users/LoginPage";
 import DashboardPage from "./pages/users/DashboardPage";
-import SimulationsPage from "./pages/users/SimulationsPage";
 import AdminPage from "./pages/admin/AdminPage";
 import NotFoundPage from "./pages/users/NotFoundPage";
 
@@ -67,7 +66,7 @@ export default function App() {
           path="/simulations"
           element={(
             <UserOnly>
-              <SimulationsPage />
+              <Navigate to="/dashboard" state={{startNewChat:true,startSimulationCatalog:true}} replace />
             </UserOnly>
           )}
         />

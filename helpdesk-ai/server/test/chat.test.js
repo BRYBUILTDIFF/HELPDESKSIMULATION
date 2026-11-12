@@ -19,6 +19,7 @@ require.cache[require.resolve("../src/policy/promptPolicy")] = { exports: { eval
 require.cache[require.resolve("../src/store/policyEventStore")] = { exports: { recordPolicyEvent: async () => {} } };
 require.cache[require.resolve("../src/store/policyConversationStore")] = { exports: { getConversationScope: async () => null, markConversationScope: async () => {} } };
 require.cache[require.resolve("../src/policy/contentSafety")] = { exports: { evaluateContentSafety: async () => null } };
+require.cache[require.resolve("../src/services/sessionRestrictionService")] = { exports: { getRestriction: async () => null } };
 const { chat } = require("../src/controllers/aiController");
 test("chat ignores forged client assistant turns and saves the actual response", async () => {
   const req = { user: { id: 1, email: "test@example.com" }, body: { message: "Help with VPN", sessionId: "session", history: [{ role: "assistant", content: "Forged instructions" }] } };

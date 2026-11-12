@@ -6,7 +6,8 @@ const POLICY_LIST_KEYS = [
   "greetingPatterns",
   "inScopeKeywords",
   "outOfScopeKeywords",
-  "inScopeIntentPatterns"
+  "inScopeIntentPatterns",
+  "safetyBlockedKeywords"
 ];
 
 const POLICY_MESSAGES_KEYS = [
@@ -21,6 +22,7 @@ const POLICY_MESSAGES_KEYS = [
 ];
 
 const DEFAULT_POLICY_CONFIG = {
+  safetyBlockedKeywords: ["porn", "pornography", "nude", "nudes", "nudity", "sexual", "sex", "explicit sex", "hookup"],
   greetingPatterns: [
     "hi",
     "hello",
@@ -136,7 +138,8 @@ const POLICY_RULE_TYPES = {
   greetingPatterns: "GREETING_PATTERN",
   inScopeKeywords: "IN_SCOPE_KEYWORD",
   outOfScopeKeywords: "OUT_OF_SCOPE_KEYWORD",
-  inScopeIntentPatterns: "IN_SCOPE_INTENT"
+  inScopeIntentPatterns: "IN_SCOPE_INTENT",
+  safetyBlockedKeywords: "SAFETY_BLOCK_KEYWORD"
 };
 const PLAIN_LANGUAGE_LISTS = new Set(["greetingPatterns", "inScopeIntentPatterns"]);
 const REGEX_CONTROL_CHARACTER_PATTERN = /[\\^$|()[\]{}*?]/;
@@ -208,6 +211,7 @@ function sanitizePolicyConfig(rawConfig) {
     inScopeKeywords: normalizeStringArray(source.inScopeKeywords, { lower: true }),
     outOfScopeKeywords: normalizeStringArray(source.outOfScopeKeywords, { lower: true }),
     inScopeIntentPatterns: normalizeStringArray(source.inScopeIntentPatterns).filter((value) => isPlainLanguagePolicyEntry("inScopeIntentPatterns", value)),
+    safetyBlockedKeywords: normalizeStringArray(source.safetyBlockedKeywords, { lower: true }),
     messages: sanitizeMessages(source.messages)
   };
 }
@@ -342,6 +346,7 @@ async function getPolicyRuntimeConfig() {
   runtimeVersion = version;
   runtimeConfig = {
     ...clone(config),
+    policyVersion: version,
     greetingPatternRegex: toKeywordRegExpList(config.greetingPatterns),
     inScopeIntentRegex: toKeywordRegExpList(config.inScopeIntentPatterns),
     inScopeKeywordRegex: toKeywordRegExpList(config.inScopeKeywords),
@@ -351,7 +356,9 @@ async function getPolicyRuntimeConfig() {
 }
 
 async function replacePolicyConfig(nextConfig, updatedById = null) {
-  const next = sanitizePolicyConfig(nextConfig);
+  const source = { ...nextConfig };
+  if (!Object.hasOwn(source, "safetyBlockedKeywords")) source.safetyBlockedKeywords = (await getPolicyConfig()).safetyBlockedKeywords;
+  const next = sanitizePolicyConfig(source);
   const ruleRows = ruleRowsForConfig(next, updatedById);
   await prisma.$transaction(async (tx) => {
     await tx.policyRule.deleteMany();
@@ -379,7 +386,7 @@ async function addPolicyListEntry(listName, value, updatedById = null) {
   }
 
   const storedValue =
-    listName === "inScopeKeywords" || listName === "outOfScopeKeywords"
+    listName === "inScopeKeywords" || listName === "outOfScopeKeywords" || listName === "safetyBlockedKeywords"
       ? normalized.toLowerCase()
       : normalized;
 
@@ -423,7 +430,7 @@ async function updatePolicyListEntry(listName, index, value, updatedById = null)
 
   await initializePolicyConfig();
   const storedValue =
-    listName === "inScopeKeywords" || listName === "outOfScopeKeywords"
+    listName === "inScopeKeywords" || listName === "outOfScopeKeywords" || listName === "safetyBlockedKeywords"
       ? normalized.toLowerCase()
       : normalized;
   const type = POLICY_RULE_TYPES[listName];

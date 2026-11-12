@@ -59,6 +59,8 @@ async function countLiveWindowsInstances() {
 async function createWindowsSimulationSession(session) {
   let launchAccepted = false;
   try {
+    const current = await prisma.simulationSession.findUnique({ where: { id: session.id } });
+    if (!current || !ACTIVE_STATUSES.includes(current.status)) throw new SimulationServiceError("This Windows lab was ended before launch.", 409);
     const { launchTemplateId } = getConfig();
     const response = await getEc2Client().send(
       new RunInstancesCommand({
@@ -73,10 +75,18 @@ async function createWindowsSimulationSession(session) {
     const instanceId = response.Instances?.[0]?.InstanceId;
     if (!instanceId) throw new Error("EC2 did not return an instance ID.");
     launchAccepted = true;
-    return await prisma.simulationSession.update({ where: { id: session.id }, data: { ec2InstanceId: instanceId } });
+    const saved = await prisma.simulationSession.update({ where: { id: session.id }, data: { ec2InstanceId: instanceId } });
+    // End/delete may race an in-flight AWS launch. Never resurrect a cancelled lab.
+    if (!ACTIVE_STATUSES.includes(saved.status)) {
+      await terminateWindowsSimulationSession(saved);
+      throw new SimulationServiceError("This Windows lab was ended during launch.", 409);
+    }
+    return saved;
   } catch (error) {
+    if (error instanceof SimulationServiceError && error.status === 409) throw error;
     const denied = !launchAccepted && ["UnauthorizedOperation", "AccessDenied", "AccessDeniedException", "AuthFailure", "InvalidClientTokenId", "SignatureDoesNotMatch"].includes(error?.name || error?.code);
-    await prisma.simulationSession.update({
+    const latest = await prisma.simulationSession.findUnique({ where: { id: session.id } }).catch(() => null);
+    if (latest && ACTIVE_STATUSES.includes(latest.status)) await prisma.simulationSession.update({
       where: { id: session.id },
       // A timeout may occur after AWS accepted the launch. Reserve capacity
       // until reconciliation recovers the instance or expiry cleans it up.

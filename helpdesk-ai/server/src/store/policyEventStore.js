@@ -1,5 +1,6 @@
 const prisma = require("../prisma");
 const { redactSecrets } = require("../utils/redact");
+const { recordViolation, safetyViolation } = require("../services/sessionRestrictionService");
 function policyOutcome(event) {
   const code = String(event.code || "").toUpperCase();
   if (code.includes("UNAVAILABLE")) return "UNAVAILABLE";
@@ -8,9 +9,19 @@ function policyOutcome(event) {
   return event.blocked ? "BLOCKED" : "ALLOWED";
 }
 async function recordPolicyEvent(event) {
-  return prisma.policyEvent.create({ data: { userId: event.userId || null, userEmail: event.userEmail || "unknown",
+  const data = { userId: event.userId || null, userEmail: event.userEmail || "unknown",
     message: redactSecrets(event.message).slice(0, 300), blocked: policyOutcome(event) === "BLOCKED", code: event.code || "UNKNOWN",
-    reason: redactSecrets(event.reason).slice(0, 1000), hasHistory: Boolean(event.hasHistory) } });
+    reason: redactSecrets(event.reason).slice(0, 1000), hasHistory: Boolean(event.hasHistory),
+    sessionId: event.sessionId || null, requestId: event.requestId || null,
+    outcome: policyOutcome(event), stage: event.stage || "input",
+    ...(event.metadata ? { metadata: event.metadata } : {}) };
+  if (event.sessionId && safetyViolation(event)) {
+    return prisma.$transaction(async tx => {
+      const restriction = await recordViolation(tx, event);
+      return { ...await tx.policyEvent.create({ data }), restriction };
+    });
+  }
+  return prisma.policyEvent.create({ data });
 }
 async function listPolicyEvents(limit = 100) {
   const rows = await prisma.policyEvent.findMany({ take: Math.max(1, Math.min(Number(limit) || 100, 1000)), orderBy: { at: "desc" } });

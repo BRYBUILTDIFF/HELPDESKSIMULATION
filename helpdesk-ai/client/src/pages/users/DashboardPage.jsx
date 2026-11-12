@@ -1,3 +1,5 @@
+import TerminalReview from "./Modules/TerminalReview";
+import TerminalStepGuide from "./Modules/TerminalStepGuide";
 import { plainDescription } from "../../utils/plainDescription";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
@@ -1268,6 +1270,9 @@ function normalizeSimulationCanvasState(state, steps, fallbackType) {
     scenarioType: state?.scenarioType || fallbackType || "general",
     terminalType: normalizeTerminalType(state?.terminalType),
     simulationId: state?.simulationId || "",
+    attemptKey: state?.attemptKey || "",
+    serverEvents: Array.isArray(state?.serverEvents) ? state.serverEvents : [],
+    serverStatus: state?.serverStatus || "ACTIVE",
     ticketTitle: state?.ticketTitle || "",
     currentIndex: Number.isInteger(state?.currentIndex) ? Math.max(0, state.currentIndex) : 0,
     completed: safeSteps.map((_, idx) => Boolean(completed[idx])),
@@ -1367,8 +1372,8 @@ export default function DashboardPage() {
   const [passwordVisibility, setPasswordVisibility] = useState({ current: false, next: false, confirm: false });
   const [openSessionMenuId, setOpenSessionMenuId] = useState(null);
   const [theme, setTheme] = useState("light");
-  const [showSimulationCatalog, setShowSimulationCatalog] = useState(false);
-  const [pendingSimulationCreation, setPendingSimulationCreation] = useState(false);
+  const [showSimulationCatalog, setShowSimulationCatalog] = useState(Boolean(location.state?.startSimulationCatalog));
+  const [pendingSimulationCreation, setPendingSimulationCreation] = useState(Boolean(location.state?.startSimulationCatalog));
   const [mobileView, setMobileView] = useState(false);
   const [sidebarSearchInput, setSidebarSearchInput] = useState("");
   const [sidebarSearch, setSidebarSearch] = useState("");
@@ -2673,6 +2678,7 @@ export default function DashboardPage() {
     ? modalCanvasState.completed.filter(Boolean).length
     : 0;
   const modalResolved = Boolean(modalCanvasState?.resolved);
+  const modalCompletedReview = Boolean(modalCanvasState?.completionRecorded || modalCanvasState?.serverStatus === "COMPLETED");
   const modalCompletionPct = modalStepCount > 0 ? Math.round((modalCompletedCount / modalStepCount) * 100) : 0;
   const modalProgress = modalCompletionPct;
   const modalNextRequiredStep = Array.isArray(modalCanvasState?.completed)
@@ -2712,23 +2718,67 @@ export default function DashboardPage() {
       return;
     }
     const safeIndex = Math.max(0, Math.min(modalStepCount - 1, index));
+    if (modalCanvasState?.simulationId && !modalCompletedReview && safeIndex > modalRequiredStep) return;
     setModalActiveStep(safeIndex);
-    syncModalCanvasState((prev) => ({
-      ...prev,
-      currentIndex: safeIndex
-    }));
+    setTerminalQueuedCommand(null);
+    syncModalCanvasState((prev) => ({ ...prev, currentIndex: safeIndex }));
   };
 
+  const terminalContextRef = useRef("");
+  terminalContextRef.current = `${user?.id}:${currentSession?.id}:${modalMessageId}:${modalCanvasState?.simulationId}`;
   const getTerminalAttempt = async () => {
     const moduleId = modalCanvasState?.simulationId;
     if (!moduleId) throw new Error("Start a catalog module to record a verified attempt.");
     const key = `${user.id}:${currentSession?.id}:${modalMessageId}:${moduleId}`;
     if (!terminalAttemptPromisesRef.current.has(key)) {
-      terminalAttemptPromisesRef.current.set(key, api.post(`/api/simulations/modules/${moduleId}/attempts`).then(response => response.data.attemptKey).catch(error => {
+      terminalAttemptPromisesRef.current.set(key, (modalCanvasState?.attemptKey
+        ? api.get(`/api/simulations/modules/${moduleId}/attempts/${modalCanvasState.attemptKey}`)
+        : api.post(`/api/simulations/modules/${moduleId}/attempts`)).then(response => { if (terminalContextRef.current === key) applyVerifiedAttempt(response.data); return response.data.attemptKey; }).catch(error => {
         terminalAttemptPromisesRef.current.delete(key); throw error;
       }));
     }
     return terminalAttemptPromisesRef.current.get(key);
+  };
+  const [verifiedAttemptError, setVerifiedAttemptError] = useState('');
+  const [verifiedBusy, setVerifiedBusy] = useState(false);
+  const applyVerifiedAttempt = (data) => {
+    const steps = data.definition.steps;
+    setModalSteps(steps.map(step => step.title)); setModalStepDetails(steps);
+    syncModalCanvasState(prev => ({...prev, attemptKey:data.attemptKey, stepDetails:steps,
+      completed:steps.map((_, i) => i < data.nextStep), currentIndex:data.status === "COMPLETED" ? (prev.serverStatus === "COMPLETED" ? Math.min(prev.currentIndex,steps.length-1) : 0) : Math.min(data.nextStep,steps.length-1),
+      resolved:data.completed, completionRecorded:data.status === "COMPLETED", serverStatus:data.status, serverEvents:data.events, mistakes:data.mistakes}));
+  };
+  useEffect(() => {
+    if (!modalCanvasState?.simulationId || !modalMessageId) return;
+    let cancelled = false;
+    setVerifiedAttemptError(''); setVerifiedBusy(true);
+    getTerminalAttempt().then(attemptKey => api.get('/api/simulations/modules/'+modalCanvasState.simulationId+'/attempts/'+attemptKey)).then(({data}) => {if (!cancelled) { applyVerifiedAttempt(data); if(data.status === 'ENDED') setVerifiedAttemptError('This attempt ended. Restart to practice again.'); }}).catch(error => { if (!cancelled) setVerifiedAttemptError(error.response?.data?.message || 'Unable to load verified progress.'); })
+      .finally(() => {if (!cancelled) setVerifiedBusy(false);});
+    return () => {cancelled = true;};
+  }, [modalMessageId, modalCanvasState?.simulationId, currentSession?.id]);
+  const executeVerifiedAction = async (command, kind = 'command') => {
+    if (modalCompletedReview) return {output:'Simulation completed. Select a step to review its recorded output.'};
+    if (verifiedBusy || verifiedAttemptError) return {output:verifiedAttemptError || 'Loading verified attempt. Please wait.'};
+    setVerifiedBusy(true);
+    try {
+      const attemptKey = await getTerminalAttempt();
+      const latest = await api.get('/api/simulations/modules/'+modalCanvasState.simulationId+'/attempts/'+attemptKey);
+      const {data} = await api.post('/api/simulations/modules/'+modalCanvasState.simulationId+'/attempts/'+attemptKey+'/commands', {command,kind,step:latest.data.nextStep});
+      applyVerifiedAttempt(data);return data;
+    } catch(error) {const message=error.response?.data?.message || 'Command could not be verified. Retry.';setVerifiedAttemptError(message);return {output:message};}
+    finally {setVerifiedBusy(false);}
+  };
+  const retryVerifiedConnection = async () => {
+    setVerifiedBusy(true);
+    try {const attemptKey=await getTerminalAttempt();const {data}=await api.get('/api/simulations/modules/'+modalCanvasState.simulationId+'/attempts/'+attemptKey);applyVerifiedAttempt(data);setVerifiedAttemptError(data.status==='ENDED'?'This attempt ended. Restart to practice again.':'');}
+    catch(error){setVerifiedAttemptError(error.response?.data?.message || 'Connection still unavailable. Retry later.');}finally{setVerifiedBusy(false);}
+  };
+  const restartVerifiedAttempt = async () => {
+    terminalAttemptPromisesRef.current.clear();setVerifiedBusy(true);setVerifiedAttemptError('');
+    try {const {data}=await api.post('/api/simulations/modules/'+modalCanvasState.simulationId+'/attempts');applyVerifiedAttempt(data);
+      const key=user.id+':'+currentSession?.id+':'+modalMessageId+':'+modalCanvasState.simulationId;
+      terminalAttemptPromisesRef.current.set(key,Promise.resolve(data.attemptKey));
+    }catch(error){setVerifiedAttemptError(error.response?.data?.message || 'Unable to restart.');}finally{setVerifiedBusy(false);}
   };
   const handleTerminalCommand = async ({ command, normalizedCommand: normalizedFromTerminal, result }) => {
     if (!command || modalStepCount <= 0) {
@@ -2925,7 +2975,11 @@ export default function DashboardPage() {
     setTerminalCompletionError("");
   };
 
-  const endTerminalSimulation = () => {
+  const endTerminalSimulation = async (recorded = false) => {
+    if (modalCanvasState?.attemptKey && !modalCanvasState?.completionRecorded && recorded !== true) {
+      try { await api.post(`/api/simulations/modules/${modalCanvasState.simulationId}/attempts/${modalCanvasState.attemptKey}/end`); }
+      catch (error) { setVerifiedAttemptError(error.response?.data?.message || "Unable to end this attempt. Retry."); return; }
+    }
     closeStepModal();
     if (isSimulationSession) {
       setPendingSimulationCreation(true);
@@ -2936,17 +2990,36 @@ export default function DashboardPage() {
 
   const completeTerminalSimulation = async () => {
     const simulationId = String(modalCanvasState?.simulationId || "").trim();
-    if (!simulationId || terminalCompletionPending) return;
+    if (!simulationId || terminalCompletionPending || !modalResolved || verifiedBusy) return;
     setTerminalCompletionPending(true);
     setTerminalCompletionError("");
+    const sessionId = currentSession?.id;
+    const messageId = modalMessageId;
+    const context = terminalContextRef.current;
     try {
       await api.post(`/api/simulations/modules/${simulationId}/complete`, {
         attemptKey: await getTerminalAttempt(),
         surface: modalCanvasState?.terminalType || "windows-terminal",
-        stepsCompleted: modalStepCount > 0 ? modalSafeStep + 1 : 0
+        stepsCompleted: modalCompletedCount
       });
-      syncModalCanvasState((prev) => ({ ...prev, completionRecorded: true }));
-      endTerminalSimulation();
+      const completedState = {
+        ...modalCanvasState,
+        completionRecorded: true,
+        serverStatus: "COMPLETED",
+        resolved: true,
+        completed: modalSteps.map(() => true),
+        currentIndex: 0
+      };
+      // Persist independently of the modal, which may close while the request runs.
+      setSessions(prev => prev.map(session => session.id === sessionId ? {
+        ...session,
+        simulationCanvasByMessage: { ...session.simulationCanvasByMessage, [messageId]: completedState }
+      } : session));
+      if (terminalContextRef.current === context) {
+        setModalCanvasState(completedState);
+        setModalActiveStep(0);
+        setTerminalQueuedCommand(null);
+      }
     } catch (err) {
       setTerminalCompletionError(err?.response?.data?.message || "Unable to record this completed simulation.");
     } finally {
@@ -2954,7 +3027,7 @@ export default function DashboardPage() {
     }
   };
   const modalStepOutcome = modalCanvasState?.stepOutcomes?.[modalSafeStep] || null;
-  const modalExpectedCommands = extractExpectedCommands(modalSteps[modalSafeStep] || "", modalStepDetails[modalSafeStep] || {});
+  const modalExpectedCommands = modalCanvasState?.simulationId ? (modalStepDetails[modalSafeStep]?.expectedCommands || []) : extractExpectedCommands(modalSteps[modalSafeStep] || "", modalStepDetails[modalSafeStep] || {});
   const currentStepExpectedCommandSet = useMemo(() => {
     const set = new Set();
     modalExpectedCommands.forEach((cmd) => {
@@ -3569,8 +3642,8 @@ export default function DashboardPage() {
             <div className="step-modal-header">
               <div className="step-modal-title">{modalSourceTitle}</div>
               {modalCanvasState?.simulationId ? <div className="terminal-simulation-header-actions">
-                <button type="button" className="terminal-simulation-end hd-btn-reset" onClick={endTerminalSimulation}>End simulation</button>
-                <button type="button" className="terminal-simulation-complete hd-btn-reset" disabled={Boolean(modalCanvasState?.completionRecorded) || terminalCompletionPending} onClick={completeTerminalSimulation}>{terminalCompletionPending ? "Completing..." : modalCanvasState?.completionRecorded ? "Completed" : "✓ Complete Simulation"}</button>
+                <button type="button" className="terminal-simulation-end hd-btn-reset" onClick={endTerminalSimulation}>{modalCompletedReview ? "Back to simulations" : "End simulation"}</button>
+                <button type="button" className="terminal-simulation-complete hd-btn-reset" disabled={!modalResolved || verifiedBusy || Boolean(modalCanvasState?.completionRecorded) || terminalCompletionPending} onClick={completeTerminalSimulation}>{terminalCompletionPending ? "Completing..." : modalCanvasState?.completionRecorded ? "Completed" : "✓ Complete Simulation"}</button>
               </div> : <button className="step-modal-close hd-btn-reset" onClick={closeStepModal}>X</button>}
             </div>
             <div className="step-modal-progress-wrap">
@@ -3608,10 +3681,11 @@ export default function DashboardPage() {
                       {modalSteps[modalSafeStep] || `Step ${modalStepCount === 0 ? 0 : modalSafeStep + 1}`}
                     </span>
                   </div>
-                  {modalStepDetails[modalSafeStep]?.action ? (
+                  {modalCanvasState?.simulationId ? <TerminalStepGuide iconOnly key={modalSafeStep} step={modalStepDetails[modalSafeStep] || {}} /> : null}
+                  {!modalCanvasState?.simulationId && modalStepDetails[modalSafeStep]?.action ? (
                     <div className="step-modal-current-text">{modalStepDetails[modalSafeStep].action}</div>
                   ) : null}
-                  {modalStepDetails[modalSafeStep]?.desc ? (
+                  {!modalCanvasState?.simulationId && modalStepDetails[modalSafeStep]?.desc ? (
                     <div className="step-modal-current-text step-modal-current-subtext" >{plainDescription(modalStepDetails[modalSafeStep].desc)}</div>
                   ) : null}
                 </div>
@@ -3628,7 +3702,8 @@ export default function DashboardPage() {
                             command: formatTerminalCommandForDisplay(cmd)
                           })
                         }
-                        title="Use this command"
+                        disabled={modalCompletedReview}
+                        title={modalCompletedReview ? "Review the recorded command below" : "Use this command"}
                       >
                         {formatTerminalCommandForDisplay(cmd)}
                       </button>
@@ -3657,6 +3732,14 @@ export default function DashboardPage() {
                 <div className="step-modal-canvas">
                   <div className="step-modal-canvas-header">
                     <div className="step-modal-canvas-title">Terminal Simulation</div>
+                    {modalCanvasState?.simulationId ? <div className="terminal-verified-controls">
+                      {modalCompletedReview ? <p role="status"><strong>Simulation completed.</strong> Review all {modalStepCount} finished steps using the step list or Previous/Next. This review does not execute commands.</p> : <p>Verified progress: {modalCompletedCount} / {modalStepCount}. Fictional training environment.</p>}
+                      {verifiedAttemptError ? <p role="alert">{verifiedAttemptError}</p> : null}
+                      {modalStepDetails[modalRequiredStep]?.type === 'checkpoint' && !modalResolved ? <button type="button" disabled={verifiedBusy || Boolean(verifiedAttemptError)} onClick={() => executeVerifiedAction('', 'checkpoint')}>Perform simulated checkpoint</button> : null}
+                      {verifiedAttemptError ? <button type="button" disabled={verifiedBusy} onClick={retryVerifiedConnection}>Retry connection</button> : null}
+                      {!modalCompletedReview ? <button type="button" disabled={verifiedBusy} onClick={restartVerifiedAttempt}>Restart attempt</button> : null}
+                      {!modalCompletedReview && modalCanvasState?.serverEvents?.length ? <pre aria-live="polite">{modalCanvasState.serverEvents.slice(-1)[0].output}</pre> : null}
+                    </div> : null}
                   </div>
                   <div className="terminal-shell">
                     <div className="terminal-header">
@@ -3668,7 +3751,7 @@ export default function DashboardPage() {
                       </div>
                       <span>{(modalCanvasState?.scenarioType || "general").toUpperCase()} MODE</span>
                     </div>
-                    <TerminalEmulator
+                    {modalCompletedReview ? <TerminalReview stepIndex={modalSafeStep} events={modalCanvasState?.serverEvents} /> : (<TerminalEmulator
                       className="terminal-body"
                       autoFocus={!showSimulationWalkthrough}
                       initialMessage={modalTerminalProfile.initialMessage}
@@ -3676,6 +3759,8 @@ export default function DashboardPage() {
                       hostname={modalTerminalProfile.hostname}
                       initialPath={modalTerminalProfile.initialPath}
                       queuedCommand={terminalQueuedCommand}
+                      executeCommand={modalCanvasState?.simulationId ? executeVerifiedAction : undefined}
+                      platform={modalCanvasState?.terminalType}
                       resolveUnknownCommand={({ normalizedCommand }) => {
                         if (!normalizedCommand || !currentStepExpectedCommandSet.has(normalizedCommand)) {
                           return null;
@@ -3686,7 +3771,7 @@ export default function DashboardPage() {
                         };
                       }}
                       onCommand={handleTerminalCommand}
-                    />
+                    />)}
                   </div>
                 </div>
                 <div className="step-modal-footer">
@@ -3694,7 +3779,7 @@ export default function DashboardPage() {
                   <div className="step-modal-footer-center">
                     <span>Step {modalStepCount === 0 ? 0 : modalSafeStep + 1} of {modalStepCount}</span>
                   </div>
-                  <button type="button" className="terminal-simulation-nav is-next hd-btn-reset" disabled={modalSafeStep >= modalStepCount - 1} onClick={() => setModalStepIndex(modalSafeStep + 1)}>Next step →</button>
+                  <button type="button" className="terminal-simulation-nav is-next hd-btn-reset" disabled={modalSafeStep >= modalStepCount - 1 || Boolean(modalCanvasState?.simulationId && !modalCompletedReview && modalSafeStep >= modalRequiredStep)} onClick={() => setModalStepIndex(modalSafeStep + 1)}>Next step →</button>
                   {terminalCompletionError ? <div className="terminal-simulation-error" role="alert">{terminalCompletionError}</div> : null}
                 </div>
               </div>
@@ -3810,7 +3895,7 @@ export default function DashboardPage() {
               <h3 id="account-data-title">Data and sessions</h3>
               <p>Manage your saved chat data and sign out on all devices.</p>
                 <button type="button" className="account-data-action hd-btn-reset" onClick={async () => {
-                  if (!window.confirm("Delete your saved chats and prompt history? This cannot be undone.")) return;
+                  if (!window.confirm("Delete your saved chats and prompt history? This cannot be undone. Anonymized policy statistics are retained; active safety cooldowns remain until they expire.")) return;
                   deletingChatDataRef.current = true;
                   try {
                     if (sessionsSaveTimerRef.current) window.clearTimeout(sessionsSaveTimerRef.current);
@@ -4059,6 +4144,7 @@ export default function DashboardPage() {
                 walkthroughOnOpen={Boolean(activeWindowsOsModule.walkthroughOnOpen)}
                 api={api}
                 moduleId={activeWindowsOsModule.id}
+                chatSessionId={activeWindowsOsModule.sessionId}
                 title={activeWindowsOsModule.title}
                 steps={activeWindowsOsModule.steps}
                 completedStepIndexes={activeWindowsOsModule.completedStepIndexes || []}
@@ -4125,8 +4211,8 @@ export default function DashboardPage() {
                     <div className="step-modal-header">
                       <div className="step-modal-title">{modalSourceTitle}</div>
                       <div className="terminal-simulation-header-actions">
-                        <button type="button" className="terminal-simulation-end hd-btn-reset" onClick={endTerminalSimulation}>End simulation</button>
-                        <button type="button" className="terminal-simulation-complete hd-btn-reset" disabled={Boolean(modalCanvasState?.completionRecorded) || terminalCompletionPending} onClick={completeTerminalSimulation}>{terminalCompletionPending ? "Completing..." : modalCanvasState?.completionRecorded ? "Completed" : "✓ Complete Simulation"}</button>
+                        <button type="button" className="terminal-simulation-end hd-btn-reset" onClick={endTerminalSimulation}>{modalCompletedReview ? "Back to simulations" : "End simulation"}</button>
+                        <button type="button" className="terminal-simulation-complete hd-btn-reset" disabled={!modalResolved || verifiedBusy || Boolean(modalCanvasState?.completionRecorded) || terminalCompletionPending} onClick={completeTerminalSimulation}>{terminalCompletionPending ? "Completing..." : modalCanvasState?.completionRecorded ? "Completed" : "✓ Complete Simulation"}</button>
                       </div>
                     </div>
                     <div className="step-modal-progress-wrap">
@@ -4171,10 +4257,11 @@ export default function DashboardPage() {
                               {modalSteps[modalSafeStep] || `Step ${modalStepCount === 0 ? 0 : modalSafeStep + 1}`}
                             </span>
                           </div>
-                          {modalStepDetails[modalSafeStep]?.action ? (
+                          {modalCanvasState?.simulationId ? <TerminalStepGuide iconOnly key={modalSafeStep} step={modalStepDetails[modalSafeStep] || {}} /> : null}
+                  {!modalCanvasState?.simulationId && modalStepDetails[modalSafeStep]?.action ? (
                             <div className="step-modal-current-text">{modalStepDetails[modalSafeStep].action}</div>
                           ) : null}
-                          {modalStepDetails[modalSafeStep]?.desc ? (
+                          {!modalCanvasState?.simulationId && modalStepDetails[modalSafeStep]?.desc ? (
                             <div className="step-modal-current-text step-modal-current-subtext" >{plainDescription(modalStepDetails[modalSafeStep].desc)}</div>
                           ) : null}
                         </div>
@@ -4200,6 +4287,14 @@ export default function DashboardPage() {
                         <div className="step-modal-canvas">
                           <div className="step-modal-canvas-header">
                             <div className="step-modal-canvas-title">Terminal Simulation</div>
+                    {modalCanvasState?.simulationId ? <div className="terminal-verified-controls">
+                      {modalCompletedReview ? <p role="status"><strong>Simulation completed.</strong> Review all {modalStepCount} finished steps using the step list or Previous/Next. This review does not execute commands.</p> : <p>Verified progress: {modalCompletedCount} / {modalStepCount}. Fictional training environment.</p>}
+                      {verifiedAttemptError ? <p role="alert">{verifiedAttemptError}</p> : null}
+                      {modalStepDetails[modalRequiredStep]?.type === 'checkpoint' && !modalResolved ? <button type="button" disabled={verifiedBusy || Boolean(verifiedAttemptError)} onClick={() => executeVerifiedAction('', 'checkpoint')}>Perform simulated checkpoint</button> : null}
+                      {verifiedAttemptError ? <button type="button" disabled={verifiedBusy} onClick={retryVerifiedConnection}>Retry connection</button> : null}
+                      {!modalCompletedReview ? <button type="button" disabled={verifiedBusy} onClick={restartVerifiedAttempt}>Restart attempt</button> : null}
+                      {!modalCompletedReview && modalCanvasState?.serverEvents?.length ? <pre aria-live="polite">{modalCanvasState.serverEvents.slice(-1)[0].output}</pre> : null}
+                    </div> : null}
                           </div>
                           <div className="terminal-shell">
                             <div className="terminal-header">
@@ -4211,7 +4306,7 @@ export default function DashboardPage() {
                               </div>
                               <span>{(modalCanvasState?.scenarioType || "general").toUpperCase()} MODE</span>
                             </div>
-                            <TerminalEmulator
+                            {modalCompletedReview ? <TerminalReview stepIndex={modalSafeStep} events={modalCanvasState?.serverEvents} /> : (<TerminalEmulator
                             className="terminal-body"
                             autoFocus={!showSimulationWalkthrough}
                               initialMessage={modalTerminalProfile.initialMessage}
@@ -4219,6 +4314,8 @@ export default function DashboardPage() {
                               hostname={modalTerminalProfile.hostname}
                               initialPath={modalTerminalProfile.initialPath}
                               queuedCommand={terminalQueuedCommand}
+                      executeCommand={modalCanvasState?.simulationId ? executeVerifiedAction : undefined}
+                      platform={modalCanvasState?.terminalType}
                               resolveUnknownCommand={({ normalizedCommand }) => {
                                 if (!normalizedCommand || !currentStepExpectedCommandSet.has(normalizedCommand)) {
                                   return null;
@@ -4229,7 +4326,7 @@ export default function DashboardPage() {
                                 };
                               }}
                               onCommand={handleTerminalCommand}
-                            />
+                            />)}
                           </div>
                         </div>
                       </div>
@@ -4247,7 +4344,7 @@ export default function DashboardPage() {
                         </div>
                         <span className="step-modal-footer-nav">Step {modalStepCount === 0 ? 0 : modalSafeStep + 1} of {modalStepCount}</span>
                       </div>
-                      <button type="button" className="terminal-simulation-nav is-next hd-btn-reset" disabled={modalSafeStep >= modalStepCount - 1} onClick={() => setModalStepIndex(modalSafeStep + 1)}>Next step →</button>
+                      <button type="button" className="terminal-simulation-nav is-next hd-btn-reset" disabled={modalSafeStep >= modalStepCount - 1 || Boolean(modalCanvasState?.simulationId && !modalCompletedReview && modalSafeStep >= modalRequiredStep)} onClick={() => setModalStepIndex(modalSafeStep + 1)}>Next step →</button>
                       {terminalCompletionError ? <div className="terminal-simulation-error" role="alert">{terminalCompletionError}</div> : null}
                     </div>
                   </div>

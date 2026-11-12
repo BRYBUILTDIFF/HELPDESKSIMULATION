@@ -7,3 +7,4 @@
 **/node_modules/
 **/.security-build/
 helpdesk-ai/server/data/policy-events.json
+**/.security/

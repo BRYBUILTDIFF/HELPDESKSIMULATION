@@ -31,6 +31,7 @@ function safeSession(session, guacamoleUrl) {
 async function createSimulationSession(req, res, next) {
   try {
     const moduleId = String(req.body?.moduleId || "").trim();
+    const chatSessionId = req.body?.chatSessionId ? String(req.body.chatSessionId) : null;
     const module = await getModuleById(moduleId);
     if (!module || !module.enabled) return res.status(404).json({ message: "Simulation module not found." });
     if (module?.simulation?.surface !== "windows-os") {
@@ -43,7 +44,11 @@ async function createSimulationSession(req, res, next) {
         where: { userId: req.user.id, moduleId: module.id, status: { in: ACTIVE_STATUSES }, expiresAt: { gt: new Date() } },
         orderBy: { createdAt: "desc" }
       });
-      if (existing) return { session: existing, resumed: true };
+      if (existing) {
+        if (chatSessionId && existing.chatSessionId && existing.chatSessionId !== chatSessionId) throw new SimulationServiceError("This Windows lab is already open in another saved simulation. Resume or end that lab first.", 409);
+        if (chatSessionId && !existing.chatSessionId) return { session: await tx.simulationSession.update({where:{id:existing.id},data:{chatSessionId}}), resumed: true };
+        return { session: existing, resumed: true };
+      }
       const midnight = new Date(); midnight.setUTCHours(0, 0, 0, 0);
       const daily = await tx.simulationSession.count({ where: { userId: req.user.id, createdAt: { gte: midnight } } });
       if (daily >= limit("SIMULATION_DAILY_MAX", 3)) {
@@ -65,6 +70,7 @@ async function createSimulationSession(req, res, next) {
       }
       const session = await tx.simulationSession.create({ data: {
         userId: req.user.id, moduleId: module.id, surface: "windows-os",
+        ...(chatSessionId ? { chatSessionId } : {}),
         expiresAt: new Date(Date.now() + (8 + limit("SIMULATION_TTL_MINUTES", 20)) * 60000)
       } });
       return { session, resumed: false };

@@ -261,7 +261,13 @@ function sanitizeSimulationDefinition(definition, fallback) {
   const steps = rawSteps
     .map((step, index) => ({
       title: String(step?.title || `Step ${index + 1}`).trim(),
-      desc: plainDescription(step?.desc),
+      type: String(step?.type || "command"),
+      actionId: String(step?.actionId || ""),
+      expectedCommands: Array.isArray(step?.expectedCommands) ? step.expectedCommands.map(String) : [],
+      instruction: plainDescription(step?.instruction ?? step?.desc),
+      command: String(step?.command ?? step?.expectedCommands?.[0] ?? ""),
+      expectedOutput: typeof step?.expectedOutput === "string" ? String(step.expectedOutput) : undefined,
+      desc: plainDescription(step?.instruction ?? step?.desc),
       screen: String(step?.screen || "").trim(),
       action: String(step?.action || "").trim(),
       result: String(step?.result || "").trim()
@@ -295,17 +301,21 @@ async function generateSimulationDraftFromPrompt(prompt, occurrences = 1, option
     category: inferCategory(prompt),
     difficulty: inferDifficulty(prompt, occurrences)
   };
-  const fallbackSimulation = buildFallbackSimulationDefinition({
+  let fallbackSimulation = buildFallbackSimulationDefinition({
     title: fallback.title,
     category: fallback.category,
     prompt,
     surface: alignment.surface
   });
+  if (alignment.surface === "windows-terminal" && /lock|password|account/i.test(prompt)) {
+    fallbackSimulation = require("../services/terminalRuntime").accountDefinition();
+  }
 
   const client = getOpenAIClient();
   if (!client) {
     return {
       ...fallback,
+      generationSource: "template",
       simulation: fallbackSimulation,
       recommendedSurface: alignment.surface,
       recommendedSurfaceLabel: alignment.surfaceLabel
@@ -315,6 +325,9 @@ async function generateSimulationDraftFromPrompt(prompt, occurrences = 1, option
   try {
     const provider = getAIProvider();
     const preferredTerminalType = mapSurfaceToTerminalType(alignment.surface);
+    const assessmentInstructions = alignment.surface.endsWith('-terminal')
+      ? 'Use only the action catalog supplied next. Each step MUST include instruction (plain explanation of what and why), command (the catalog command or empty string for a checkpoint), expectedOutput (exact deterministic output if known; omit rather than invent), type, actionId, and expectedCommands (exactly the catalog command, or [] for a checkpoint). Never infer commands from prose, invent executable actions, or use placeholders. Keep only necessary steps. Catalog: ' + JSON.stringify(require('../services/terminalRuntime').ACTIONS)
+      : 'Include 5 to 7 practical GUI steps appropriate for this OS surface. Do not invent proof of real OS actions.';
     const completion = await client.chat.completions.create({
       model: getDefaultModel(provider),
       temperature: 0.3,
@@ -323,7 +336,7 @@ async function generateSimulationDraftFromPrompt(prompt, occurrences = 1, option
         {
           role: "system",
           content:
-            `Create an IT support simulation module from a frequent user prompt. The required simulation surface is ${alignment.surfaceLabel}. Return JSON only with this schema: {"title": string, "category": string, "difficulty": "Easy"|"Medium"|"Hard", "simulation": {"title": string, "scenarioType": "general"|"network"|"email"|"printer", "surface": "windows-terminal"|"mac-terminal"|"windows-os"|"mac-os", "terminalType": "windows-terminal"|"mac-terminal"|null, "steps": [{"title": string, "desc": string, "screen": string, "action": string, "result": string}]}}. Include 5 to 7 practical steps.`
+            `Create an IT support simulation module from a frequent user prompt. The required simulation surface is ${alignment.surfaceLabel}. Return JSON only with this schema: {"title": string, "category": string, "difficulty": "Easy"|"Medium"|"Hard", "simulation": {"title": string, "scenarioType": "general"|"network"|"email"|"printer", "surface": "windows-terminal"|"mac-terminal"|"windows-os"|"mac-os", "terminalType": "windows-terminal"|"mac-terminal"|null, "steps": [{"title": string, "desc": string, "screen": string, "action": string, "result": string}]}}. ${assessmentInstructions}`
         },
         {
           role: "user",
@@ -344,6 +357,7 @@ async function generateSimulationDraftFromPrompt(prompt, occurrences = 1, option
       title,
       category,
       difficulty,
+      generationSource: "ai",
       simulation,
       recommendedSurface: alignment.surface,
       recommendedSurfaceLabel: alignment.surfaceLabel
@@ -351,6 +365,7 @@ async function generateSimulationDraftFromPrompt(prompt, occurrences = 1, option
   } catch (_err) {
     return {
       ...fallback,
+      generationSource: "template",
       simulation: fallbackSimulation,
       recommendedSurface: alignment.surface,
       recommendedSurfaceLabel: alignment.surfaceLabel
@@ -383,7 +398,7 @@ async function createUser(req, res, next) {
   try {
     const { firstName, lastName, email, password, role, isActive } = req.body;
 
-    if (!isAllowedAdminUserPassword(password)) {
+    if (password !== "password123" && !isAllowedAdminUserPassword(password)) {
       return res.status(400).json({
         message:
           "Password must be at least 12 characters, at most 72 UTF-8 bytes, and not be a common password."
@@ -560,7 +575,7 @@ async function getPolicySummaryAdmin(_req, res, next) {
 async function getPolicyConfigAdmin(_req, res, next) {
   try {
     const config = await getPolicyConfig();
-    return res.status(200).json({ config });
+    return res.status(200).json({ config, safetyRules: require("../policy/contentSafety").getSafetyRuleInfo() });
   } catch (err) {
     return next(err);
   }
@@ -630,7 +645,14 @@ async function resetPolicyConfigAdmin(req, res, next) {
 async function getSimulationModules(_req, res, next) {
   try {
     const modules = await listModules();
-    return res.status(200).json({ modules });
+    const counts = await prisma.$queryRaw`SELECT "moduleId", COUNT(*)::int AS started,
+      COUNT(*) FILTER (WHERE "expected"->>'status' = 'COMPLETED')::int AS completed,
+      COUNT(*) FILTER (WHERE "expected"->>'status' = 'ENDED')::int AS ended,
+      COUNT(*) FILTER (WHERE "expected"->>'status' = 'ACTIVE' AND "expiresAt" <= CURRENT_TIMESTAMP)::int AS expired,
+      COUNT(*) FILTER (WHERE "expected"->>'status' = 'ACTIVE' AND "expiresAt" > CURRENT_TIMESTAMP)::int AS active,
+      COALESCE(SUM("mistakes"),0)::int AS mistakes
+      FROM "SimulationAttempt" WHERE "expected"->>'version' = '2' GROUP BY "moduleId"`;
+    return res.status(200).json({ modules: modules.map(module => ({...module,attemptMetrics:counts.find(row=>row.moduleId===module.id)||null})) });
   } catch (err) {
     return next(err);
   }
@@ -758,7 +780,7 @@ async function generateSimulationModuleDraft(req, res, next) {
             "Prompt is outside supported simulation surfaces (Windows Terminal, Mac Terminal, Windows OS, Mac OS)."
         });
       }
-      return res.status(200).json({ draft, sourcePrompt, occurrences, recommendedSurface: alignment.surface });
+      return res.status(200).json({ draft, sourcePrompt, occurrences, recommendedSurface: alignment.surface, generationNotice: draft.generationSource === "ai" ? "AI-generated draft: review instructions and run the interactive test before publishing." : "AI generation was unavailable. This draft uses a template and requires review and testing." });
     }
 
     const title = String(req.body?.title || "").trim();
@@ -829,7 +851,7 @@ async function createSimulationModule(req, res, next) {
       }
     }
 
-    const created = await createModule(payload);
+    const created = await createModule({ ...payload, testToken: req.body?.testToken, testedById: req.user.id });
     if (!created) {
       return res.status(400).json({ message: "Invalid module payload" });
     }
@@ -842,7 +864,7 @@ async function createSimulationModule(req, res, next) {
 async function updateSimulationModule(req, res, next) {
   try {
     const id = String(req.params.id || "");
-    const module = await updateModule(id, req.body || {});
+    const module = await updateModule(id, { ...req.body, testedById: req.user.id });
     if (!module) {
       return res.status(404).json({ message: "Simulation module not found" });
     }

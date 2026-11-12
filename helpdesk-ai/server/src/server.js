@@ -115,7 +115,13 @@ app.use((req, res) => {
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+async function startServer() {
+  if (process.env.NODE_ENV === "production") {
+    const [role] = await require("./prisma").$queryRaw`SELECT rolsuper,rolcreatedb,rolcreaterole,rolbypassrls FROM pg_roles WHERE rolname=current_user`;
+    if (!role || Object.values(role).some(Boolean)) throw new Error("Production runtime requires a non-privileged database role.");
+    if (process.env.ADMIN_DATABASE_URL) throw new Error("Do not expose maintenance database credentials to the production API.");
+  }
+  app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   cleanupRetainedData().catch(() => console.error("Data retention cleanup failed; will retry."));
   setInterval(() => cleanupRetainedData().catch(() => console.error("Data retention cleanup failed; will retry.")), 60 * 60 * 1000).unref();
@@ -124,4 +130,6 @@ app.listen(PORT, () => {
   setInterval(() => {
     cleanupExpiredWindowsSimulationSessions().catch((error) => console.error("Simulation cleanup pass failed", error?.message));
   }, 5 * 60 * 1000).unref();
-});
+  });
+}
+startServer().catch(() => { console.error("Backend startup security/database checks failed."); process.exitCode = 1; });

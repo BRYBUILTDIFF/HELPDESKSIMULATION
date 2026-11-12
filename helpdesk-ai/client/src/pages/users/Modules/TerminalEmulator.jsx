@@ -112,12 +112,14 @@ function buildDirOutput(path) {
 
 export default function TerminalEmulator({
   className = "",
+  platform = "windows-terminal",
   initialMessage = "Windows Terminal simulation. Type 'help' for available commands.",
   username = "student",
   hostname = "DESKTOP-SIM",
   initialPath = "C:\\Users\\student",
   queuedCommand = null,
   onCommand,
+  executeCommand,
   resolveUnknownCommand,
   autoFocus = true
 }) {
@@ -125,8 +127,10 @@ export default function TerminalEmulator({
   const inputBufferRef = useRef("");
   const historyRef = useRef([]);
   const historyIndexRef = useRef(0);
-  const currentPathRef = useRef(normalizePath(initialPath));
+  const currentPathRef = useRef(platform === "mac-terminal" ? initialPath : normalizePath(initialPath));
   const onCommandRef = useRef(onCommand);
+  const executeCommandRef = useRef(executeCommand);
+  executeCommandRef.current = executeCommand;
   const resolveUnknownCommandRef = useRef(resolveUnknownCommand);
   const runQueuedCommandRef = useRef(null);
 
@@ -139,8 +143,8 @@ export default function TerminalEmulator({
   }, [resolveUnknownCommand]);
 
   useEffect(() => {
-    currentPathRef.current = normalizePath(initialPath);
-  }, [initialPath]);
+    currentPathRef.current = platform === "mac-terminal" ? initialPath : normalizePath(initialPath);
+  }, [initialPath, platform]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -153,6 +157,9 @@ export default function TerminalEmulator({
         background: "#0c0c0c",
         foreground: "#cccccc",
         cursor: "#ffffff",
+        scrollbarSliderBackground: "#7d958680",
+        scrollbarSliderHoverBackground: "#9fb7a7",
+        scrollbarSliderActiveBackground: "#c0d6c7",
         selectionBackground: "#ffffff40",
         black: "#0c0c0c",
         brightBlack: "#767676",
@@ -176,7 +183,7 @@ export default function TerminalEmulator({
       lineHeight: 1.2,
       cursorBlink: true,
       cursorStyle: "block",
-      scrollback: 1000,
+      scrollback: 10000,
       convertEol: true
     });
     const fitAddon = new FitAddon();
@@ -188,8 +195,9 @@ export default function TerminalEmulator({
       term.focus();
     }
 
+    let disposed = false;
     const writePrompt = () => {
-      term.write(`${currentPathRef.current}> `);
+      term.write(platform === "mac-terminal" ? `${username}@${hostname} ${currentPathRef.current} % ` : `${currentPathRef.current}> `, () => { if (!disposed) term.scrollToBottom(); });
     };
 
     const clearCurrentInput = () => {
@@ -821,6 +829,14 @@ export default function TerminalEmulator({
     const submitCommand = async (command) => {
       commandInFlight = true;
       try {
+      if (!String(command || "").trim()) { writePrompt(); return; }
+      if (executeCommandRef.current) {
+        const verified = await executeCommandRef.current(command);
+        if (verified?.clear) term.clear();
+        if (verified?.output) writeLines(verified.output);
+        writePrompt();
+        return;
+      }
       const builtInResult = handleBuiltInCommand(command);
       let result = builtInResult;
       if (!builtInResult.known && typeof resolveUnknownCommandRef.current === "function") {
@@ -906,6 +922,15 @@ export default function TerminalEmulator({
     term.writeln(initialMessage);
     writePrompt();
 
+    // Let the browser deliver paste events rather than emitting Ctrl+V as terminal input.
+    term.attachCustomKeyEventHandler(event => !((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v'));
+    const handlePaste = event => {
+      if (!event.clipboardData) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      const text = event.clipboardData.getData('text/plain').replace(/[\r\n]+/g, ' ');
+      term.focus(); term.paste(text);
+    };
+    container.addEventListener('paste', handlePaste, true);
     const disposable = term.onData((data) => {
       if (data === "\r") {
         onEnter();
@@ -937,9 +962,13 @@ export default function TerminalEmulator({
       }
     });
 
+    let resizeFrame;
     const handleResize = () => {
-      fitAddon.fit();
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(() => {if (!disposed && container.isConnected && container.clientWidth > 0 && container.clientHeight > 0) fitAddon.fit();});
     };
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(container);
     window.addEventListener("resize", handleResize);
 
     runQueuedCommandRef.current = (queued) => {
@@ -953,11 +982,15 @@ export default function TerminalEmulator({
 
     return () => {
       runQueuedCommandRef.current = null;
+      disposed = true;
+      cancelAnimationFrame(resizeFrame);
+      resizeObserver.disconnect();
       window.removeEventListener("resize", handleResize);
+      container.removeEventListener('paste', handlePaste, true);
       disposable.dispose();
       term.dispose();
     };
-  }, [autoFocus, hostname, initialMessage, initialPath, username]);
+  }, [autoFocus, hostname, initialMessage, initialPath, username, platform]);
 
   useEffect(() => {
     if (!queuedCommand || !runQueuedCommandRef.current) {

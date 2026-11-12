@@ -17,14 +17,19 @@ function sanitizeId(raw) {
 
 function normalizeSimulationStep(step, index) {
   const title = safeText(step?.title) || `Step ${index + 1}`;
-  const desc = safeText(step?.desc);
+  const desc = safeText(step?.instruction ?? step?.desc);
   const screen = safeText(step?.screen);
   const action = safeText(step?.action);
   const result = safeText(step?.result);
   return {
     title: title || `Step ${index + 1}`,
     desc,
-    expectedCommands: Array.isArray(step?.expectedCommands) ? step.expectedCommands.slice(0, 12).map(safeText) : [],
+    instruction: desc,
+    command: safeText(step?.command ?? step?.expectedCommands?.[0] ?? ""),
+    expectedOutput: typeof step?.expectedOutput === "string" ? safeText(step.expectedOutput) : undefined,
+    type: String(step?.type || "command"),
+    actionId: String(step?.actionId || ""),
+    expectedCommands: typeof step?.command === "string" ? (step.command.trim() ? [safeText(step.command)] : []) : Array.isArray(step?.expectedCommands) ? step.expectedCommands.slice(0, 12).map(safeText) : [],
     screen,
     action,
     result
@@ -49,13 +54,14 @@ function normalizeSimulation(definition, fallbackTitle = "Simulation Scenario") 
   if (steps.length === 0) {
     return null;
   }
-  return {
+  const normalized = {
     title: String(definition.title || fallbackTitle).trim() || fallbackTitle,
     scenarioType: String(definition.scenarioType || "general").trim().toLowerCase() || "general",
     surface,
     terminalType,
     steps
   };
+  return ["windows-terminal", "mac-terminal"].includes(surface) ? require("../services/terminalRuntime").withExpectedOutputs(normalized) : normalized;
 }
 
 function mapDbModule(module) {
@@ -71,6 +77,7 @@ function mapDbModule(module) {
     avgSteps: Number(module.avgSteps || 0),
     sourcePrompt: module.sourcePrompt || "",
     simulation: normalizeSimulation(module.simulation, module.title),
+    validationErrors: ["windows-terminal", "mac-terminal"].includes(module.simulation?.surface) ? require("../services/terminalRuntime").validateDefinition(normalizeSimulation(module.simulation, module.title)) : [],
     createdAt: module.createdAt
   };
 }
@@ -104,6 +111,10 @@ async function getModuleById(id) {
 async function createModule(payload = {}) {
   const normalized = buildPayload(payload);
   if (!normalized) return null;
+  if (normalized.enabled && ["windows-terminal", "mac-terminal"].includes(normalized.simulation?.surface)) {
+    const r = require("../services/terminalRuntime"); r.assertDefinition(normalized.simulation);
+    if (!r.verifyTest(payload.testToken, normalized.simulation, payload.testedById)) { const error = new Error("Complete the interactive admin test before enabling this module."); error.status = 400; throw error; }
+  }
   const base = sanitizeId(payload.id || normalized.title) || `sim-${Date.now().toString(36)}`;
   for (let attempt = 1; attempt <= 100; attempt++) {
     try {
@@ -123,6 +134,13 @@ async function updateModule(id, patch = {}) {
   };
   if (Object.prototype.hasOwnProperty.call(patch, "simulation") && !data.simulation) {
     const error = new Error("A simulation needs at least one valid step"); error.status = 400; throw error;
+  }
+  const current = await prisma.simulationModule.findUnique({where:{id:String(id || "")}});
+  if (!current) return null;
+  const target = data.simulation || normalizeSimulation(current.simulation, current.title);
+  if ((data.enabled ?? current.enabled) && ["windows-terminal", "mac-terminal"].includes(target?.surface)) {
+    const r = require('../services/terminalRuntime'); r.assertDefinition(target);
+    if ((data.enabled === true || data.simulation) && !r.verifyTest(patch.testToken,target,patch.testedById)) { const error = new Error('Complete the interactive admin test for this exact definition before publishing.'); error.status=400; throw error; }
   }
   try { return mapDbModule(await prisma.simulationModule.update({ where: { id: String(id || "") }, data })); }
   catch (err) { if (err.code === "P2025") return null; throw err; }
@@ -179,12 +197,14 @@ async function recordModuleCompletion({ moduleId, userId, attemptKey, surface, s
     let verification = "self-reported";
     let completedSteps = expectedSteps > 0 ? Math.min(requestedSteps, expectedSteps) : requestedSteps;
     if (["windows-terminal", "mac-terminal"].includes(surface)) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${safeAttemptKey}))`;
       const attempt = await tx.simulationAttempt.findFirst({ where: { id: safeAttemptKey, userId, moduleId: safeId, surface } });
-      if (!attempt || attempt.expiresAt <= new Date() || !Array.isArray(attempt.expected) || attempt.nextStep !== attempt.expected.length || !attempt.expected.length) {
+      if (!attempt || attempt.expiresAt <= new Date() || attempt.expected?.version !== 2 || attempt.expected.status !== "ACTIVE" || require("../services/terminalRuntime").definitionHash(normalizeSimulation(attempt.expected.definition, module.title)) !== require("../services/terminalRuntime").definitionHash(normalizeSimulation(module.simulation, module.title)) || attempt.nextStep !== attempt.expected.definition.steps.length || !attempt.expected.definition.steps.length) {
         const error = new Error("Complete each command step in a server-issued attempt before recording completion."); error.status = 409; throw error;
       }
       completedSteps = attempt.nextStep;
-      verification = "command-sequence";
+      verification = "simulated-actions";
+      await tx.simulationAttempt.update({where:{id:attempt.id},data:{expected:{...attempt.expected,status:"COMPLETED"}}});
     }
     await tx.simulationCompletion.create({
       data: { userId, moduleId: safeId, attemptKey: safeAttemptKey, surface: String(surface || "terminal"), stepsCompleted: completedSteps, verification }
@@ -199,6 +219,7 @@ async function recordModuleCompletion({ moduleId, userId, attemptKey, surface, s
 }
 
 module.exports = {
+  normalizeSimulation,
   listModules,
   getModuleById,
   createModule,

@@ -290,3 +290,31 @@
 @media (prefers-reduced-motion: reduce) {
   .admin-ui *, .admin-ui *::before, .admin-ui *::after { animation: none; transition: none; scroll-behavior: auto; }
 }
+
+.admin-console-root.admin-ui .policy-safety-baseline { padding-block: 0 20px; margin-bottom: 20px; border-bottom: 1px solid var(--border, #d5dfd4); }
+.admin-console-root.admin-ui .policy-safety-baseline p { max-width: 72ch; margin: 8px 0; line-height: 1.6; overflow-wrap: anywhere; }
+
+
+.admin-ui .terminal-module-tester {padding:24px; overflow:auto; max-height:75vh;}
+.admin-ui .terminal-module-tester p {max-width:72ch;line-height:1.6;}
+.admin-ui .terminal-module-tester li {padding:12px 0;border-bottom:1px solid #d5dfd4;}
+.admin-ui .terminal-module-tester label {display:block;margin:8px 0;}
+.admin-ui .terminal-module-tester select {max-width:100%;padding:8px;}
+.admin-ui .terminal-module-tester code {display:block;white-space:pre-wrap;overflow-wrap:anywhere;}
+.admin-ui .admin-verified-terminal {height:280px;margin-block:16px;background:#0c0c0c;}
+.admin-ui .terminal-module-tester pre {white-space:pre-wrap;overflow-wrap:anywhere;}
+
+.admin-console-root.admin-ui .terminal-step-editor {margin-block:20px;}
+.admin-console-root.admin-ui .terminal-step-editor summary {cursor:pointer;font-weight:600;padding-block:10px;}
+.admin-console-root.admin-ui .terminal-step-editor li {max-width:900px;padding-block:16px;}
+.admin-console-root.admin-ui .terminal-step-editor label {display:block;margin-block:8px;}
+.admin-console-root.admin-ui .terminal-step-editor input, .admin-console-root.admin-ui .terminal-step-editor textarea, .admin-console-root.admin-ui .terminal-step-editor select {display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:10px 12px;font:inherit;}
+.admin-console-root.admin-ui .terminal-step-editor textarea {min-height:72px;resize:vertical;}
+.admin-console-root.admin-ui .terminal-module-tester .btn-sm {margin:8px 8px 8px 0;min-height:36px;}
+
+.terminal-step-guide {display:grid;gap:16px;margin-block:16px;min-width:0;}
+.terminal-step-guide h4 {font-size:12px;font-weight:600;margin:0 0 6px;}
+.terminal-step-guide p {margin:0;font-size:13px;line-height:1.6;}
+.terminal-step-guide pre {white-space:pre-wrap;overflow-wrap:anywhere;margin:0;font-size:12px;line-height:1.6;}
+.terminal-step-guide button {margin-top:8px;padding:7px 10px;border:1px solid #b6c8b7;border-radius:6px;background:transparent;color:inherit;font:inherit;font-size:12px;cursor:pointer;}
+.terminal-step-guide [role=status] {margin-left:8px;font-size:12px;}

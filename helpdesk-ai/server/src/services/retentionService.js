@@ -9,6 +9,9 @@ async function cleanupRetainedData() {
   await prisma.userSessionState.deleteMany({ where: { updatedAt: { lt: chatCutoff } } });
   await prisma.simulationAttempt.deleteMany({ where: { expiresAt: { lt: chatCutoff } } });
   await prisma.requestLimit.deleteMany({ where: { resetAt: { lt: new Date() } } });
-  await prisma.adminAuditLog.deleteMany({ where: { at: { lt: new Date(Date.now() - 365 * 86400000) } } });
+  // Runtime may insert/read audit records and update status, but cannot delete them.
+  // Archive/prune audit history with a separately authorized maintenance identity.
+  await prisma.sessionRestriction.deleteMany({ where: { updatedAt: { lt: new Date(Date.now() - 86400000) },
+    OR: [{ expiresAt: null }, { expiresAt: { lt: new Date() } }] } });
 }
 module.exports = { cleanupRetainedData };

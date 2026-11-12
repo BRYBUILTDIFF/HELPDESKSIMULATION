@@ -1,0 +1,11 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');const runtime=require('../src/services/terminalRuntime');
+let row,completion=null,updates=0;
+const tx={$executeRaw:async()=>{},simulationAttempt:{findFirst:async({where})=>row?.userId===where.userId?row:null,update:async()=>{updates++;return row;}}};
+require.cache[require.resolve('../src/prisma')]={exports:{simulationAttempt:tx.simulationAttempt,simulationCompletion:{findUnique:async()=>completion},$transaction:async fn=>fn(tx)}};
+const controller=require('../src/controllers/simulationAttemptController');const request={params:{id:'lesson',attemptId:'owned'},user:{id:1}};
+const response=()=>({code:200,status(value){this.code=value;return this;},json(data){this.data=data;return this;}});
+function fixture(status){const definition=runtime.accountDefinition();return {id:'owned',userId:1,moduleId:'lesson',expiresAt:new Date(0),nextStep:6,mistakes:0,expected:{...runtime.newRuntime(definition),status}};}
+test('completed attempts remain readable after execution expiry',async()=>{row=fixture('COMPLETED');completion=null;const res=response();await controller.getAttempt(request,res,error=>{throw error;});assert.equal(res.code,200);assert.equal(res.data.status,'COMPLETED');assert.equal(res.data.completed,true);assert.equal(res.data.definition.steps.length,6);});
+test('legacy ended attempts with a completion record reopen as completed',async()=>{row=fixture('ENDED');completion={userId:1,moduleId:'lesson'};const res=response();await controller.getAttempt(request,res,error=>{throw error;});assert.equal(res.data.status,'COMPLETED');});
+test('expired incomplete and foreign attempts do not become reviewable',async()=>{completion=null;row=fixture('ACTIVE');const expired=response();await controller.getAttempt(request,expired,error=>{throw error;});assert.equal(expired.code,410);row=fixture('COMPLETED');row.userId=2;const other=response();await controller.getAttempt(request,other,error=>{throw error;});assert.equal(other.code,410);});
+test('ending a completed attempt preserves completion status',async()=>{row=fixture('COMPLETED');updates=0;const res=response();await controller.endAttempt(request,res,error=>{throw error;});assert.equal(res.data.status,'COMPLETED');assert.equal(updates,0);});

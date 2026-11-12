@@ -242,7 +242,7 @@ async function classifyWithDeepSeek(message, history, policy) {
       const decision = await classifyWithLocalDeepSeek(message, history, policy);
       if (decision.confidence < 0.75) throw new Error("Local classifier decision needs verification.");
       localRetryAfter = 0;
-      return decision;
+      return { ...decision, source: "ollama", model: DEEPSEEK_MODEL };
     } catch (_) {
       localRetryAfter = Date.now() + 30000;
       console.warn("[PolicyClassifier] Local classifier unavailable or uncertain; trying configured AI provider.");
@@ -265,7 +265,7 @@ async function classifyWithDeepSeek(message, history, policy) {
   if (!parsed) throw new Error("Configured provider returned an invalid scope decision.");
   const confidence = Number(parsed.confidence);
   if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) throw new Error("Scope confidence is invalid.");
-  return { classification: parsed.classification.trim(), confidence, reason: String(parsed.reason || "Scope classification.").slice(0, 500) };
+  return { classification: parsed.classification.trim(), confidence, reason: String(parsed.reason || "Scope classification.").slice(0, 500), source: getAIProvider(), model: getDefaultModel(getAIProvider()) };
 }
 
 /**
@@ -275,8 +275,7 @@ async function classifyWithDeepSeek(message, history, policy) {
  * @param {{conversationScope?: string}} context
  * @returns {Promise<{allowed: boolean, code: string, reason: string, userMessage?: string, directReply?: string}>}
  */
-async function evaluatePromptPolicy(message, history = [], context = {}) {
-  const policy = await getPolicyRuntimeConfig();
+async function evaluatePromptDecision(message, history, context, policy) {
   const input = String(message || "").trim();
   const safeHistory = sanitizeHistory(history);
 
@@ -300,7 +299,7 @@ async function evaluatePromptPolicy(message, history = [], context = {}) {
 
   const safetyBlock = await evaluateContentSafety(input);
   if (safetyBlock) {
-    return { allowed: false, code: safetyBlock.code, reason: "Prompt failed the content-safety check.", userMessage: safetyBlock.message };
+    return { allowed: false, code: safetyBlock.code, ...(safetyBlock.code === "SAFETY_UNAVAILABLE" ? { httpStatus: 503 } : {}), reason: "Prompt failed the content-safety check.", userMessage: safetyBlock.message };
   }
 
   const normalizeGreeting = value => String(value || "").trim().toLowerCase().replace(/^[!.?\s]+|[!.?\s]+$/g, "").replace(/\s+/g, " ");
@@ -316,11 +315,13 @@ async function evaluatePromptPolicy(message, history = [], context = {}) {
 
   try {
     const classificationResult = await classifyWithDeepSeek(input, safeHistory, policy);
+    const metadata = { source: classificationResult.source, model: classificationResult.model, confidence: classificationResult.confidence };
 
     if (classificationResult.classification === "greeting") {
       return {
         allowed: true,
         code: "GREETING",
+        metadata,
         reason: classificationResult.reason,
         directReply: policy.messages.greetingReply
       };
@@ -330,6 +331,7 @@ async function evaluatePromptPolicy(message, history = [], context = {}) {
       return {
         allowed: true,
         code: "ALLOWED",
+        metadata,
         reason: classificationResult.reason
       };
     }
@@ -338,12 +340,13 @@ async function evaluatePromptPolicy(message, history = [], context = {}) {
       return {
         allowed: true,
         code: "SCOPE_CLARIFICATION",
+        metadata,
         reason: classificationResult.reason,
         directReply: policy.messages.clarifyMessage || CLARIFY_MESSAGE_FALLBACK
       };
     }
 
-    return outOfScopeRedirect(policy);
+    return { ...outOfScopeRedirect(policy), metadata };
   } catch (err) {
     console.error("[PolicyClassifier] Unavailable", { code: err?.code || "UNAVAILABLE" });
     return {
@@ -356,15 +359,22 @@ async function evaluatePromptPolicy(message, history = [], context = {}) {
   }
 }
 
-async function evaluateResponsePolicy(reply) {
+async function evaluatePromptPolicy(message, history = [], context = {}) {
+  const policy = await getPolicyRuntimeConfig();
+  const result = await evaluatePromptDecision(message, history, context, policy);
+  return { ...result, metadata: { policyVersion: policy.policyVersion ?? null, ...result.metadata } };
+}
+
+async function evaluateResponseDecision(reply) {
   try {
     const policy = await getPolicyRuntimeConfig();
     const decision = await classifyWithDeepSeek(reply, [], policy);
-    return decision.classification === "in_scope" && decision.confidence >= 0.75;
+    return { allowed: decision.classification === "in_scope" && decision.confidence >= 0.75, confidence: decision.confidence };
   } catch (_) {
     console.warn("[PolicyClassifier] Response scope check unavailable");
-    return false;
+    return { allowed: false, unavailable: true };
   }
 }
 
-module.exports = { evaluatePromptPolicy, evaluateResponsePolicy, classifyWithDeepSeek };
+async function evaluateResponsePolicy(reply) { return (await evaluateResponseDecision(reply)).allowed; }
+module.exports = { evaluatePromptPolicy, evaluateResponsePolicy, evaluateResponseDecision, classifyWithDeepSeek };

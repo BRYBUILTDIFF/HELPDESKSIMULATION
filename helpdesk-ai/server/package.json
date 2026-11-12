@@ -5,18 +5,24 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon src/server.js",
-    "migrate": "prisma migrate dev",
+    "migrate": "node scripts/migrate-as-owner.js dev",
     "seed": "node prisma/seed.js",
     "generate": "prisma generate",
     "test": "node --test test/*.test.js",
-    "migrate:deploy": "prisma migrate deploy",
+    "migrate:deploy": "node scripts/migrate-as-owner.js",
     "start": "node src/server.js",
     "test:db": "node --test test/database.integration.js",
     "security:flag-legacy-passwords": "node scripts/flag-legacy-passwords.js",
     "lint": "node scripts/check-syntax.js",
     "test:review-db": "node --test test/review.database.integration.js",
     "security:rotate-legacy-passwords": "node scripts/rotate-legacy-passwords.js --apply",
-    "diagnose:db": "node scripts/diagnose-db.js"
+    "diagnose:db": "node scripts/diagnose-db.js",
+    "backup:encrypted": "node scripts/secure-backup.js",
+    "backup:verify": "node scripts/test-backup-restore.js",
+    "security:verify-db": "node scripts/verify-security-db.js",
+    "security:verify-api": "node scripts/verify-api-security.js",
+    "security:scan-history": "node scripts/scan-repository-secrets.js",
+    "security:provision-db": "node scripts/provision-runtime-role.js --apply"
   },
   "dependencies": {
     "@aws-sdk/client-ec2": "^3.1095.0",

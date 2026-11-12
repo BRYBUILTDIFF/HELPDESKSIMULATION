@@ -4,6 +4,7 @@ const { generateAccessToken, generateRefreshToken, verifyOptions } = require("..
 const { hashPassword, comparePassword } = require("../utils/password");
 
 const { PASSWORD_REGEX, hashToken } = require("../utils/security");
+const { endUserLabs } = require("../services/labLifecycleService");
 const dummyHash = require("bcryptjs").hashSync("invalid-account-password", 12);
 
 function getRefreshExpiryDate(token) {
@@ -118,9 +119,16 @@ async function logout(req, res, next) {
     const token = req.cookies.refreshToken;
 
     if (token) {
+      let ownerId;
+      try {
+        const payload = jwt.verify(token, process.env.JWT_REFRESH_SECRET, verifyOptions);
+        const stored = await prisma.refreshToken.findUnique({ where: { token: tokenKey(token) } });
+        if (stored && stored.userId === payload.id) ownerId = stored.userId;
+      } catch (_) { /* Invalid cookies cannot select a cleanup target. */ }
       await prisma.refreshToken.deleteMany({
         where: { token: tokenKey(token) }
       });
+      if (ownerId) await endUserLabs(ownerId).catch(() => console.warn("Logout lab cleanup pending", { userId: ownerId }));
     }
 
     res.clearCookie("refreshToken", { path: "/" });
@@ -208,6 +216,7 @@ async function logoutAll(req, res, next) {
       prisma.user.update({ where: { id: req.user.id }, data: { tokenVersion: { increment: 1 } } }),
       prisma.refreshToken.deleteMany({ where: { userId: req.user.id } })
     ]);
+    await endUserLabs(req.user.id).catch(() => console.warn("Logout lab cleanup pending", { userId: req.user.id }));
     res.clearCookie("refreshToken", { path: "/" });
     res.clearCookie("refreshToken", getCookieOptions());
     return res.json({ message: "Signed out everywhere" });

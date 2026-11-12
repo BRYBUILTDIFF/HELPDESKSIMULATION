@@ -14,6 +14,7 @@ import {
 import { Bar, Line } from "react-chartjs-2";
 import { useAuth } from "../../hooks/useAuth";
 import { useAxios } from "../../hooks/useAxios";
+import TerminalModuleTester from "./TerminalModuleTester";
 import TerminalEmulator from "../users/Modules/TerminalEmulator";
 import WindowsOsSimulation from "../users/Modules/WindowsOsSimulation";
 import macOsPreviewImg from "../../IMG/MAC.jpg";
@@ -33,22 +34,25 @@ const PAGE_META = {
 };
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_REGEX = { test: passwordAllowed };
-function generateUserPassword() { return "Aa1!" + Array.from(crypto.getRandomValues(new Uint8Array(18)), (value) => value.toString(16).padStart(2, "0")).join(""); }
+function generateUserPassword() { return "password123"; }
 const USERS_PER_PAGE = 8;
 const POLICY_EVENTS_PER_PAGE = 10;
 const POLICY_LIST_META = {
   greetingPatterns: "Greeting Phrases",
   inScopeKeywords: "In-Scope Keywords",
   outOfScopeKeywords: "Out-of-Scope Keywords",
+  safetyBlockedKeywords: "Safety Blocks",
   inScopeIntentPatterns: "In-Scope Intent Phrases"
 };
 const POLICY_LIST_HELP = {
+  safetyBlockedKeywords: "Matching words or phrases block requests before IT classification, including IT questions. Edit or delete any keyword below. Case and extra spacing are ignored. Blocked user requests count toward the session cooldown.",
   greetingPatterns: "A greeting-only message matching a configured phrase receives your greeting reply after safety checks. Case, spacing, and trailing ! . ? are ignored. Messages with an added question are classified normally.",
   inScopeKeywords: "Classifier guidance: all saved terms help identify IT support requests. A matching term does not automatically allow a request or bypass safety checks.",
   outOfScopeKeywords: "Classifier guidance, not an exact blocklist: all saved topics help identify unrelated requests. Legitimate IT problems involving these topics can still be allowed.",
   inScopeIntentPatterns: "Classifier guidance: all saved phrases help recognize troubleshooting intent in context. A phrase alone does not automatically allow a request."
 };
 const POLICY_LIST_PLACEHOLDERS = {
+  safetyBlockedKeywords: "Enter a restricted word or phrase",
   greetingPatterns: "Example: good morning",
   inScopeKeywords: "Example: network adapter",
   outOfScopeKeywords: "Example: restaurant recommendation",
@@ -176,7 +180,7 @@ function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
-function validateUserForm(mode, form) {
+function validateUserForm(mode, form, { allowDefaultPassword = false } = {}) {
 
 
   if (!form.firstName.trim()) return "First name is required.";
@@ -184,7 +188,7 @@ function validateUserForm(mode, form) {
   if (!EMAIL_REGEX.test(form.email.trim())) return "Enter a valid email address.";
 
   if (mode === "create") {
-    if (!PASSWORD_REGEX.test(form.password)) {
+    if (!(allowDefaultPassword && form.password === "password123") && !PASSWORD_REGEX.test(form.password)) {
       return "Password must be at least 12 characters, at most 72 UTF-8 bytes, and not a common password.";
     }
     if (form.password !== form.confirmPassword) {
@@ -407,6 +411,7 @@ export default function AdminPage() {
     greetingPatterns: [],
     inScopeKeywords: [],
     outOfScopeKeywords: [],
+    safetyBlockedKeywords: [],
     inScopeIntentPatterns: [],
     messages: {}
   });
@@ -450,6 +455,8 @@ export default function AdminPage() {
     setUsers(Array.isArray(res.data?.users) ? res.data.users : []);
   }, [api]);
 
+  const [safetyRules, setSafetyRules] = useState(null);
+
   const loadPolicy = useCallback(async () => {
     const [summaryRes, eventsRes, configRes] = await Promise.all([
       api.get("/api/admin/policy/summary"),
@@ -459,10 +466,12 @@ export default function AdminPage() {
 
     setPolicySummary(summaryRes.data?.summary || { total: 0, blocked: 0, allowed: 0, blockRate: 0, last24h: 0, byCode: {} });
     setPolicyEvents(Array.isArray(eventsRes.data?.events) ? eventsRes.data.events : []);
+    setSafetyRules(configRes.data?.safetyRules || null);
     const nextConfig = configRes.data?.config || {
       greetingPatterns: [],
       inScopeKeywords: [],
       outOfScopeKeywords: [],
+      safetyBlockedKeywords: [],
       inScopeIntentPatterns: [],
       messages: {}
     };
@@ -1058,6 +1067,7 @@ export default function AdminPage() {
       greetingPatterns: [],
       inScopeKeywords: [],
       outOfScopeKeywords: [],
+      safetyBlockedKeywords: [],
       inScopeIntentPatterns: [],
       messages: {}
     };
@@ -1198,7 +1208,11 @@ export default function AdminPage() {
     }
   };
 
+  const [previewVerifiedModuleId, setPreviewVerifiedModuleId] = useState(null);
+  const [moduleEditorOpen, setModuleEditorOpen] = useState(false);
   const openModulePreview = (preview, options = {}) => {
+    setPreviewVerifiedModuleId(options.moduleId || null);
+    setModuleEditorOpen(Boolean(options.edit || options.draftMeta));
     if (!preview || !Array.isArray(preview.steps) || preview.steps.length === 0) {
       return;
     }
@@ -1240,6 +1254,7 @@ export default function AdminPage() {
           mode: "from_prompt",
           sourcePrompt: insight.samplePrompt,
           occurrences: Number(insight.occurrences || 1),
+          generationNotice: res.data?.generationNotice,
           title: draft.title,
           category: draft.category
         }
@@ -1906,6 +1921,11 @@ export default function AdminPage() {
                               <p>{selectedPolicyListHelp}</p>
                             </div>
                           </div>
+                          {selectedPolicyListKey === "safetyBlockedKeywords" && safetyRules ? (
+                            <div className="policy-safety-baseline">
+                              <p>These keywords are managed here. Deleting a keyword removes its keyword block. Threat detection and provider moderation run separately and may still reject unsafe content.</p>
+                            </div>
+                          ) : null}
                           <div className="policy-list-add">
                             <input
                               value={policyEditorListInput[selectedPolicyListKey] || ""}
@@ -2126,6 +2146,7 @@ export default function AdminPage() {
                               <div>
                                 <div className="sim-title">{module.title}</div>
                                 <div className="sim-cat">{module.category}</div>
+                                {module.validationErrors?.length ? <p className="admin-alert error">Needs repair: {module.validationErrors[0]}</p> : null}
                               </div>
                               <div className="sim-controls">
                                 <span className={`badge ${module.enabled ? "badge-active" : "badge-inactive"}`}>
@@ -2138,6 +2159,7 @@ export default function AdminPage() {
 
                             <div className="sim-stats">
                               <div className="sim-stat"><strong>{completions}</strong> completions</div>
+                              {module.attemptMetrics ? <div className="sim-stat">Verified runtime: {module.attemptMetrics.started} started ? {module.attemptMetrics.completed} completed ? {module.attemptMetrics.active} active ? {module.attemptMetrics.ended} ended ? {module.attemptMetrics.expired} expired ? {module.attemptMetrics.mistakes} mistakes</div> : null}
                               <div className="sim-stat"><strong>{Number(module.avgSteps || 0).toFixed(1)}</strong> avg steps</div>
                             </div>
 
@@ -2154,6 +2176,9 @@ export default function AdminPage() {
                               >
                                 View Simulation
                               </button>
+                              {["windows-terminal", "mac-terminal"].includes(moduleSimulation.surface) ? (
+                                <button type="button" className="btn-sm" onClick={() => openModulePreview(moduleSimulation, {surface:moduleSimulation.surface,moduleId:module.id,edit:true})}>Edit Simulation</button>
+                              ) : null}
                               {canTestWindows ? (
                                 <button
                                   type="button"
@@ -2167,7 +2192,7 @@ export default function AdminPage() {
                                 type="button"
                                 className={`btn-sm ${module.enabled ? "btn-danger" : ""}`}
                                 disabled={pending}
-                                onClick={() => updateModule(module.id, { enabled: !module.enabled })}
+                                onClick={() => !module.enabled && ["windows-terminal", "mac-terminal"].includes(moduleSimulation.surface) ? openModulePreview(moduleSimulation, {surface:moduleSimulation.surface,moduleId:module.id,edit:true}) : updateModule(module.id, { enabled: !module.enabled })}
                               >
                                 {module.enabled ? "Disable" : "Enable"}
                               </button>
@@ -2212,9 +2237,16 @@ export default function AdminPage() {
               </div>
             </div>
 
+            {moduleDraftMeta?.generationNotice ? <p className="admin-generation-notice" role="status">{moduleDraftMeta.generationNotice}</p> : null}
             {moduleDraftError ? <div className="admin-alert error">{moduleDraftError}</div> : null}
 
-            {isDraftPreview ? (
+            {moduleEditorOpen && ["windows-terminal", "mac-terminal"].includes(modulePreviewSurface) ? (
+              <TerminalModuleTester key={previewVerifiedModuleId || moduleDraftMeta?.sourcePrompt || modulePreview.title} definition={{...modulePreview,surface:modulePreviewSurface,terminalType:modulePreviewSurface}} existing={Boolean(previewVerifiedModuleId)} onSave={async (simulation,testToken) => {
+                if(previewVerifiedModuleId) await api.patch(`/api/admin/simulation-modules/${previewVerifiedModuleId}`, {simulation,testToken,enabled:true});
+                else await api.post("/api/admin/simulation-modules", {mode:"manual",title:moduleDraftMeta?.title || simulation.title,category:moduleDraftMeta?.category || "General",sourcePrompt:moduleDraftMeta?.sourcePrompt,simulation,testToken,enabled:false});
+                closeModulePreview(); await loadModules();
+              }} />
+            ) : isDraftPreview ? (
               <>
                 <div className="sim-preview-body">
                   <aside className="sim-preview-sidebar">
@@ -2493,6 +2525,17 @@ jumpcloud@JumpCloud ~ % _`}</pre>
               <p>{selectedPolicyEvent.reason || "No reason recorded."}</p>
             </div>
             {selectedPolicyEvent.hasHistory ? <div className="policy-event-history-note">This decision was evaluated with relevant conversation history.</div> : null}
+            {selectedPolicyEvent.sessionId ? <div className="policy-event-modal-section"><span>Conversation</span><p>{selectedPolicyEvent.sessionId}</p><span>Request</span><p>{selectedPolicyEvent.requestId || "Historical event"}</p></div> : null}
+            {selectedPolicyEvent.userId && selectedPolicyEvent.sessionId ? <div className="policy-event-modal-section">
+              <button type="button" className="btn-sm" disabled={pendingKey === "reset-session-cooldown" || selectedPolicyEvent.cooldownReset} onClick={async () => {
+                setPendingKey("reset-session-cooldown");
+                try {
+                  await api.post(`/api/admin/session-restrictions/${selectedPolicyEvent.userId}/reset`, { sessionId: selectedPolicyEvent.sessionId });
+                  setSelectedPolicyEvent(previous => previous ? { ...previous, cooldownReset: true } : previous);
+                } catch (error) { setError(safeError(error)); }
+                finally { setPendingKey(""); }
+              }}>{selectedPolicyEvent.cooldownReset ? "Cooldown reset" : pendingKey === "reset-session-cooldown" ? "Resetting..." : "Reset session cooldown"}</button>
+            </div> : null}
           </section>
         </div>
       ) : null}
@@ -2845,7 +2888,7 @@ jumpcloud@JumpCloud ~ % _`}</pre>
                       }}
                     />
                     <span>
-                      <strong>Use generated password</strong>
+                      <strong>Use password123</strong>
                       <em>
                         Account will be created with <code>{generatedUserPassword}</code> and must be changed on first login
                       </em>

@@ -1,8 +1,10 @@
 const { redactSecrets } = require("../utils/redact");
 const prisma = require("../prisma");
+const { randomUUID } = require("crypto");
+const { getRestriction } = require("../services/sessionRestrictionService");
 const { getChatHistory, appendChatTurn } = require("../store/chatHistoryStore");
 const { getAIProvider, getDefaultModel, getOpenAIClient } = require("../utils/openai");
-const { evaluatePromptPolicy, evaluateResponsePolicy } = require("../policy/promptPolicy");
+const { evaluatePromptPolicy, evaluateResponsePolicy, evaluateResponseDecision } = require("../policy/promptPolicy");
 const { recordPolicyEvent } = require("../store/policyEventStore");
 const { getConversationScope, markConversationScope } = require("../store/policyConversationStore");
 const { evaluateContentSafety } = require("../policy/contentSafety");
@@ -221,6 +223,13 @@ async function chat(req, res, next) {
     const message = redactSecrets(req.body.message).trim();
 
     const sessionId = String(req.body.sessionId || "").trim();
+    const requestId = randomUUID();
+    const restriction = await getRestriction(req.user.id, sessionId);
+    if (restriction) {
+      res.set("Retry-After", String(Math.ceil((restriction.expiresAt - Date.now()) / 1000)));
+      return res.status(429).json({ code: "SESSION_COOLDOWN", expiresAt: restriction.expiresAt,
+        message: "This conversation is paused for 10 minutes after repeated safety-blocked requests. Please try again after the cooldown." });
+    }
     if (req.body.resetHistory && sessionId) {
       await prisma.policyConversation.deleteMany({ where: { userId: req.user.id, sessionId } });
     }
@@ -233,6 +242,7 @@ async function chat(req, res, next) {
     if (policyResult.directReply) {
       operation = "record-policy-event";
       await recordPolicyEvent({
+        sessionId, requestId, metadata: policyResult.metadata,
         userId: req.user?.id,
         userEmail: req.user?.email,
         message,
@@ -253,7 +263,8 @@ async function chat(req, res, next) {
 
     if (!policyResult.allowed) {
       operation = "record-policy-event";
-      await recordPolicyEvent({
+      const recorded = await recordPolicyEvent({
+        sessionId, requestId, metadata: policyResult.metadata,
         userId: req.user?.id,
         userEmail: req.user?.email,
         message,
@@ -264,11 +275,14 @@ async function chat(req, res, next) {
       });
       return res.status(policyResult.httpStatus || 200).json({
         ...(policyResult.httpStatus ? { message: policyResult.userMessage } : {}),
-        reply: policyResult.userMessage,
+        reply: recorded?.restriction?.expiresAt
+          ? `${policyResult.userMessage} This conversation is now paused for 10 minutes after three safety-blocked requests.`
+          : policyResult.userMessage,
         policy: {
           blocked: true,
           code: policyResult.code,
-          reason: policyResult.reason
+          reason: policyResult.reason,
+          ...(recorded?.restriction ? { safetyViolations: recorded.restriction.violations, cooldownExpiresAt: recorded.restriction.expiresAt } : {})
         }
       });
     }
@@ -310,16 +324,19 @@ async function chat(req, res, next) {
     }
     operation = "check-answer";
     const outputSafety = await evaluateContentSafety(reply);
-    const outputInScope = !outputSafety && await evaluateResponsePolicy(reply);
+    const outputDecision = outputSafety ? null : evaluateResponseDecision
+      ? await evaluateResponseDecision(reply) : { allowed: await evaluateResponsePolicy(reply) };
+    const outputInScope = !outputSafety && outputDecision.allowed;
     const filtered = Boolean(outputSafety) || !outputInScope;
     const safeReply = filtered
       ? "I cannot provide that response. I can help with a safe IT support question instead."
       : reply;
-    const responseCode = outputSafety?.code === "SAFETY_UNAVAILABLE" ? "OUTPUT_CHECK_UNAVAILABLE" : outputSafety ? "OUTPUT_SAFETY_FILTERED" : !outputInScope ? "OUTPUT_SCOPE_FILTERED" : policyResult.code || "ALLOWED";
+    const responseCode = outputSafety?.code === "SAFETY_UNAVAILABLE" || outputDecision?.unavailable ? "OUTPUT_CHECK_UNAVAILABLE" : outputSafety ? "OUTPUT_SAFETY_FILTERED" : !outputInScope ? "OUTPUT_SCOPE_FILTERED" : policyResult.code || "ALLOWED";
     const responseReason = filtered ? "AI response did not pass safety and scope checks." : policyResult.reason || "Allowed request.";
 
     operation = "record-policy-event";
     await recordPolicyEvent({
+      sessionId, requestId, stage: filtered ? "output" : "input", metadata: policyResult.metadata,
       userId: req.user?.id,
       userEmail: req.user?.email,
       message,

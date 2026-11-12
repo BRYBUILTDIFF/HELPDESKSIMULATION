@@ -1,5 +1,6 @@
 const prisma = require("../prisma");
 const { redactObject } = require("../utils/redact");
+const { endUserLabs } = require("../services/labLifecycleService");
 async function getMySessions(req, res, next) {
   try {
     const rows = await prisma.chatSession.findMany({ where: { userId: req.user.id }, orderBy: { updatedAt: "desc" }, take: 500 });
@@ -27,6 +28,12 @@ async function saveSession(req, res, next) {
 }
 async function deleteSession(req, res, next) {
   try {
+    await endUserLabs(req.user.id, undefined, req.params.id);
+    const saved = await prisma.chatSession.findUnique({ where: { userId_id: { userId: req.user.id, id: req.params.id } } });
+    const labId = saved?.data?.windowsOsSimulation?.simulationSessionId;
+    // The JSON is client-writable; endUserLabs checks server-owned ownership.
+    if (typeof labId === "string" && labId) await endUserLabs(req.user.id, labId);
+    else if (saved?.data?.windowsOsSimulation) await endUserLabs(req.user.id);
     await prisma.$transaction([
       prisma.chatSession.deleteMany({ where: { userId: req.user.id, id: req.params.id } }),
       prisma.policyConversation.deleteMany({ where: { userId: req.user.id, sessionId: req.params.id } }),
@@ -38,11 +45,13 @@ async function deleteSession(req, res, next) {
 }
 async function deleteMyData(req, res, next) {
   try {
+    await endUserLabs(req.user.id);
     await prisma.$transaction([
       prisma.chatSession.deleteMany({ where: { userId: req.user.id } }),
       prisma.userSessionState.deleteMany({ where: { userId: req.user.id } }),
       prisma.policyConversation.deleteMany({ where: { userId: req.user.id } }),
-      prisma.policyEvent.deleteMany({ where: { userId: req.user.id } })
+      // Preserve aggregate security evidence without retaining user text/identity.
+      prisma.policyEvent.updateMany({ where: { userId: req.user.id }, data: { userId: null, userEmail: "deleted-user", message: "[deleted]", reason: "[deleted]", sessionId: null, requestId: null, metadata: require("@prisma/client").Prisma.DbNull } })
     ]);
     return res.json({ deleted: true });
   } catch (err) { return next(err); }
