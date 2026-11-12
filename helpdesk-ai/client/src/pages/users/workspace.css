@@ -147,6 +147,24 @@
 .helpdesk-root.workspace-ui .hd-sidebar:not(.collapsed) .sidebar-group-header { margin-bottom: 10px; }
 .helpdesk-root.workspace-ui .hd-sidebar:not(.collapsed) .sidebar-create-card { flex-shrink: 0; margin-bottom: 10px; }
 .helpdesk-root.workspace-ui .hd-sidebar:not(.collapsed) .sidebar-group-list { gap: 4px; padding: 2px 0 8px; scroll-padding-block: 4px; }
+.helpdesk-root.workspace-ui .hd-sidebar .sidebar-group-list {
+  scrollbar-width: thin;
+  scrollbar-color: #799e96 transparent;
+}
+.helpdesk-root.workspace-ui .hd-sidebar .sidebar-group-list::-webkit-scrollbar {
+  display: block;
+  width: 5px;
+}
+.helpdesk-root.workspace-ui .hd-sidebar .sidebar-group-list::-webkit-scrollbar-thumb {
+  background: #799e96;
+  border-radius: 4px;
+}
+.helpdesk-root.workspace-ui .hd-sidebar .sidebar-group-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.helpdesk-root.workspace-ui .hd-sidebar .sidebar-group-list.show-more-hint::after {
+  content: none;
+}
 .helpdesk-root.workspace-ui .hd-sidebar:not(.collapsed) .sidebar-session-row { margin-left: 0; height: 52px; min-height: 52px; flex-shrink: 0; }
 .helpdesk-root.workspace-ui .sidebar-session-btn { padding: 8px 32px 8px 12px; gap: 10px; }
 .helpdesk-root.workspace-ui .sidebar-session-icon { width: 20px; min-width: 20px; height: 20px; }
