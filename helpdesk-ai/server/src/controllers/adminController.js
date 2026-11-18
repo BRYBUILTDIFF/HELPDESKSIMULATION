@@ -358,6 +358,7 @@ async function generateSimulationDraftFromPrompt(prompt, occurrences = 1, option
       category,
       difficulty,
       generationSource: "ai",
+      generationMeta: { provider, model: getDefaultModel(provider), promptVersion: 'simulation-v2', usage: completion.usage ? {promptTokens:completion.usage.prompt_tokens || 0, completionTokens:completion.usage.completion_tokens || 0, totalTokens:completion.usage.total_tokens || 0} : null },
       simulation,
       recommendedSurface: alignment.surface,
       recommendedSurfaceLabel: alignment.surfaceLabel
@@ -737,7 +738,7 @@ async function getSimulationPromptInsights(req, res, next) {
       })
       .slice(0, 20);
 
-    return res.status(200).json({ insights });
+    return res.status(200).json({ insights, window: {eventLimit:limit, recentEventsExamined:events.length}, countsAreRecentSample:true });
   } catch (err) {
     return next(err);
   }
@@ -780,7 +781,14 @@ async function generateSimulationModuleDraft(req, res, next) {
             "Prompt is outside supported simulation surfaces (Windows Terminal, Mac Terminal, Windows OS, Mac OS)."
         });
       }
-      return res.status(200).json({ draft, sourcePrompt, occurrences, recommendedSurface: alignment.surface, generationNotice: draft.generationSource === "ai" ? "AI-generated draft: review instructions and run the interactive test before publishing." : "AI generation was unavailable. This draft uses a template and requires review and testing." });
+      if (alignment.surface.endsWith('-terminal')) {
+        draft.simulation = require('../services/terminalRuntime').withExpectedOutputs(draft.simulation);
+      }
+      const draftRecord = await require('./simulationDraftController').createStoredDraft(req.user.id, {
+        ...draft, sourcePrompt,
+        generation: { ...draft.generationMeta, source: draft.generationSource, provider: draft.generationSource === 'ai' ? getAIProvider() : null, model: draft.generationSource === 'ai' ? getDefaultModel(getAIProvider()) : null, promptVersion: 'simulation-v2', occurrences }
+      });
+      return res.status(200).json({ draft, draftRecord, sourcePrompt, occurrences, recommendedSurface: alignment.surface, generationNotice: draft.generationSource === "ai" ? "AI-generated draft: review instructions and run the interactive test before publishing." : "AI generation was unavailable. This draft uses a template and requires review and testing." });
     }
 
     const title = String(req.body?.title || "").trim();
@@ -794,7 +802,8 @@ async function generateSimulationModuleDraft(req, res, next) {
       difficulty: inferDifficulty(`${title} ${category}`, 1),
       simulation: buildFallbackSimulationDefinition({ title, category, prompt: title })
     };
-    return res.status(200).json({ draft });
+    const draftRecord = await require('./simulationDraftController').createStoredDraft(req.user.id, draft);
+    return res.status(200).json({ draft, draftRecord });
   } catch (err) {
     return next(err);
   }
@@ -851,7 +860,7 @@ async function createSimulationModule(req, res, next) {
       }
     }
 
-    const created = await createModule({ ...payload, testToken: req.body?.testToken, testedById: req.user.id });
+    const created = await createModule({ ...payload, testToken: req.body?.testToken, testedById: req.user.id, draftId: req.body?.draftId, draftVersion: req.body?.draftVersion });
     if (!created) {
       return res.status(400).json({ message: "Invalid module payload" });
     }

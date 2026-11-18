@@ -1,3 +1,4 @@
+import ModalCloseButton from '../../components/ModalCloseButton';
 import TerminalReview from "./Modules/TerminalReview";
 import TerminalStepGuide from "./Modules/TerminalStepGuide";
 import { plainDescription } from "../../utils/plainDescription";
@@ -1344,6 +1345,7 @@ export default function DashboardPage() {
   const [sessionSyncError, setSessionSyncError] = useState("");
   const [syncRetry, setSyncRetry] = useState(0);
   const savedSessionsRef = useRef(new Map());
+  const savedSessionVersionsRef = useRef(new Map());
   const sessionSyncQueueRef = useRef(Promise.resolve());
   const sessionSyncOwnerRef = useRef(user?.id);
   sessionSyncOwnerRef.current = user?.id;
@@ -1620,6 +1622,7 @@ export default function DashboardPage() {
     const loadSessions = async () => {
       let sessionLoadFailed = false;
       savedSessionsRef.current = new Map();
+      savedSessionVersionsRef.current = new Map();
       try {
         const response = await api.get("/api/sessions");
         const source = Array.isArray(response.data?.sessions) ? response.data.sessions : [];
@@ -1628,6 +1631,7 @@ export default function DashboardPage() {
           return;
         }
 
+        savedSessionVersionsRef.current = new Map(Object.entries(response.data?.versions || {}));
         savedSessionsRef.current = new Map(source.map(session => [session.id, JSON.stringify(session)]));
         const normalized = source.map((session, idx) => normalizeLoadedSession(session, idx));
         const savedActiveSessionId = activeSessionStorageKey
@@ -1696,7 +1700,8 @@ export default function DashboardPage() {
           for (const [id, serialized] of snapshot) {
             if (sessionSyncOwnerRef.current !== ownerId || deletingChatDataRef.current) return;
             if (savedSessionsRef.current.get(id) === serialized) continue;
-            await api.put(`/api/sessions/${encodeURIComponent(id)}`, { session: JSON.parse(serialized) });
+            const response=await api.put(`/api/sessions/${encodeURIComponent(id)}`, { session: JSON.parse(serialized), version:savedSessionVersionsRef.current.get(id) || 0 });
+            savedSessionVersionsRef.current.set(id,response.data.version);
             savedSessionsRef.current.set(id, serialized);
           }
           for (const id of [...savedSessionsRef.current.keys()]) {
@@ -1710,7 +1715,7 @@ export default function DashboardPage() {
         });
         await sessionSyncQueueRef.current;
       } catch (_err) {
-        setSessionSyncError("Your latest chat changes could not be saved. Keep this page open and retry.");
+        setSessionSyncError(_err.response?.status===409 ? "This chat changed in another tab. Copy any unsaved text, then reload to get the latest version." : "Your latest chat changes could not be saved. Keep this page open and retry.");
       }
     }, 250);
 
@@ -2034,6 +2039,7 @@ export default function DashboardPage() {
     try {
       const response = await api.post("/api/ai/chat", {
         message: nextText,
+        userMessageId: targetMessageId,
         resetHistory: true,
         sessionId
       });
@@ -2045,7 +2051,8 @@ export default function DashboardPage() {
       } else {
         pushAiMessage(sessionId, response.data.reply || "No response generated.", "text", {
           userPromptText: nextText,
-          firstPromptText: firstPromptContext
+          firstPromptText: firstPromptContext,
+          assistantMessageId: response.data?.assistantMessageId
         });
       }
     } catch (error) {
@@ -2114,7 +2121,7 @@ export default function DashboardPage() {
   };
 
   const pushAiMessage = (sessionId, text, type = "text", context = {}) => {
-    const aiMessageId = `${Date.now()}-ai`;
+    const aiMessageId = context.assistantMessageId || `${Date.now()}-ai`;
     const cleanedText = type === "text" ? normalizeAssistantText(text) : String(text || "");
     const shouldOfferSimulation =
       type === "text" ? shouldOfferInteractiveSimulation(cleanedText, context) : false;
@@ -2177,8 +2184,9 @@ export default function DashboardPage() {
       )
     );
 
+    const userMessageId = crypto.randomUUID();
     appendMessageToSession(sessionId, {
-      id: `${Date.now()}-user`,
+      id: userMessageId,
       role: "user",
       type: "text",
       text: displayText,
@@ -2201,6 +2209,7 @@ export default function DashboardPage() {
       const history = normalizeForHistory(previousMessages);
       const response = await api.post("/api/ai/chat", {
         message: apiText,
+        userMessageId,
         history,
         sessionId
       });
@@ -2212,7 +2221,8 @@ export default function DashboardPage() {
       } else {
         pushAiMessage(sessionId, response.data.reply || "No response generated.", "text", {
           userPromptText: displayText,
-          firstPromptText: firstPromptContext
+          firstPromptText: firstPromptContext,
+          assistantMessageId: response.data?.assistantMessageId
         });
       }
     } catch (error) {
@@ -3644,7 +3654,7 @@ export default function DashboardPage() {
               {modalCanvasState?.simulationId ? <div className="terminal-simulation-header-actions">
                 <button type="button" className="terminal-simulation-end hd-btn-reset" onClick={endTerminalSimulation}>{modalCompletedReview ? "Back to simulations" : "End simulation"}</button>
                 <button type="button" className="terminal-simulation-complete hd-btn-reset" disabled={!modalResolved || verifiedBusy || Boolean(modalCanvasState?.completionRecorded) || terminalCompletionPending} onClick={completeTerminalSimulation}>{terminalCompletionPending ? "Completing..." : modalCanvasState?.completionRecorded ? "Completed" : "✓ Complete Simulation"}</button>
-              </div> : <button className="step-modal-close hd-btn-reset" onClick={closeStepModal}>X</button>}
+              </div> : <ModalCloseButton className="step-modal-close hd-btn-reset" onClick={closeStepModal} aria-label="Close simulation" />}
             </div>
             <div className="step-modal-progress-wrap">
               <div className="step-modal-progress-info">
@@ -3802,9 +3812,7 @@ export default function DashboardPage() {
                 <h2 id="account-settings-title">Account settings</h2>
                 <p>Manage your account, password, chat data, and sessions.</p>
               </div>
-              <button type="button" className="account-settings-close hd-btn-reset" onClick={closeAccountSettings} aria-label="Close account settings">
-                ×
-              </button>
+              <ModalCloseButton type="button" className="account-settings-close hd-btn-reset" onClick={closeAccountSettings} aria-label="Close account settings" />
             </div>
 
             <div className="account-details-card">

@@ -42,6 +42,8 @@ async function testDefinition(req,res,next){try{
  if(!Array.isArray(req.body.actions)||req.body.actions.length>120)return res.status(400).json({message:'Provide up to 120 test actions.'});
  for(const action of req.body.actions){if(!action||!['command','checkpoint'].includes(action.kind)||!Number.isInteger(action.step)||String(action.command||'').length>1000)return res.status(400).json({message:'Invalid test action.'});const changed=runtime.advance(current,index,action);current=changed.runtime;index=changed.nextStep;output=changed.output;if(!changed.accepted&&!changed.utility)mistakes++;}
  const completed=index===definition.steps.length;
- return res.json({definition,nextStep:index,state:current.state,events:current.events,mistakes,output,completed,testToken:completed?runtime.signTest(definition,req.user.id):null});
+ let receipt = null;
+ if(completed) receipt = await prisma.simulationTestReceipt.create({data:{actorId:req.user.id,definitionHash:runtime.definitionHash(definition),definition:JSON.parse(JSON.stringify(definition)),events:require('../utils/redact').redactObject(current.events),mistakes,stepsCompleted:index,expiresAt:new Date(Date.now()+3600000)}});
+ return res.json({definition,nextStep:index,state:current.state,events:current.events,mistakes,output,completed,testToken:receipt?runtime.signTest(definition,req.user.id,receipt.id):null,testReceiptId:receipt?.id||null});
 }catch(e){next(e);}}
 module.exports={startAttempt,getAttempt,submitCommand,endAttempt,testDefinition};

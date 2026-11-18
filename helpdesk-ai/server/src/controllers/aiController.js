@@ -231,7 +231,10 @@ async function chat(req, res, next) {
         message: "This conversation is paused for 10 minutes after repeated safety-blocked requests. Please try again after the cooldown." });
     }
     if (req.body.resetHistory && sessionId) {
-      await prisma.policyConversation.deleteMany({ where: { userId: req.user.id, sessionId } });
+      await prisma.$transaction([
+        prisma.policyConversation.deleteMany({ where: { userId: req.user.id, sessionId } }),
+        prisma.chatTurn.deleteMany({ where: { userId: req.user.id, sessionId } })
+      ]);
     }
     const history = await getChatHistory(req.user.id, sessionId);
     operation = "read-conversation-scope";
@@ -251,7 +254,9 @@ async function chat(req, res, next) {
         reason: policyResult.reason,
         hasHistory: history.length > 0
       });
+      const savedTurn=await appendChatTurn(req.user.id,sessionId,message,policyResult.directReply,req.body.userMessageId);
       return res.status(200).json({
+        assistantMessageId:savedTurn?.assistantMessageId,
         reply: policyResult.directReply,
         policy: {
           blocked: false,
@@ -346,7 +351,7 @@ async function chat(req, res, next) {
       hasHistory: history.length > 0
     });
     operation = "save-chat-history";
-    await appendChatTurn(req.user.id, sessionId, message, safeReply);
+    const savedTurn = await appendChatTurn(req.user.id, sessionId, message, safeReply, req.body.userMessageId);
     if (sessionId && !filtered) {
       operation = "save-conversation-scope";
       await markConversationScope(req.user?.id, sessionId, "it_support");
@@ -354,6 +359,7 @@ async function chat(req, res, next) {
 
     return res.status(200).json({
       reply: safeReply,
+      assistantMessageId: savedTurn?.assistantMessageId,
       policy: {
         blocked: false,
         code: responseCode

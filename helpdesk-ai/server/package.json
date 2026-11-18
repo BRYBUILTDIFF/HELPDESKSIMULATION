@@ -22,7 +22,8 @@
     "security:verify-db": "node scripts/verify-security-db.js",
     "security:verify-api": "node scripts/verify-api-security.js",
     "security:scan-history": "node scripts/scan-repository-secrets.js",
-    "security:provision-db": "node scripts/provision-runtime-role.js --apply"
+    "security:provision-db": "node scripts/provision-runtime-role.js --apply",
+    "test:persistence": "node --test test/durablePersistence.integration.js"
   },
   "dependencies": {
     "@aws-sdk/client-ec2": "^3.1095.0",

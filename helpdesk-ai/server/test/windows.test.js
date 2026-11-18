@@ -2,7 +2,7 @@ const { test, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 process.env.AWS_REGION = "test-region";
 process.env.AWS_SIMULATION_LAUNCH_TEMPLATE_ID = "lt-test";
-let calls, sessions, send, expiredQuery;
+let calls, sessions, send, expiredQuery, moduleEnabled=true;
 class Command { constructor(input) { this.input = input; } }
 class DescribeInstancesCommand extends Command {}
 class DescribeInstanceStatusCommand extends Command {}
@@ -38,7 +38,7 @@ const prisma = {
   }
 };
 require.cache[require.resolve("../src/prisma")] = { exports: prisma };
-require.cache[require.resolve("../src/store/simulationModuleStore")] = { exports: { getModuleById: async () => ({ id: "lab", enabled: true, simulation: { surface: "windows-os" } }) } };
+require.cache[require.resolve("../src/store/simulationModuleStore")] = { exports: { getModuleById: async () => ({ id: "lab", enabled: moduleEnabled, simulation: { surface: "windows-os" } }) } };
 const service = require("../src/services/windowsSimulationService");
 const controller = require("../src/controllers/simulationSessionController");
 test("a cancelled lab cannot launch a new instance", async () => {
@@ -61,7 +61,7 @@ test("cancellation racing AWS launch immediately terminates the late instance", 
 });
 function response() { return { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } }; }
 function fail(err) { if (err) throw err; }
-beforeEach(() => { sessions = []; calls = []; expiredQuery = null; send = async () => ({}); });
+beforeEach(() => { moduleEnabled=true;sessions = []; calls = []; expiredQuery = null; send = async () => ({}); });
 
 test("new labs reserve eight boot minutes in addition to the usable session duration", async () => {
   const started = Date.now();
@@ -261,4 +261,13 @@ test("lab cooldown prevents immediate end and recreate loops", async () => {
   const res = response();
   await controller.createSimulationSession({ body: { moduleId: "lab" }, user: { id: 1 } }, res, fail);
   assert.equal(res.statusCode, 429); assert.equal(calls.length, 0);
+});
+
+test('only administrators may launch an unpublished Windows module for testing',async()=>{
+  moduleEnabled=false;
+  const denied=response();await controller.createSimulationSession({user:{id:1,role:'USER'},body:{moduleId:'lab'}},denied,fail);
+  assert.equal(denied.statusCode,404);assert.equal(sessions.length,0);
+  send=async()=>({Instances:[{InstanceId:'i-admin-test'}]});
+  const allowed=response();await controller.createSimulationSession({user:{id:1,role:'ADMIN'},body:{moduleId:'lab'}},allowed,fail);
+  assert.equal(allowed.statusCode,202);assert.equal(sessions.length,1);
 });

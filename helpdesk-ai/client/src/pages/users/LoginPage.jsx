@@ -1,3 +1,4 @@
+import ModalCloseButton from '../../components/ModalCloseButton';
 import { useMemo, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
@@ -164,7 +165,7 @@ export default function LoginPage() {
             aria-labelledby="password-help-title"
             onClick={(event) => event.stopPropagation()}
           >
-            <button className="password-help-close" type="button" onClick={() => setPasswordHelpOpen(false)} aria-label="Close password help">×</button>
+            <ModalCloseButton className="password-help-close" type="button" onClick={() => setPasswordHelpOpen(false)} aria-label="Close password help" />
             <div className="password-help-icon" aria-hidden="true">?</div>
             <h3 id="password-help-title">Forgot your password?</h3>
             <p>Please contact your administrator to have your password reset.</p>

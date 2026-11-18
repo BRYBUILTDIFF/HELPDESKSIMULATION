@@ -12,7 +12,7 @@ function plainText(value) {
   return String(value || "").replace(/<[^>]+>/g, "").trim();
 }
 
-export default function WindowsOsSimulation({ api, moduleId, chatSessionId, title, steps = [], completedStepIndexes = [], walkthroughOnOpen = true, onEnded, onSessionReady, onStepProgress }) {
+export default function WindowsOsSimulation({ api, moduleId, chatSessionId, title, steps = [], completedStepIndexes = [], walkthroughOnOpen = true, testMode = false, onEnded, onSessionReady, onStepProgress }) {
   const [session, setSession] = useState(null);
   const [status, setStatus] = useState("IDLE");
   const [guacamoleUrl, setGuacamoleUrl] = useState("");
@@ -212,7 +212,7 @@ export default function WindowsOsSimulation({ api, moduleId, chatSessionId, titl
     setCompleting(true);
     setError("");
     try {
-      await api.post(`/api/simulations/modules/${moduleId}/complete`, {
+      if (!testMode) await api.post(`/api/simulations/modules/${moduleId}/complete`, {
         attemptKey: `windows-os:${session.id}`,
         surface: "windows-os",
         stepsCompleted: guidedSteps.length > 0 ? activeStep + 1 : 0
@@ -223,13 +223,13 @@ export default function WindowsOsSimulation({ api, moduleId, chatSessionId, titl
     } finally {
       setCompleting(false);
     }
-  }, [api, completing, end, guidedSteps.length, activeStep, moduleId, session?.id]);
+  }, [api, completing, end, guidedSteps.length, activeStep, moduleId, session?.id, testMode]);
   const retry = () => { startedRef.current = true; start(); };
   const remainingMinutes = desktopRevealed && session?.expiresAt ? Math.max(0, Math.ceil((new Date(session.expiresAt).getTime() - clockNow) / 60000)) : null;
 
   return <div className="windows-os-overlay" aria-label="Windows OS simulation">
     <section className="windows-os-shell">
-      <header className="windows-os-header"><div><h2>{title}</h2><span className="windows-os-lab-label">Windows lab</span></div><div className="windows-os-controls">{remainingMinutes !== null ? <span>{remainingMinutes} min remaining</span> : null}<button type="button" className="windows-os-end-btn btn-sm" onClick={end}>End Simulation</button><button type="button" className="windows-os-complete-btn btn-sm" onClick={complete} disabled={!session?.id || completing} title={!session?.id ? "A live workspace is required to record completion" : "Complete simulation"}>✓ <span>{completing ? "Completing..." : "Complete Simulation"}</span></button></div></header>
+      <header className="windows-os-header"><div><h2>{title}</h2><span className="windows-os-lab-label">Windows lab</span></div><div className="windows-os-controls">{remainingMinutes !== null ? <span>{remainingMinutes} min remaining</span> : null}<button type="button" className="windows-os-end-btn btn-sm" onClick={end}>End Simulation</button><button type="button" className="windows-os-complete-btn btn-sm" onClick={complete} disabled={!session?.id || completing} title={!session?.id ? "A live workspace is required to record completion" : "Complete simulation"}>✓ <span>{completing ? "Completing..." : testMode ? "Finish test" : "Complete Simulation"}</span></button></div></header>
       {["IDLE", "PROVISIONING", "READY", "TERMINATING"].includes(status) ? <div className="windows-os-status" role="status"><div className="windows-os-spinner" aria-hidden="true" /><h3>{status === "TERMINATING" ? "Ending your Windows Server 2025 workspace..." : "Preparing your Windows Server 2025 workspace..."}</h3><p>We are getting your lab ready. This may take a few minutes. Please keep this page open.</p></div> : null}
       {["CONNECTING", "ACTIVE"].includes(status) && guacamoleUrl ? <div className="windows-os-workspace" style={{ position: "relative" }}>
         {!desktopRevealed ? <div className="windows-os-status" role="status" style={{ position: "absolute", inset: 0, zIndex: 10, background: "var(--bg2, #ffffff)" }}>

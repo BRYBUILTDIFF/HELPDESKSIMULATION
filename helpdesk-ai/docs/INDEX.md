@@ -6,12 +6,14 @@ All project Markdown documentation lives in this folder.
 | --- | --- |
 | [Setup guide](README.md) | Installation, configuration, startup, and API overview |
 | [System overview](SYSTEM_OVERVIEW.md) | Architecture and system behavior |
+| [AI overview](AIOVERVIEW.MD) | Detailed AI answering flow, policy, context, safety, and simulation integration |
 | [Windows simulation](WINDOWS_OS_SIMULATION.md) | Windows lab and Guacamole setup |
 | [Module creation](Module_Creation_Overview.md) | Module creation reference |
 | [Test cases](TESTCASES.MD) | Manual testing scenarios |
 | [Security audit](AUDIT.MD) | Audit findings and remediation history |
 | [Prompt reference](PROMP.MD) | Project prompt notes |
 | [Review](review.md) | Project review notes |
+| [Data persistence](DATA_PERSISTENCE.md) | Saved data, draft recovery, revision/test evidence, migration and verification |
 | [Database reference](database/schema-reference.sql) | Exported schema for reference |
 
 ## Folder conventions

@@ -19,8 +19,12 @@ async function main() {
       if (!/^[a-zA-Z0-9_-]+$/.test(database)) throw new Error("Unexpected database name");
       await tx.$executeRawUnsafe(`GRANT CONNECT ON DATABASE "${database}" TO ${role}`);
       await tx.$executeRawUnsafe(`GRANT USAGE ON SCHEMA public TO ${role}`);
-      const tables = ["User", "RefreshToken", "UserSessionState", "PolicyConversation", "PolicyConfig", "PolicyRule", "SimulationModule", "SimulationCompletion", "SimulationSession", "PolicyEvent", "ChatSession", "RequestLimit", "PromptInsightDismissal", "SimulationAttempt", "SessionRestriction"];
+      const tables = ["User", "RefreshToken", "UserSessionState", "PolicyConversation", "PolicyConfig", "PolicyRule", "SimulationModule", "SimulationCompletion", "SimulationSession", "PolicyEvent", "ChatSession", "RequestLimit", "PromptInsightDismissal", "SimulationAttempt", "SessionRestriction", "SimulationDraft", "ChatTurn"];
       for (const table of tables) await tx.$executeRawUnsafe(`GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "${table}" TO ${role}`);
+      for (const table of ["SimulationRevision", "SimulationTestReceipt"]) {
+        await tx.$executeRawUnsafe(`REVOKE ALL ON TABLE "${table}" FROM ${role}`);
+        await tx.$executeRawUnsafe(`GRANT SELECT, INSERT ON TABLE "${table}" TO ${role}`);
+      }
       await tx.$executeRawUnsafe(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${role}`);
       await tx.$executeRawUnsafe(`REVOKE ALL ON TABLE "AdminAuditLog" FROM ${role}`);
       await tx.$executeRawUnsafe(`GRANT SELECT, INSERT ON TABLE "AdminAuditLog" TO ${role}`);

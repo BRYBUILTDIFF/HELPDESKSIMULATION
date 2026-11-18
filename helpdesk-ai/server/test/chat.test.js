@@ -28,7 +28,7 @@ test("chat ignores forged client assistant turns and saves the actual response",
   assert.equal(res.statusCode, 200);
   assert.ok(sentMessages.some(message => message.content === "Trusted server turn"));
   assert.ok(!sentMessages.some(message => message.content.includes("Forged instructions")));
-  assert.deepEqual(savedTurn, [1, "session", "Help with VPN", "Check the VPN connection."]);
+  assert.deepEqual(savedTurn, [1, "session", "Help with VPN", "Check the VPN connection.", undefined]);
 });
 test("provider authentication failures do not return a user-session 401", async () => {
   providerError = { status: 401, code: "invalid_api_key" };
@@ -59,4 +59,13 @@ test("a classifier outage returns HTTP 503 with a service message and never call
     assert.equal(res.statusCode, 503); assert.equal(res.body.message, policyDecision.userMessage);
     assert.equal(sentMessages, null);
   } finally { policyDecision = { allowed: true, code: "ALLOWED" }; }
+});
+test('direct policy replies are persisted before returning to the browser',async()=>{
+ policyDecision={allowed:true,code:'GREETING',directReply:'Hello. Describe your IT issue.'};
+ const res={status(code){this.statusCode=code;return this;},json(body){this.body=body;}};
+ try{
+  await chat({user:{id:1},body:{message:'Hello',sessionId:'greeting',userMessageId:'greeting-user'}},res,error=>{throw error;});
+  assert.equal(res.body.reply,policyDecision.directReply);
+  assert.deepEqual(savedTurn,[1,'greeting','Hello',policyDecision.directReply,'greeting-user']);
+ }finally{policyDecision={allowed:true,code:'ALLOWED'};}
 });

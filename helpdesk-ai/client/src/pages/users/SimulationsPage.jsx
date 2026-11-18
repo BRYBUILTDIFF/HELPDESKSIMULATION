@@ -1,3 +1,4 @@
+import ModalCloseButton from '../../components/ModalCloseButton';
 import { claimCatalogWalkthrough } from "../../utils/walkthroughHistory";
 import { plainDescription } from "../../utils/plainDescription";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -288,9 +289,7 @@ useEffect(() => {
                 </div>
               </div>
               <div className="sim-preview-topbar-right">
-                <button type="button" className="btn-sm sim-preview-close-btn" onClick={closeSimulation} aria-label="Close simulation">
-                  X
-                </button>
+                <ModalCloseButton type="button" className="btn-sm sim-preview-close-btn" onClick={closeSimulation} aria-label="Close simulation" />
               </div>
             </div>
             <div className="step-modal-body sim-runtime-body">

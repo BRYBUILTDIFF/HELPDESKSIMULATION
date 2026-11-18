@@ -33,7 +33,7 @@ async function createSimulationSession(req, res, next) {
     const moduleId = String(req.body?.moduleId || "").trim();
     const chatSessionId = req.body?.chatSessionId ? String(req.body.chatSessionId) : null;
     const module = await getModuleById(moduleId);
-    if (!module || !module.enabled) return res.status(404).json({ message: "Simulation module not found." });
+    if (!module || (!module.enabled && req.user.role !== "ADMIN")) return res.status(404).json({ message: "Simulation module not found." });
     if (module?.simulation?.surface !== "windows-os") {
       return res.status(400).json({ message: "This module does not use the Windows OS simulation surface." });
     }

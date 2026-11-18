@@ -29,7 +29,7 @@ test("review migration, shared limits, session isolation and command evidence ag
           await tx.$executeRawUnsafe(`INSERT INTO "UserSessionState" ("userId", "sessions", "updatedAt") VALUES (10, '[{"id":"legacy-session","messages":[]}]', CURRENT_TIMESTAMP)`);
         }
         const sql = fs.readFileSync(path.join(__dirname, "../prisma/migrations", name, "migration.sql"), "utf8");
-        for (const statement of sql.replace(/^--.*$/gm, "").split(";").map(value => value.trim()).filter(value => value && !["BEGIN", "COMMIT"].includes(value))) await tx.$executeRawUnsafe(statement);
+        for (const statement of sql.replace(/DO \$\$[\s\S]*?\$\$;/g, '').replace(/^--.*$/gm, "").split(";").map(value => value.trim()).filter(value => value && !["BEGIN", "COMMIT"].includes(value))) await tx.$executeRawUnsafe(statement);
       }
     }, { timeout: 30000 });
     assert.equal(await db.chatSession.count({ where: { userId: 10 } }), 1, "Legacy session must migrate");

@@ -149,6 +149,13 @@ router.delete(
   validateRequest,
   deletePolicyListEntryAdmin
 );
+const draftController = require('../controllers/simulationDraftController');
+router.get('/simulation-drafts', draftController.listDrafts);
+router.get('/simulation-drafts/:id', draftController.getDraft);
+router.post('/simulation-drafts', [body('simulation').optional().isObject(), body('moduleId').optional().isString().isLength({max:120})], validateRequest, draftController.createDraft);
+router.patch('/simulation-drafts/:id', [param('id').isString().isLength({min:1,max:120}), body('version').isInt({min:1}).toInt(), body('simulation').isObject()], validateRequest, draftController.updateDraft);
+router.delete('/simulation-drafts/:id', [param('id').isString().isLength({min:1,max:120})], validateRequest, draftController.discardDraft);
+router.get('/simulation-modules/:id/revisions', draftController.revisions);
 router.post("/simulation-modules/test", require("../controllers/simulationAttemptController").testDefinition);
 router.get("/simulation-modules/actions", (_req, res) => res.json({ actions: require("../services/terminalRuntime").ACTIONS }));
 router.get("/simulation-modules", getSimulationModules);

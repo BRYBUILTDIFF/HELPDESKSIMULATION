@@ -1,0 +1,11 @@
+/* A fixed square keeps the icon centered regardless of text-button styles. */
+body button.modal-close-button.modal-close-button.modal-close-button {
+  display:inline-flex; align-items:center; justify-content:center;
+  box-sizing:border-box; flex:0 0 36px; width:36px; height:36px;
+  min-width:36px; max-width:36px; min-height:36px; max-height:36px;
+  padding:0; margin:0; line-height:1; border-radius:8px;
+  cursor:pointer; vertical-align:middle;
+}
+body button.modal-close-button svg { display:block; flex:none; width:18px; height:18px; pointer-events:none; }
+body button.modal-close-button:focus-visible { outline:2px solid var(--color-text-info, #27845b); outline-offset:3px; }
+body button.modal-close-button:disabled { opacity:.5; cursor:not-allowed; }

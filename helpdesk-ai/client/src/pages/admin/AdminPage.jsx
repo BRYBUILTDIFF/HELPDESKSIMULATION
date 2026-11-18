@@ -1,3 +1,6 @@
+import { useDraftAutosave } from './useDraftAutosave';
+import ModuleRevisionHistory from './ModuleRevisionHistory';
+import ModalCloseButton from '../../components/ModalCloseButton';
 import { passwordAllowed } from "../../utils/passwordPolicy";
 import { plainDescription } from "../../utils/plainDescription";
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -15,6 +18,7 @@ import { Bar, Line } from "react-chartjs-2";
 import { useAuth } from "../../hooks/useAuth";
 import { useAxios } from "../../hooks/useAxios";
 import TerminalModuleTester from "./TerminalModuleTester";
+import DesktopModuleEditor from "./DesktopModuleEditor";
 import TerminalEmulator from "../users/Modules/TerminalEmulator";
 import WindowsOsSimulation from "../users/Modules/WindowsOsSimulation";
 import macOsPreviewImg from "../../IMG/MAC.jpg";
@@ -437,6 +441,8 @@ export default function AdminPage() {
   const [modulePreviewStep, setModulePreviewStep] = useState(0);
   const [modulePreviewSurface, setModulePreviewSurface] = useState("windows-terminal");
   const [moduleDraftMeta, setModuleDraftMeta] = useState(null);
+  const [savedDrafts,setSavedDrafts]=useState([]);
+  const draftAutosave=useDraftAutosave(api);
   const [moduleDraftError, setModuleDraftError] = useState("");
   const [adminWindowsOsTest, setAdminWindowsOsTest] = useState(null);
   const [userModalOpen, setUserModalOpen] = useState(false);
@@ -481,7 +487,8 @@ export default function AdminPage() {
   }, [api]);
 
   const loadModules = useCallback(async () => {
-    const res = await api.get("/api/admin/simulation-modules");
+    const [res,draftsRes] = await Promise.all([api.get("/api/admin/simulation-modules"),api.get("/api/admin/simulation-drafts")]);
+    setSavedDrafts(draftsRes.data?.drafts || []);
     setModules(Array.isArray(res.data?.modules) ? res.data.modules : []);
   }, [api]);
 
@@ -1210,7 +1217,15 @@ export default function AdminPage() {
 
   const [previewVerifiedModuleId, setPreviewVerifiedModuleId] = useState(null);
   const [moduleEditorOpen, setModuleEditorOpen] = useState(false);
-  const openModulePreview = (preview, options = {}) => {
+  const openModulePreview = async (preview, options = {}) => {
+    let record=options.draftRecord || null;
+    if(record){try{const {data}=await api.get('/api/admin/simulation-drafts/'+record.id);record=data.draft;}catch(error){window.alert(safeError(error));return;}}
+    if(options.edit && options.moduleId && !record){
+      try {const {data}=await api.post('/api/admin/simulation-drafts',{moduleId:options.moduleId});record=data.draft;}
+      catch(error){window.alert(safeError(error));return;}
+    }
+    draftAutosave.initialize(record);
+    if(record){preview=record.simulation;options={...options,moduleId:record.moduleId,edit:true,draftMeta:{...options.draftMeta,draftId:record.id,title:record.title,category:record.category,sourcePrompt:record.sourcePrompt || undefined,baseRevision:record.generation?.baseRevision,initialTest:record.test}};}
     setPreviewVerifiedModuleId(options.moduleId || null);
     setModuleEditorOpen(Boolean(options.edit || options.draftMeta));
     if (!preview || !Array.isArray(preview.steps) || preview.steps.length === 0) {
@@ -1223,12 +1238,15 @@ export default function AdminPage() {
     setModuleDraftError("");
   };
 
-  const closeModulePreview = () => {
+  const closeModulePreview = async (options = {}) => {
+    if(!options.skipFlush){try{await draftAutosave.flush();}catch(error){setModuleDraftError(safeError(error));return;}}
+    draftAutosave.initialize(null);
     setModulePreview(null);
     setModulePreviewStep(0);
     setModulePreviewSurface("windows-terminal");
     setModuleDraftMeta(null);
     setModuleDraftError("");
+    await loadModules();
   };
 
   const createModuleFromPromptInsight = async (insight) => {
@@ -1250,6 +1268,7 @@ export default function AdminPage() {
       }
       openModulePreview(getModuleSimulationDefinition(draft), {
         surface: draft.recommendedSurface || insight.recommendedSurface || draft?.simulation?.terminalType,
+        draftRecord: res.data?.draftRecord,
         draftMeta: {
           mode: "from_prompt",
           sourcePrompt: insight.samplePrompt,
@@ -1323,8 +1342,10 @@ export default function AdminPage() {
     setPendingKey("module-save-draft");
     setModuleDraftError("");
     try {
-      await api.post("/api/admin/simulation-modules", {
+      const savedDraft=await draftAutosave.flush();
+      const payload={
         mode: "manual",
+        draftId:savedDraft?.id,draftVersion:savedDraft?.version,baseRevision:moduleDraftMeta.baseRevision,
         title: moduleDraftMeta.title,
         category: moduleDraftMeta.category,
         sourcePrompt: moduleDraftMeta.sourcePrompt,
@@ -1334,8 +1355,10 @@ export default function AdminPage() {
           terminalType: modulePreviewSurface === "windows-terminal" || modulePreviewSurface === "mac-terminal" ? modulePreviewSurface : null
         },
         enabled: false
-      });
-      closeModulePreview();
+      };
+      if(previewVerifiedModuleId)await api.patch('/api/admin/simulation-modules/'+previewVerifiedModuleId,payload);
+      else await api.post('/api/admin/simulation-modules',payload);
+      await closeModulePreview({skipFlush:true});
       await Promise.all([loadModules(), loadPromptInsights()]);
     } catch (err) {
       setModuleDraftError(safeError(err));
@@ -2039,6 +2062,7 @@ export default function AdminPage() {
                   <div className="policy-kpi-card"><span>Prompt Variants Grouped</span><strong>{promptInsightFeed.reduce((sum, item) => sum + Number(item.similarPromptVariants || 1), 0)}</strong></div>
                   <div className="policy-kpi-card"><span>Module Completions</span><strong>{moduleStats.completions}</strong></div>
                 </div>
+                {savedDrafts.length ? <section className="saved-simulation-drafts"><h2>Saved drafts</h2><p>Unpublished work saved automatically. Resume a draft to continue editing and testing.</p>{savedDrafts.map(record=><div className="saved-draft-row" key={record.id}><div><strong>{record.title}</strong><span>{record.simulation?.surface} / Updated {new Date(record.updatedAt).toLocaleString()}</span></div><button type="button" className="btn-sm" onClick={()=>openModulePreview(record.simulation,{draftRecord:record})}>Resume draft</button><button type="button" className="btn-sm btn-danger" onClick={async()=>{try{await api.delete('/api/admin/simulation-drafts/'+record.id);await loadModules();}catch(error){window.alert(safeError(error));}}}>Discard</button></div>)}</section>:null}
                 <div className="sim-view-tabs" role="tablist" aria-label="Simulation module views">
                   <button type="button" className={simulationView === "modules" ? "active" : ""} onClick={() => setSimulationView("modules")} role="tab" aria-selected={simulationView === "modules"}>Modules <span>{moduleStats.total}</span></button>
                   <button type="button" className={simulationView === "suggestions" ? "active" : ""} onClick={() => setSimulationView("suggestions")} role="tab" aria-selected={simulationView === "suggestions"}>Suggestion Queue <span>{promptInsightFeed.length}</span></button>
@@ -2047,7 +2071,7 @@ export default function AdminPage() {
                   {simulationView === "suggestions" ? (
                     <>
                       <div className="sim-workspace-head sim-prompt-head">
-                        <div className="panel-title">Prompt Monitoring</div>
+                        <div><div className="panel-title">Prompt Monitoring</div><p className="sim-sample-note">Suggestions reflect the latest 200 policy events, not lifetime totals.</p></div>
                         <div className="sim-prompt-toolbar">
                           <input className="policy-search-input" value={promptInsightQuery} onChange={(event) => setPromptInsightQuery(event.target.value)} placeholder="Search prompt patterns" aria-label="Search prompt patterns" />
                           <div className="sim-prompt-toolbar-actions">
@@ -2075,13 +2099,13 @@ export default function AdminPage() {
                             <details className="sim-suggestion-row" key={insight.normalized || insight.samplePrompt}>
                               <summary>
                                 <div className="sim-suggestion-main"><strong>{insight.samplePrompt}</strong><span>{insight.suggestedCategory} · {insight.recommendedSurfaceLabel || formatSurfaceLabel(insight.recommendedSurface)}</span></div>
-                                <div className="sim-suggestion-count"><strong>{insight.occurrences}</strong><span>occurrences</span></div>
-                                <span className="sim-row-chevron" aria-hidden="true">v</span>
+                                <div className="sim-suggestion-count"><strong>{insight.occurrences}</strong><span>recent occurrences</span></div>
+                                <svg className="sim-row-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
                               </summary>
                               <div className="sim-suggestion-details">
                                 <div className="sim-prompt-text">{insight.samplePrompt}</div>
                               <div className="sim-prompt-meta">
-                                <span>{insight.occurrences} occurrences</span>
+                                <span>{insight.occurrences} recent occurrences</span>
                                 {insight.similarPromptVariants > 1 ? <span>{insight.similarPromptVariants} similar prompts</span> : null}
                                 <span>{insight.uniqueUsers} users</span>
                                 <span>{insight.suggestedCategory}</span>
@@ -2163,6 +2187,7 @@ export default function AdminPage() {
                               <div className="sim-stat"><strong>{Number(module.avgSteps || 0).toFixed(1)}</strong> avg steps</div>
                             </div>
 
+                            <ModuleRevisionHistory moduleId={module.id} />
                             <div className="sim-actions">
                               <button
                                 type="button"
@@ -2176,7 +2201,7 @@ export default function AdminPage() {
                               >
                                 View Simulation
                               </button>
-                              {["windows-terminal", "mac-terminal"].includes(moduleSimulation.surface) ? (
+                              {["windows-terminal", "mac-terminal", "windows-os", "mac-os"].includes(moduleSimulation.surface) ? (
                                 <button type="button" className="btn-sm" onClick={() => openModulePreview(moduleSimulation, {surface:moduleSimulation.surface,moduleId:module.id,edit:true})}>Edit Simulation</button>
                               ) : null}
                               {canTestWindows ? (
@@ -2233,149 +2258,24 @@ export default function AdminPage() {
                 </div>
               </div>
               <div className="sim-preview-topbar-right">
-                <button type="button" className="btn-sm sim-preview-close-btn" onClick={closeModulePreview} aria-label="Close simulation preview">X</button>
+                <ModalCloseButton type="button" className="btn-sm sim-preview-close-btn" onClick={closeModulePreview} aria-label="Close simulation preview" />
               </div>
             </div>
 
-            {moduleDraftMeta?.generationNotice ? <p className="admin-generation-notice" role="status">{moduleDraftMeta.generationNotice}</p> : null}
+            {moduleDraftMeta?.generationNotice && !moduleDraftMeta.generationNotice.startsWith('AI-generated draft:') ? <p className="admin-generation-notice" role="status">{moduleDraftMeta.generationNotice}</p> : null}
             {moduleDraftError ? <div className="admin-alert error">{moduleDraftError}</div> : null}
 
             {moduleEditorOpen && ["windows-terminal", "mac-terminal"].includes(modulePreviewSurface) ? (
-              <TerminalModuleTester key={previewVerifiedModuleId || moduleDraftMeta?.sourcePrompt || modulePreview.title} definition={{...modulePreview,surface:modulePreviewSurface,terminalType:modulePreviewSurface}} existing={Boolean(previewVerifiedModuleId)} onSave={async (simulation,testToken) => {
-                if(previewVerifiedModuleId) await api.patch(`/api/admin/simulation-modules/${previewVerifiedModuleId}`, {simulation,testToken,enabled:true});
-                else await api.post("/api/admin/simulation-modules", {mode:"manual",title:moduleDraftMeta?.title || simulation.title,category:moduleDraftMeta?.category || "General",sourcePrompt:moduleDraftMeta?.sourcePrompt,simulation,testToken,enabled:false});
-                closeModulePreview(); await loadModules();
+              <TerminalModuleTester key={previewVerifiedModuleId || moduleDraftMeta?.sourcePrompt || modulePreview.title} definition={{...modulePreview,surface:modulePreviewSurface,terminalType:modulePreviewSurface}} existing={Boolean(previewVerifiedModuleId)} initialTest={moduleDraftMeta?.initialTest} onChange={draftAutosave.change} saveStatus={draftAutosave.status} onSave={async (simulation,testToken) => {
+                const savedDraft=await draftAutosave.flush();
+                const draftInfo={draftId:savedDraft?.id,draftVersion:savedDraft?.version,baseRevision:moduleDraftMeta?.baseRevision};
+                if(previewVerifiedModuleId) await api.patch(`/api/admin/simulation-modules/${previewVerifiedModuleId}`, {simulation,testToken,enabled:true,...draftInfo});
+                else await api.post("/api/admin/simulation-modules", {mode:"manual",title:moduleDraftMeta?.title || simulation.title,category:moduleDraftMeta?.category || "General",sourcePrompt:moduleDraftMeta?.sourcePrompt,simulation,testToken,enabled:false,...draftInfo});
+                await closeModulePreview({skipFlush:true}); await loadModules();
               }} />
             ) : isDraftPreview ? (
               <>
-                <div className="sim-preview-body">
-                  <aside className="sim-preview-sidebar">
-                    <div className="sim-preview-progress-track">
-                      <div className="sim-preview-progress-fill" style={{ width: `${previewProgress}%` }} />
-                    </div>
-                    {previewSteps.map((step, index) => (
-                      <button
-                        key={`${step.title}-${index}`}
-                        type="button"
-                        className={`sim-preview-step ${index < previewSafeStep ? "done" : index === previewSafeStep ? "active" : "todo"}`}
-                        onClick={() => setModulePreviewStep(index)}
-                      >
-                        <span className="sim-preview-step-num">{index + 1}</span>
-                        <span className="sim-preview-step-copy">
-                          <span className="sim-preview-step-label">{step.title}</span>
-                          {step.action ? <span className="sim-preview-step-sub">{step.action}</span> : null}
-                        </span>
-                      </button>
-                    ))}
-                  </aside>
-
-                  <main className="sim-preview-main">
-                    <div className="sim-preview-main-content">
-                      <div className="sim-preview-title">{previewCurrentStep.title || "No step available"}</div>
-                      <div
-                        className="sim-preview-desc"
-                        >{plainDescription(previewCurrentStep.desc || "")}</div>
-                      <div className="sim-preview-scenario-box">
-                        <div className="sim-preview-scenario-label">Scenario</div>
-                        <pre>{previewCurrentStep.screen || "No simulated screen output."}</pre>
-                      </div>
-                      <div className="sim-preview-info-row">
-                        <div className="sim-preview-info-card action-card">
-                          <div className="sim-preview-info-card-label">Action</div>
-                          <div className="sim-preview-info-card-value">{previewCurrentStep.action || "N/A"}</div>
-                        </div>
-                        <div className="sim-preview-info-card result-card">
-                          <div className="sim-preview-info-card-label">Result</div>
-                          <div className="sim-preview-info-card-value">{previewCurrentStep.result || "No result provided."}</div>
-                        </div>
-                      </div>
-                    </div>
-                  </main>
-
-                  <aside className="sim-preview-right">
-                    <div className="sim-preview-sim-header">
-                      <div className="sim-preview-sim-title">Simulation Surface</div>
-                      <div className="sim-preview-env-label">
-                        {isAiGeneratedDraft ? "AI-selected environment" : "Environment"}
-                      </div>
-                      {isAiGeneratedDraft ? (
-                        <div className="sim-preview-selected-surface" title="This environment was selected by AI for this draft.">
-                          <span className="sim-preview-env-icon">{selectedPreviewSurface?.icon}</span>
-                          <span>{formatSurfaceLabel(modulePreviewSurface)}</span>
-                          <span className="sim-preview-surface-lock" aria-label="Locked">
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                              <rect x="5" y="10" width="14" height="10" rx="2" />
-                              <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-                            </svg>
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="sim-preview-env-options">
-                          {previewSurfaceOptions.map((option) => (
-                            <button
-                              key={option.value}
-                              type="button"
-                              className={`sim-preview-env-btn ${modulePreviewSurface === option.value ? "active" : ""}`}
-                              onClick={() => setModulePreviewSurface(option.value)}
-                            >
-                              <span className="sim-preview-env-icon">{option.icon}</span>
-                              <span>{option.label}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="sim-preview-sim-frame">
-                      {modulePreviewSurface === "windows-terminal" ? (
-                        <div className="sim-preview-terminal-window sim-preview-windows-terminal">
-                          <div className="windows-terminal-titlebar">
-                            <div className="windows-terminal-tab active">
-                              <span className="windows-terminal-powershell-icon">›_</span>
-                              <strong>Windows PowerShell</strong>
-                              <span className="windows-terminal-tab-close" aria-hidden="true">×</span>
-                            </div>
-                            <button type="button" className="windows-terminal-menu" aria-label="Terminal options">⌄</button>
-                            <div className="windows-terminal-window-controls" aria-hidden="true">
-                              <span>−</span><span>□</span><span>×</span>
-                            </div>
-                          </div>
-                          <pre>{`Windows PowerShell
-Copyright (C) Microsoft Corporation. All rights reserved.
-
-PS C:\\Users\\student> echo ${previewCurrentStep.title || "Ready"}
-${previewCurrentStep.title || "Ready"}
-
-PS C:\\Users\\student> _`}</pre>
-                        </div>
-                      ) : modulePreviewSurface === "mac-terminal" ? (
-                        <div className="sim-preview-terminal-window sim-preview-mac-terminal">
-                          <div className="mac-terminal-titlebar">
-                            <div className="mac-terminal-window-dots" aria-hidden="true">
-                              <span className="dot red" />
-                              <span className="dot yellow" />
-                              <span className="dot green" />
-                            </div>
-                            <strong>⌂ jumpcloud — zsh — 80×24</strong>
-                          </div>
-                          <pre>{`Last login: Tue Jan 11 11:10:04 on console
-jumpcloud@JumpCloud ~ % echo ${previewCurrentStep.title || "Ready"}
-${previewCurrentStep.title || "Ready"}
-jumpcloud@JumpCloud ~ % _`}</pre>
-                        </div>
-                      ) : (
-                        <div className="sim-preview-surface-image-wrap">
-                          <img
-                            className="sim-preview-surface-image"
-                            src={modulePreviewSurface === "windows-os" ? windowsOsPreviewImg : macOsPreviewImg}
-                            alt={modulePreviewSurface === "windows-os" ? "Windows OS simulation preview" : "Mac OS simulation preview"}
-                          />
-                        </div>
-                      )}
-                    </div>
-                    <div className="sim-preview-terminal-note">Visual preview only · No terminal actions wired yet</div>
-                  </aside>
-                </div>
+                <DesktopModuleEditor definition={modulePreview} busy={pendingKey === 'module-save-draft'} onChange={next => {setModulePreview(next);draftAutosave.change(next);setModuleDraftError('');}} />
 
                 <div className="sim-preview-footer">
                   <div className="sim-preview-footer-center">
@@ -2387,10 +2287,10 @@ jumpcloud@JumpCloud ~ % _`}</pre>
                         />
                       ))}
                     </div>
-                    <span className="sim-preview-footer-nav">Step {previewTotalSteps === 0 ? 0 : previewSafeStep + 1} of {previewTotalSteps}</span>
+                    <span className="sim-preview-footer-nav">{draftAutosave.status}</span>
                   </div>
                   <div className="sim-preview-btn-row">
-                    <button type="button" className="btn-sm sim-preview-discard" onClick={closeModulePreview}>
+                    <button type="button" className="btn-sm sim-preview-discard" onClick={async()=>{try{await draftAutosave.flush();await api.delete('/api/admin/simulation-drafts/'+moduleDraftMeta.draftId);await closeModulePreview({skipFlush:true});await loadModules();}catch(error){setModuleDraftError(safeError(error));}}}>
                       Discard Draft
                     </button>
                     <button
@@ -2503,7 +2403,7 @@ jumpcloud@JumpCloud ~ % _`}</pre>
                 <span className="policy-event-modal-kicker">Policy decision details</span>
                 <h3 id="policy-event-modal-title">{`${outcomeLabel(selectedPolicyEvent)} request`}</h3>
               </div>
-              <button type="button" className="account-modal-close" onClick={() => setSelectedPolicyEvent(null)} aria-label="Close policy event details">×</button>
+              <ModalCloseButton type="button" className="account-modal-close" onClick={() => setSelectedPolicyEvent(null)} aria-label="Close policy event details" />
             </header>
 
             <div className="policy-event-modal-meta">
@@ -2594,7 +2494,7 @@ jumpcloud@JumpCloud ~ % _`}</pre>
                 <span>Policy configuration</span>
                 <h3 id="policy-entry-edit-title">Edit policy entry</h3>
               </div>
-              <button type="button" className="policy-entry-edit-close" onClick={() => setPolicyEntryEditor(null)} aria-label="Close edit policy entry">×</button>
+              <ModalCloseButton type="button" className="policy-entry-edit-close" onClick={() => setPolicyEntryEditor(null)} aria-label="Close edit policy entry" />
             </header>
 
             <div className="policy-entry-edit-body">
@@ -2631,7 +2531,7 @@ jumpcloud@JumpCloud ~ % _`}</pre>
       {policyActionSuccess ? (
         <div className="admin-modal-overlay policy-success-modal-overlay" onClick={() => setPolicyActionSuccess(null)}>
           <section className="policy-success-modal" role="dialog" aria-modal="true" aria-labelledby="policy-success-modal-title" onClick={(event) => event.stopPropagation()}>
-            <button type="button" className="policy-success-modal-close" onClick={() => setPolicyActionSuccess(null)} aria-label="Close success message">×</button>
+            <ModalCloseButton type="button" className="policy-success-modal-close" onClick={() => setPolicyActionSuccess(null)} aria-label="Close success message" />
             <div className="policy-success-modal-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="m5 12 4.2 4.2L19 6.5" /></svg>
             </div>
@@ -2647,7 +2547,7 @@ jumpcloud@JumpCloud ~ % _`}</pre>
       {adminWindowsOsTest ? (
         <div className="windows-os-modal-host helpdesk-root theme-light" role="dialog" aria-modal="true" aria-label="Windows OS simulation">
           <div className="windows-os-modal">
-            <WindowsOsSimulation
+            <WindowsOsSimulation testMode
               api={api}
               moduleId={adminWindowsOsTest.id}
               title={adminWindowsOsTest.title}
@@ -2729,9 +2629,7 @@ jumpcloud@JumpCloud ~ % _`}</pre>
                   </p>
                 </div>
               </div>
-              <button type="button" className="account-modal-close" onClick={closeUserModal} aria-label="Close">
-                x
-              </button>
+              <ModalCloseButton type="button" className="account-modal-close" onClick={closeUserModal} aria-label="Close" />
             </div>
 
             {userFormError ? <div className="admin-alert error">{userFormError}</div> : null}
@@ -2930,7 +2828,7 @@ jumpcloud@JumpCloud ~ % _`}</pre>
                   <p>Review your administrator account and update your password.</p>
                 </div>
               </div>
-              <button type="button" className="account-modal-close" onClick={closeAccountSettings} aria-label="Close account settings">×</button>
+              <ModalCloseButton type="button" className="account-modal-close" onClick={closeAccountSettings} aria-label="Close account settings" />
             </div>
 
             <div className="admin-account-details">

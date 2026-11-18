@@ -17,14 +17,15 @@ function sanitizeId(raw) {
 
 function normalizeSimulationStep(step, index) {
   const title = safeText(step?.title) || `Step ${index + 1}`;
-  const desc = safeText(step?.instruction ?? step?.desc);
+  const desc = safeText(step?.desc ?? step?.description ?? step?.instruction);
+  const instruction = safeText(step?.instruction ?? step?.action ?? step?.desc);
   const screen = safeText(step?.screen);
   const action = safeText(step?.action);
   const result = safeText(step?.result);
   return {
     title: title || `Step ${index + 1}`,
     desc,
-    instruction: desc,
+    instruction,
     command: safeText(step?.command ?? step?.expectedCommands?.[0] ?? ""),
     expectedOutput: typeof step?.expectedOutput === "string" ? safeText(step.expectedOutput) : undefined,
     type: String(step?.type || "command"),
@@ -78,6 +79,10 @@ function mapDbModule(module) {
     sourcePrompt: module.sourcePrompt || "",
     simulation: normalizeSimulation(module.simulation, module.title),
     validationErrors: ["windows-terminal", "mac-terminal"].includes(module.simulation?.surface) ? require("../services/terminalRuntime").validateDefinition(normalizeSimulation(module.simulation, module.title)) : [],
+    revision: module.revision || 1,
+    createdById: module.createdById ?? null,
+    updatedById: module.updatedById ?? null,
+    publishedAt: module.publishedAt ?? null,
     createdAt: module.createdAt
   };
 }
@@ -108,42 +113,79 @@ async function getModuleById(id) {
   const module = await prisma.simulationModule.findUnique({ where: { id: String(id || "") } });
   return module ? mapDbModule(module) : null;
 }
+const jsonValue = value => JSON.parse(JSON.stringify(value));
+const conflict = message => Object.assign(new Error(message), {status:409, publicMessage:message});
+async function checkedReceipt(tx, payload, simulation, required) {
+  const r = require('./../services/terminalRuntime');
+  if (!payload.testToken) {
+    if(required) throw conflict('Complete the interactive admin test for this exact definition before publishing.');
+    return null;
+  }
+  if(!r.verifyTest(payload.testToken, simulation, payload.testedById)) throw conflict('The test approval expired or does not match this draft. Test it again.');
+  const signed = JSON.parse(Buffer.from(payload.testToken.split('.')[0], 'base64url').toString());
+  const receipt = signed.receiptId && await tx.simulationTestReceipt.findUnique({where:{id:signed.receiptId}});
+  if(!receipt || receipt.actorId!==payload.testedById || receipt.definitionHash!==r.definitionHash(simulation) || receipt.expiresAt<=new Date()) throw conflict('A stored test approval is required. Test the module again.');
+  return receipt.id;
+}
+async function finishDraft(tx, payload, moduleId, simulation, baseRevision) {
+  if(!payload.draftId) return;
+  const draft = await tx.simulationDraft.findUnique({where:{id:payload.draftId}});
+  if(!draft || draft.ownerId!==payload.testedById || draft.state!=='DRAFT' || draft.version!==payload.draftVersion || (draft.moduleId && draft.moduleId!==moduleId)) throw conflict('The saved draft changed. Reopen it before saving the module.');
+  if(draft.moduleId && draft.generation?.baseRevision!==baseRevision) throw conflict('The original module changed since this draft was created. Reopen the current module to make a new draft.');
+  const hash = require('../services/terminalRuntime').definitionHash;
+  if(hash(normalizeSimulation(draft.simulation))!==hash(simulation)) throw conflict('Wait for draft changes to finish saving before saving the module.');
+  const changed=await tx.simulationDraft.updateMany({where:{id:draft.id,ownerId:payload.testedById,version:draft.version,state:'DRAFT'},data:{state:'SAVED',moduleId,version:{increment:1}}});
+  if(!changed.count) throw conflict('The draft changed during saving. Reopen it and try again.');
+}
+async function saveRevision(tx, module, actorId, testReceiptId) {
+  await tx.simulationRevision.create({data:{moduleId:module.id,revision:module.revision,actorId:actorId||null,snapshot:jsonValue(module),testReceiptId}});
+}
 async function createModule(payload = {}) {
   const normalized = buildPayload(payload);
   if (!normalized) return null;
-  if (normalized.enabled && ["windows-terminal", "mac-terminal"].includes(normalized.simulation?.surface)) {
-    const r = require("../services/terminalRuntime"); r.assertDefinition(normalized.simulation);
-    if (!r.verifyTest(payload.testToken, normalized.simulation, payload.testedById)) { const error = new Error("Complete the interactive admin test before enabling this module."); error.status = 400; throw error; }
-  }
-  const base = sanitizeId(payload.id || normalized.title) || `sim-${Date.now().toString(36)}`;
-  for (let attempt = 1; attempt <= 100; attempt++) {
+  const terminal = ['windows-terminal','mac-terminal'].includes(normalized.simulation?.surface);
+  if(terminal && (normalized.enabled || payload.testToken)) require('../services/terminalRuntime').assertDefinition(normalized.simulation);
+  const base = sanitizeId(payload.id || normalized.title) || 'sim-'+Date.now().toString(36);
+  for(let attempt=1;attempt<=100;attempt++) {
     try {
-      const created = await prisma.simulationModule.create({ data: { ...normalized, id: attempt === 1 ? base : `${base}-${attempt}`, simulation: normalized.simulation || undefined } });
+      const created=await prisma.$transaction(async tx=>{
+        const testReceiptId=await checkedReceipt(tx,payload,normalized.simulation,terminal && normalized.enabled);
+        const module=await tx.simulationModule.create({data:{...normalized,id:attempt===1?base:base+'-'+attempt,simulation:normalized.simulation?jsonValue(normalized.simulation):undefined,createdById:payload.testedById||null,updatedById:payload.testedById||null,publishedAt:normalized.enabled?new Date():null}});
+        await finishDraft(tx,payload,module.id,normalized.simulation);
+        await saveRevision(tx,module,payload.testedById,testReceiptId);
+        return module;
+      });
       return mapDbModule(created);
-    } catch (err) { if (err.code !== "P2002") throw err; }
+    } catch(err) {if(err.code!=='P2002')throw err;}
   }
-  const error = new Error("Too many modules have this title"); error.status = 409; throw error;
+  throw conflict('Too many modules have this title.');
 }
 async function updateModule(id, patch = {}) {
   const data = {
-    title: typeof patch.title === "string" ? safeText(patch.title).trim().slice(0, 160) || undefined : undefined,
-    category: typeof patch.category === "string" ? safeText(patch.category).trim().slice(0, 80) || undefined : undefined,
-    difficulty: ALLOWED_DIFFICULTY.has(patch.difficulty) ? patch.difficulty : undefined,
-    enabled: typeof patch.enabled === "boolean" ? patch.enabled : undefined,
-    simulation: Object.prototype.hasOwnProperty.call(patch, "simulation") ? normalizeSimulation(patch.simulation, patch.title) : undefined
+    title:typeof patch.title==='string'?safeText(patch.title).trim().slice(0,160)||undefined:undefined,
+    category:typeof patch.category==='string'?safeText(patch.category).trim().slice(0,80)||undefined:undefined,
+    difficulty:ALLOWED_DIFFICULTY.has(patch.difficulty)?patch.difficulty:undefined,
+    enabled:typeof patch.enabled==='boolean'?patch.enabled:undefined,
+    simulation:Object.hasOwn(patch,'simulation')?normalizeSimulation(patch.simulation,patch.title):undefined
   };
-  if (Object.prototype.hasOwnProperty.call(patch, "simulation") && !data.simulation) {
-    const error = new Error("A simulation needs at least one valid step"); error.status = 400; throw error;
-  }
-  const current = await prisma.simulationModule.findUnique({where:{id:String(id || "")}});
-  if (!current) return null;
-  const target = data.simulation || normalizeSimulation(current.simulation, current.title);
-  if ((data.enabled ?? current.enabled) && ["windows-terminal", "mac-terminal"].includes(target?.surface)) {
-    const r = require('../services/terminalRuntime'); r.assertDefinition(target);
-    if ((data.enabled === true || data.simulation) && !r.verifyTest(patch.testToken,target,patch.testedById)) { const error = new Error('Complete the interactive admin test for this exact definition before publishing.'); error.status=400; throw error; }
-  }
-  try { return mapDbModule(await prisma.simulationModule.update({ where: { id: String(id || "") }, data })); }
-  catch (err) { if (err.code === "P2025") return null; throw err; }
+  if(Object.hasOwn(patch,'simulation')&&!data.simulation) throw conflict('A simulation needs at least one valid step.');
+  const updated=await prisma.$transaction(async tx=>{
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${String(id)}))`;
+    const current=await tx.simulationModule.findUnique({where:{id:String(id)}});
+    if(!current)return null;
+    if(patch.baseRevision!==undefined && patch.baseRevision!==current.revision) throw conflict('This module has a newer revision. Reopen it before publishing changes.');
+    const target=data.simulation||normalizeSimulation(current.simulation,current.title);
+    const terminal=['windows-terminal','mac-terminal'].includes(target?.surface);
+    const requiresTest=terminal && (data.enabled??current.enabled) && (data.enabled===true || Boolean(data.simulation));
+    if(requiresTest)require('../services/terminalRuntime').assertDefinition(target);
+    const testReceiptId=await checkedReceipt(tx,patch,target,requiresTest);
+    if(data.simulation)data.simulation=jsonValue(data.simulation);
+    const module=await tx.simulationModule.update({where:{id:current.id},data:{...data,revision:{increment:1},updatedById:patch.testedById||null,...(data.enabled===true&&!current.enabled?{publishedAt:new Date()}:{})}});
+    await finishDraft(tx,patch,module.id,target,current.revision);
+    await saveRevision(tx,module,patch.testedById,testReceiptId);
+    return module;
+  });
+  return updated?mapDbModule(updated):null;
 }
 async function deleteModule(id) {
   const safeId = String(id || "");

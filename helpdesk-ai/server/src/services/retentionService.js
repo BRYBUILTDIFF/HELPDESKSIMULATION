@@ -5,6 +5,7 @@ async function cleanupRetainedData() {
   await prisma.policyEvent.deleteMany({ where: { at: { lt: cutoff } } });
   await prisma.policyConversation.deleteMany({ where: { expiresAt: { lt: new Date() } } });
   await prisma.refreshToken.deleteMany({ where: { expiresAt: { lt: new Date() } } });
+  await prisma.chatTurn.deleteMany({ where: { createdAt: { lt: chatCutoff } } });
   await prisma.chatSession.deleteMany({ where: { updatedAt: { lt: chatCutoff } } });
   await prisma.userSessionState.deleteMany({ where: { updatedAt: { lt: chatCutoff } } });
   await prisma.simulationAttempt.deleteMany({ where: { expiresAt: { lt: chatCutoff } } });
