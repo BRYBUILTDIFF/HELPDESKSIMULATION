@@ -117,9 +117,17 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 async function startServer() {
   if (process.env.NODE_ENV === "production") {
+    if (process.env.ADMIN_DATABASE_URL) {
+      const error = new Error("Maintenance credentials are configured on the API");
+      error.code = "MAINTENANCE_CREDENTIALS_PRESENT";
+      throw error;
+    }
     const [role] = await require("./prisma").$queryRaw`SELECT rolsuper,rolcreatedb,rolcreaterole,rolbypassrls FROM pg_roles WHERE rolname=current_user`;
-    if (!role || Object.values(role).some(Boolean)) throw new Error("Production runtime requires a non-privileged database role.");
-    if (process.env.ADMIN_DATABASE_URL) throw new Error("Do not expose maintenance database credentials to the production API.");
+    if (!role || Object.values(role).some(Boolean)) {
+      const error = new Error("Production runtime requires a non-privileged database role");
+      error.code = "PRIVILEGED_RUNTIME_ROLE";
+      throw error;
+    }
   }
   app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
@@ -132,4 +140,22 @@ async function startServer() {
   }, 5 * 60 * 1000).unref();
   });
 }
-startServer().catch(() => { console.error("Backend startup security/database checks failed."); process.exitCode = 1; });
+startServer().catch(error => {
+  console.error("Backend startup security/database checks failed.");
+  // Error messages/stacks can include connection strings. Only emit allowlisted codes.
+  const code = String(error?.code || error?.errorCode || "");
+  const allowed = /^(P\d{4}|MAINTENANCE_CREDENTIALS_PRESENT|PRIVILEGED_RUNTIME_ROLE)$/;
+  console.error("Startup code:", allowed.test(code) ? code : "UNKNOWN_DATABASE_ERROR");
+  const hints = {
+    P1000: "Database authentication failed. Check the current restricted runtime password.",
+    P1001: "Database unreachable. Check hostname, region, availability, and network access rules.",
+    P1002: "Database connection timed out. Check availability and network access rules.",
+    P1010: "Database access denied. Check runtime grants and the database name.",
+    P1011: "Database TLS connection failed. Check SSL settings.",
+    P1013: "Invalid DATABASE_URL. Paste only the URL, without quotes or DATABASE_URL=.",
+    MAINTENANCE_CREDENTIALS_PRESENT: "Remove ADMIN_DATABASE_URL from the API environment.",
+    PRIVILEGED_RUNTIME_ROLE: "Set DATABASE_URL to the generated helpdesk_runtime URL."
+  };
+  if (hints[code]) console.error(hints[code]);
+  process.exitCode = 1;
+});
