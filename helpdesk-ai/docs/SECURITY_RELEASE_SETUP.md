@@ -87,6 +87,16 @@ MFA applies to the backend `requireAdmin` gate, not only the page. Normal access
 
 ## 6. Verify the Windows AMI before re-enabling
 
+### Owner recovery when authenticator and recovery codes are both lost
+
+From the server directory, an authorized database owner can inspect the exact account first:
+
+```powershell
+node scripts/reset-admin-mfa.js --env-file .security/render-owner.env --email YOUR_ADMIN_EMAIL
+```
+
+Only when the account has an enrollment and its owner needs recovery, repeat with `--apply`. This deletes that account's MFA enrollment, revokes its refresh/access session versions, and records an out-of-band maintenance audit entry with actor ID 0. Password, role, account and application data remain. Sign in with the current password and enroll again; save the newly displayed recovery codes. This maintenance operation requires private database-owner access and is not exposed as a public recovery bypass. If no enrollment exists, investigate deployment/login failures instead of resetting unrelated account data.
+
 New production launches always use unique passwords; `WINDOWS_UNIQUE_CREDENTIALS=true` enables the same behavior in local testing. The bootstrap uses Windows EC2Launch user-data execution to create/update `WINDOWS_LAB_USERNAME` and add it to Remote Desktop Users. It uses the existing launch template but **overrides its UserData**. Review/merge any required template initialization into a tested AMI/bootstrap before deployment; do not assume existing custom user-data commands still run.
 
 The AMI must execute PowerShell user data on new instances, include LocalAccounts cmdlets and support the intended RDP account. The account name must match the permitted ASCII identifier format, at most 20 characters. Review existing group memberships in the AMI; the bootstrap does not remove intentional administrator privileges or configure your whole lab network. Never bake production secrets into the AMI.

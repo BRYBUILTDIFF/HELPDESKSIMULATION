@@ -54,4 +54,15 @@ else {
   const second=await call(controller.getMySessions,{user:admin,query:{cursor:first.body.nextCursor}});assert.equal(second.body.sessions.length,3);assert.equal(second.body.nextCursor,null);
   assert.ok(![...first.body.sessions,...second.body.sessions].some(session=>session.id==='private'));
  });
+ test('owner MFA reset preserves accounts/data, requires apply and revokes existing sessions',async()=>{
+  const {resetAdminMfa}=require('../scripts/reset-admin-mfa');
+  await db.$executeRaw`INSERT INTO "AdminSecurity" ("userId","secret") VALUES (${admin.id},'test-factor')`;
+  await db.refreshToken.create({data:{userId:admin.id,token:'test-only-refresh-hash',expiresAt:new Date(Date.now()+60000)}});
+  const before=await db.user.findUnique({where:{id:admin.id}});
+  const preview=await resetAdminMfa(db,admin.email);assert.equal(preview.reset,false);assert.equal(preview.enrolled,true);
+  const result=await resetAdminMfa(db,admin.email,true);assert.equal(result.reset,true);
+  const after=await db.user.findUnique({where:{id:admin.id}});assert.equal(after.passwordHash,before.passwordHash);assert.equal(after.tokenVersion,before.tokenVersion+1);
+  assert.equal(await db.refreshToken.count({where:{userId:admin.id}}),0);assert.equal(await db.chatTurn.count({where:{userId:admin.id}}),5);
+  await assert.rejects(resetAdminMfa(db,'another@baseline.invalid',true),/active administrator/);
+ });
 }
