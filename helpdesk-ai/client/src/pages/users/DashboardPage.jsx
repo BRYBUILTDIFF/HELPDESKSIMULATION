@@ -2064,7 +2064,7 @@ export default function DashboardPage() {
       } else if (error.response.status === 503) {
         pushAiMessage(
           sessionId,
-          "AI service is not configured yet. Please set AI_API_KEY on the server.",
+          error.response.data?.message || "AI service is temporarily unavailable. Please try again shortly.",
           "text",
           {
             userPromptText: nextText,
@@ -2234,7 +2234,7 @@ export default function DashboardPage() {
       } else if (error.response.status === 503) {
         pushAiMessage(
           sessionId,
-          "AI service is not configured yet. Please set AI_API_KEY on the server.",
+          error.response.data?.message || "AI service is temporarily unavailable. Please try again shortly.",
           "text",
           {
             userPromptText: displayText,
