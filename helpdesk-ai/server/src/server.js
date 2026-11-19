@@ -117,6 +117,12 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 async function startServer() {
   if (process.env.NODE_ENV === "production") {
+    const settingCode = require("./utils/startupDiagnostics").databaseSettingCode(process.env.DATABASE_URL);
+    if (settingCode) {
+      const error = new Error("Invalid production database configuration");
+      error.code = settingCode;
+      throw error;
+    }
     if (process.env.ADMIN_DATABASE_URL) {
       const error = new Error("Maintenance credentials are configured on the API");
       error.code = "MAINTENANCE_CREDENTIALS_PRESENT";
@@ -143,9 +149,10 @@ async function startServer() {
 startServer().catch(error => {
   console.error("Backend startup security/database checks failed.");
   // Error messages/stacks can include connection strings. Only emit allowlisted codes.
-  const code = String(error?.code || error?.errorCode || "");
-  const allowed = /^(P\d{4}|MAINTENANCE_CREDENTIALS_PRESENT|PRIVILEGED_RUNTIME_ROLE)$/;
-  console.error("Startup code:", allowed.test(code) ? code : "UNKNOWN_DATABASE_ERROR");
+  const code = require("./utils/startupDiagnostics").startupDiagnostic(error);
+  console.error("Startup code:", code);
+  const type = String(error?.name || '');
+  console.error("Error type:", /^(PrismaClient(?:Initialization|KnownRequest|UnknownRequest|Validation|RustPanic)Error|Error)$/.test(type) ? type : 'OtherError');
   const hints = {
     P1000: "Database authentication failed. Check the current restricted runtime password.",
     P1001: "Database unreachable. Check hostname, region, availability, and network access rules.",
@@ -153,6 +160,9 @@ startServer().catch(error => {
     P1010: "Database access denied. Check runtime grants and the database name.",
     P1011: "Database TLS connection failed. Check SSL settings.",
     P1013: "Invalid DATABASE_URL. Paste only the URL, without quotes or DATABASE_URL=.",
+    DATABASE_URL_MISSING: "Add DATABASE_URL to this Render API service's environment.",
+    DATABASE_URL_FORMAT: "Paste only the PostgreSQL URL, without quotes, whitespace or DATABASE_URL=.",
+    DATABASE_URL_LOCALHOST: "Use the Render database hostname rather than localhost.",
     MAINTENANCE_CREDENTIALS_PRESENT: "Remove ADMIN_DATABASE_URL from the API environment.",
     PRIVILEGED_RUNTIME_ROLE: "Set DATABASE_URL to the generated helpdesk_runtime URL."
   };
