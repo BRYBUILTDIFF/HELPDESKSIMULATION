@@ -3258,7 +3258,7 @@ export default function DashboardPage() {
         return (
           <div className="user-bubble-block is-editing">
             <div className="user-edit-card">
-              <textarea
+              <textarea name="dashboard-page-editing-text"
                 ref={editTextareaRef}
                 value={editingText}
                 onChange={(event) => {
@@ -3842,7 +3842,7 @@ export default function DashboardPage() {
               <label>
                 <span>Current password</span>
                 <span className="password-input-wrap">
-                  <input
+                  <input name="dashboard-page-password-form-current-password"
                     type={passwordVisibility.current ? "text" : "password"}
                     value={passwordForm.currentPassword}
                     onChange={(event) => setPasswordForm((prev) => ({ ...prev, currentPassword: event.target.value }))}
@@ -3863,7 +3863,7 @@ export default function DashboardPage() {
               <label>
                 <span>New password</span>
                 <span className="password-input-wrap">
-                  <input
+                  <input name="dashboard-page-password-form-new-password"
                     type={passwordVisibility.next ? "text" : "password"}
                     value={passwordForm.newPassword}
                     onChange={(event) => setPasswordForm((prev) => ({ ...prev, newPassword: event.target.value }))}
@@ -3884,7 +3884,7 @@ export default function DashboardPage() {
               <label>
                 <span>Confirm new password</span>
                 <span className="password-input-wrap">
-                  <input
+                  <input name="dashboard-page-password-form-confirm-password"
                     type={passwordVisibility.confirm ? "text" : "password"}
                     value={passwordForm.confirmPassword}
                     onChange={(event) => setPasswordForm((prev) => ({ ...prev, confirmPassword: event.target.value }))}
@@ -3979,7 +3979,7 @@ export default function DashboardPage() {
                     <path d="M20 20l-3.5-3.5" />
                   </svg>
                 </span>
-                <input
+                <input name="dashboard-page-sidebar-search-input"
                   className="sidebar-search-input"
                   value={sidebarSearchInput}
                   onChange={(e) => setSidebarSearchInput(e.target.value)}
@@ -4401,7 +4401,7 @@ export default function DashboardPage() {
                   <p>Tell us what happened and what you have already tried.</p>
                   <div className="welcome-composer">
                     <div className="welcome-input-box composer-shell">
-                      <textarea
+                      <textarea name="dashboard-page-input"
                         ref={textareaRef}
                         value={input}
                         maxLength={CHAT_CHARACTER_LIMIT}
@@ -4508,7 +4508,7 @@ export default function DashboardPage() {
             <div className="input-area">
               <div className="input-inner">
                 <div className="input-box composer-shell">
-                  <textarea
+                  <textarea name="dashboard-page-input-2"
                     ref={textareaRef}
                     value={input}
                     maxLength={CHAT_CHARACTER_LIMIT}

@@ -71,11 +71,11 @@ export default function AuditLogPage() {
     <div className="admin-tab-intro audit-page-heading"><div><h1>Audit log</h1><p>Review recorded administrator changes and request outcomes.</p></div><button type="button" className="btn-sm" disabled={loading} onClick={() => setRefresh(value => value + 1)}>Refresh</button></div>
     <section className="panel audit-log-panel" aria-label="Administrator audit records">
       <div className="audit-filter-bar">
-        <label className="audit-search-field">Search<input type="search" value={search} maxLength={200} placeholder="Endpoint, name, email or administrator ID" onChange={event => {setSearch(event.target.value);setFilters(current => ({...current,page:1}));}} /></label>
-        <label>Administrator<select value={filters.actorId} onChange={event => update('actorId',event.target.value)}><option value="">All administrators</option>{actors.map(actor => <option key={actor.id} value={actor.id}>{actor.account ? `${accountName(actor.account,actor.id)} (#${actor.id})` : `Admin #${actor.id} (account unavailable)`}</option>)}</select></label>
-        <label>Result<select value={filters.result} onChange={event => update('result',event.target.value)}><option value="all">All results</option><option value="success">Successful</option><option value="failed">Failed</option><option value="redirected">Redirected</option><option value="unrecorded">Outcome not recorded</option></select></label>
-        <label>From<input type="date" value={filters.from} onChange={event => update('from',event.target.value)} /></label>
-        <label>Through<input type="date" value={filters.to} onChange={event => update('to',event.target.value)} /></label>
+        <label className="audit-search-field">Search<input name="audit-log-page-search" type="search" value={search} maxLength={200} placeholder="Endpoint, name, email or administrator ID" onChange={event => {setSearch(event.target.value);setFilters(current => ({...current,page:1}));}} /></label>
+        <label>Administrator<select name="audit-log-page-filters-actor-id" value={filters.actorId} onChange={event => update('actorId',event.target.value)}><option value="">All administrators</option>{actors.map(actor => <option key={actor.id} value={actor.id}>{actor.account ? `${accountName(actor.account,actor.id)} (#${actor.id})` : `Admin #${actor.id} (account unavailable)`}</option>)}</select></label>
+        <label>Result<select name="audit-log-page-filters-result" value={filters.result} onChange={event => update('result',event.target.value)}><option value="all">All results</option><option value="success">Successful</option><option value="failed">Failed</option><option value="redirected">Redirected</option><option value="unrecorded">Outcome not recorded</option></select></label>
+        <label>From<input name="audit-log-page-filters-from" type="date" value={filters.from} onChange={event => update('from',event.target.value)} /></label>
+        <label>Through<input name="audit-log-page-filters-to" type="date" value={filters.to} onChange={event => update('to',event.target.value)} /></label>
       </div>
       <div className="audit-filter-note"><span>Dates and times are in Philippine time (UTC+8).</span>{hasFilters ? <button type="button" onClick={() => {setSearch('');setQuery('');setFilters(initialFilters);}}>Clear filters</button> : null}</div>
       {actorError ? <p className="audit-inline-notice" role="status">{actorError}</p> : null}
@@ -108,7 +108,7 @@ export default function AuditLogPage() {
       </div>
       <div className="audit-pagination">
         <span role="status">{loading ? 'Loading...' : error ? 'Records could not be loaded' : pagination.total ? `${(pagination.page-1)*pagination.pageSize+1}-${Math.min(pagination.page*pagination.pageSize,pagination.total)} of ${pagination.total} records` : '0 records'}</span>
-        <label>Rows per page<select value={filters.pageSize} onChange={event => update('pageSize',event.target.value)}><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label>
+        <label>Rows per page<select name="audit-log-page-filters-page-size" value={filters.pageSize} onChange={event => update('pageSize',event.target.value)}><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label>
         <nav aria-label="Audit log pagination"><button type="button" className="btn-sm" disabled={loading || !!error || pagination.page <= 1} onClick={() => setFilters(current => ({...current,page:pagination.page-1}))}>Previous</button><span>Page {pagination.page} of {pagination.totalPages}</span><button type="button" className="btn-sm" disabled={loading || !!error || pagination.page >= pagination.totalPages} onClick={() => setFilters(current => ({...current,page:pagination.page+1}))}>Next</button></nav>
       </div>
     </section>

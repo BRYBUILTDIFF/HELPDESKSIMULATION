@@ -27,11 +27,11 @@ export default function DesktopModuleEditor({ definition, onChange, busy }) {
       <section className="sim-runtime-canvas">
         <header className="draft-content-heading"><h3>Step content</h3><span>Step {index+1} of {steps.length}</span></header>
         {step ? <div className="sim-runtime-current terminal-step-editor"><ol><li>
-          <label className="draft-title-field draft-full-field">Step title<input value={step.title || ''} disabled={busy} onChange={event => update({ title: event.target.value })} /></label>
-          <label className="draft-full-field">Instruction<textarea value={step.instruction ?? step.action ?? ''} disabled={busy} onChange={event => update({ instruction: event.target.value, action: event.target.value })} /></label>
-          <label className="draft-full-field">Description<textarea value={step.desc ?? step.description ?? ''} disabled={busy} onChange={event => update({ desc: event.target.value, description: event.target.value })} /></label>
-          <label>Scenario / screen<textarea value={step.screen || ''} disabled={busy} onChange={event => update({ screen: event.target.value })} /></label>
-          <label>Expected result<textarea value={step.result || ''} disabled={busy} onChange={event => update({ result: event.target.value })} /></label>
+          <label className="draft-title-field draft-full-field">Step title<input name="desktop-module-editor-step-title" value={step.title || ''} disabled={busy} onChange={event => update({ title: event.target.value })} /></label>
+          <label className="draft-full-field">Instruction<textarea name="desktop-module-editor-step-instruction" value={step.instruction ?? step.action ?? ''} disabled={busy} onChange={event => update({ instruction: event.target.value, action: event.target.value })} /></label>
+          <label className="draft-full-field">Description<textarea name="desktop-module-editor-step-desc" value={step.desc ?? step.description ?? ''} disabled={busy} onChange={event => update({ desc: event.target.value, description: event.target.value })} /></label>
+          <label>Scenario / screen<textarea name="desktop-module-editor-step-screen" value={step.screen || ''} disabled={busy} onChange={event => update({ screen: event.target.value })} /></label>
+          <label>Expected result<textarea name="desktop-module-editor-step-result" value={step.result || ''} disabled={busy} onChange={event => update({ result: event.target.value })} /></label>
 
         </li></ol></div> : null}
       </section>

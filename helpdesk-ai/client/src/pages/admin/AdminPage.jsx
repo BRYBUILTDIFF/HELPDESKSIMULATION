@@ -1662,18 +1662,18 @@ function AdminPageContent() {
                 <div className="admin-tab-intro"><h1>Manage access</h1><p>Find accounts, update roles, and manage user access.</p></div>
                 <div className="toolbar">
                   <div className="search-box">
-                    <input
+                    <input name="admin-page-user-query"
                       value={userQuery}
                       onChange={(event) => setUserQuery(event.target.value)}
                       aria-label="Search users by name or email" placeholder="Search users by name or email"
                     />
                   </div>
-                  <select className="filter-btn select" aria-label="Filter by role" value={userRoleFilter} onChange={(e) => setUserRoleFilter(e.target.value)}>
+                  <select name="admin-page-user-role-filter" className="filter-btn select" aria-label="Filter by role" value={userRoleFilter} onChange={(e) => setUserRoleFilter(e.target.value)}>
                     <option value="ALL">All roles</option>
                     <option value="USER">USER</option>
                     <option value="ADMIN">ADMIN</option>
                   </select>
-                  <select className="filter-btn select" aria-label="Filter by status" value={userStatusFilter} onChange={(e) => setUserStatusFilter(e.target.value)}>
+                  <select name="admin-page-user-status-filter" className="filter-btn select" aria-label="Filter by status" value={userStatusFilter} onChange={(e) => setUserStatusFilter(e.target.value)}>
                     <option value="ALL">All status</option>
                     <option value="ACTIVE">Active</option>
                     <option value="INACTIVE">Inactive</option>
@@ -1820,18 +1820,18 @@ function AdminPageContent() {
                         <div className="policy-results-count">{filteredPolicyEvents.length} events</div>
                       </div>
                       <div className="policy-filter-grid">
-                        <input
+                        <input name="admin-page-policy-query"
                           className="policy-search-input"
                           placeholder="Search prompt, reason, user, or code"
                           value={policyQuery}
                           onChange={(event) => setPolicyQuery(event.target.value)}
                         />
-                        <select className="filter-btn select" value={policyCodeFilter} onChange={(event) => setPolicyCodeFilter(event.target.value)}>
+                        <select name="admin-page-policy-code-filter" className="filter-btn select" value={policyCodeFilter} onChange={(event) => setPolicyCodeFilter(event.target.value)}>
                           {policyCodeOptions.map((code) => (
                             <option key={code} value={code}>{code === "ALL" ? "All codes" : code}</option>
                           ))}
                         </select>
-                        <select className="filter-btn select" value={policyStatusFilter} onChange={(event) => setPolicyStatusFilter(event.target.value)}>
+                        <select name="admin-page-policy-status-filter" className="filter-btn select" value={policyStatusFilter} onChange={(event) => setPolicyStatusFilter(event.target.value)}>
                           <option value="ALL">All status</option>
                           <option value="ALLOWED">Allowed</option>
                           <option value="BLOCKED">Blocked</option>
@@ -1839,7 +1839,7 @@ function AdminPageContent() {
                           <option value="OUTPUT_FILTERED">Output filtered</option>
                           <option value="UNAVAILABLE">Unavailable</option>
                         </select>
-                        <select className="filter-btn select" value={policyTimeFilter} onChange={(event) => setPolicyTimeFilter(event.target.value)}>
+                        <select name="admin-page-policy-time-filter" className="filter-btn select" value={policyTimeFilter} onChange={(event) => setPolicyTimeFilter(event.target.value)}>
                           <option value="ALL">All time</option>
                           <option value="TODAY">Today</option>
                           <option value="WEEK">This week</option>
@@ -1956,7 +1956,7 @@ function AdminPageContent() {
                             </div>
                           ) : null}
                           <div className="policy-list-add">
-                            <input
+                            <input name="admin-page-policy-editor-list-input"
                               value={policyEditorListInput[selectedPolicyListKey] || ""}
                               onChange={(event) =>
                                 setPolicyEditorListInput((prev) => ({ ...prev, [selectedPolicyListKey]: event.target.value }))
@@ -1972,7 +1972,7 @@ function AdminPageContent() {
                               Add entry
                             </button>
                           </div>
-                          <input
+                          <input name="admin-page-policy-config-search-map"
                             className="policy-list-search"
                             value={policyConfigSearchMap[selectedPolicyListKey] || ""}
                             onChange={(event) =>
@@ -2019,7 +2019,7 @@ function AdminPageContent() {
                             {Object.entries(policyConfigDraft || {}).map(([key, value]) => (
                               <label key={key} className="policy-message-field">
                                 <span>{key}</span>
-                                <textarea
+                                <textarea name={`policy-message-${key}`}
                                   rows={2}
                                   value={value || ""}
                                   onChange={(event) =>
@@ -2079,7 +2079,7 @@ function AdminPageContent() {
                       <div className="sim-workspace-head sim-prompt-head">
                         <div><div className="panel-title">Prompt Monitoring</div><p className="sim-sample-note">Suggestions reflect the latest 200 policy events, not lifetime totals.</p></div>
                         <div className="sim-prompt-toolbar">
-                          <input className="policy-search-input" value={promptInsightQuery} onChange={(event) => setPromptInsightQuery(event.target.value)} placeholder="Search prompt patterns" aria-label="Search prompt patterns" />
+                          <input name="admin-page-prompt-insight-query" className="policy-search-input" value={promptInsightQuery} onChange={(event) => setPromptInsightQuery(event.target.value)} placeholder="Search prompt patterns" aria-label="Search prompt patterns" />
                           <div className="sim-prompt-toolbar-actions">
                           <button type="button" className="btn-sm" disabled={promptInsightsLoading || Boolean(pendingKey)} onClick={loadPromptInsights}>{promptInsightsLoading ? "Refreshing..." : "Refresh"}</button>
                           <button type="button" className="btn-sm btn-danger" disabled={promptInsightsLoading || Boolean(pendingKey) || !promptInsightFeed.length} onClick={disregardAllPromptInsights}>{pendingKey === "module-disregard-all" ? "Disregarding all..." : "Disregard all"}</button>
@@ -2152,7 +2152,7 @@ function AdminPageContent() {
                         Modules
                       </div>
                       <div className="sim-module-filters">
-                        <select value={moduleStatusFilter} onChange={(event) => setModuleStatusFilter(event.target.value)} aria-label="Filter modules by status"><option value="all">All statuses</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select>
+                        <select name="admin-page-module-status-filter" value={moduleStatusFilter} onChange={(event) => setModuleStatusFilter(event.target.value)} aria-label="Filter modules by status"><option value="all">All statuses</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select>
                       </div>
                     </div>
                     <div className="sim-grid">
@@ -2644,7 +2644,7 @@ function AdminPageContent() {
               <div className="admin-modal-grid account-modal-grid">
                 <label className="admin-field account-field">
                 <span>First Name</span>
-                <input
+                <input name="admin-page-user-form-first-name"
                   type="text"
                   placeholder="e.g. Alex"
                   value={userForm.firstName}
@@ -2653,7 +2653,7 @@ function AdminPageContent() {
               </label>
                 <label className="admin-field account-field">
                 <span>Last Name</span>
-                <input
+                <input name="admin-page-user-form-last-name"
                   type="text"
                   placeholder="e.g. Rivera"
                   value={userForm.lastName}
@@ -2669,7 +2669,7 @@ function AdminPageContent() {
                         <path d="m4 7 8 6 8-6" />
                       </svg>
                     </span>
-                    <input
+                    <input name="admin-page-user-form-email"
                       type="email"
                       placeholder="alex@company.com"
                       className="account-input-with-icon"
@@ -2680,7 +2680,7 @@ function AdminPageContent() {
                 </label>
                 <label className="admin-field account-field">
                 <span>Role</span>
-                <select
+                <select name="admin-page-user-form-role"
                   value={userForm.role}
                   onChange={(event) => setUserForm((prev) => ({ ...prev, role: event.target.value }))}
                 >
@@ -2690,7 +2690,7 @@ function AdminPageContent() {
               </label>
                 <label className="admin-field account-field">
                 <span>Status</span>
-                <select
+                <select name="admin-page-user-form-is-active"
                   value={userForm.isActive ? "ACTIVE" : "INACTIVE"}
                   onChange={(event) => setUserForm((prev) => ({ ...prev, isActive: event.target.value === "ACTIVE" }))}
                 >
@@ -2703,7 +2703,7 @@ function AdminPageContent() {
                     <label className="admin-field account-field">
                       <span>{userModalMode === "create" ? "Password" : "New Password (optional)"}</span>
                       <div className="account-input-icon-wrap">
-                        <input
+                        <input name="admin-page-user-form-password"
                           type={showCreatePassword ? "text" : "password"}
                           placeholder={userModalMode === "create" ? "Min. 12 characters" : "Leave blank to keep current"}
                           value={userForm.password}
@@ -2735,7 +2735,7 @@ function AdminPageContent() {
                     <label className="admin-field account-field">
                       <span>{userModalMode === "create" ? "Confirm Password" : "Confirm New Password"}</span>
                       <div className="account-input-icon-wrap">
-                        <input
+                        <input name="admin-page-user-form-confirm-password"
                           type={showCreateConfirmPassword ? "text" : "password"}
                           placeholder={userModalMode === "create" ? "Repeat password" : "Confirm new password"}
                           value={userForm.confirmPassword}
@@ -2773,7 +2773,7 @@ function AdminPageContent() {
                 </div>
                 {userModalMode === "create" ? (
                   <label className="admin-inline-checkbox account-default-row full">
-                    <input
+                    <input name="admin-page-use-default-password"
                       type="checkbox"
                       checked={useDefaultPassword}
                       onChange={(event) => {
@@ -2860,7 +2860,7 @@ function AdminPageContent() {
                   <label className="admin-field" key={key}>
                     <span>{label}</span>
                     <span className="admin-password-input-wrap">
-                      <input
+                      <input name={`account-${field}`}
                         type={accountPasswordVisibility[key] ? "text" : "password"}
                         value={accountPasswordForm[field]}
                         autoComplete={autoComplete}
