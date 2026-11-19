@@ -1,0 +1,735 @@
+Complete Step-by-Step Deployment Guide
+Helpdesk AI System | React + Express + PostgreSQL | Vercel + Render
+
+We'll deploy your Helpdesk AI system to the cloud so users can access it from their browsers, computers, and mobile devices without running your local development server.
+
+This guide follows your existing deployment configuration and uses Windows PowerShell, GitHub, Render, and Vercel.
+1. Understand the deployment architecture
+Users / Administrators
+
+Browsers on computers and phones
+HTTPS
+Vercel — React Frontend
+
+https://helpdesk-ai.vercel.app (example)
+Login, dashboard, chat, modules and admin interface
+/api/* requests via Vercel proxy
+Render — Express Backend
+
+https://helpdesk-api.onrender.com (example)
+Authentication, AI requests, chat history and business logic
+Restricted PostgreSQL connection
+Render — PostgreSQL Database
+
+Users, modules, conversations, progress and audit records
+
+What will work after deployment?
+Feature	Demo availability
+User registration and login	Enabled
+Admin dashboard	Enabled
+AI chatbot	With API credits
+Saved conversations	Enabled
+Terminal simulations	Enabled
+Learning modules	Enabled
+Windows 10/11 AWS desktop simulations	Disabled temporarily
+
+The Windows desktop feature remains disabled because your current Guacamole endpoint uses HTTP. The deployed HTTPS application will need an HTTPS Guacamole gateway before those sessions can be supported securely.
+Free hosting limitations
+I checked Render's current documentation. Its Free PostgreSQL database has a 1 GB storage limit and expires 30 days after creation. Its Free web service spins down after 15 minutes without traffic, resulting in a delay when a new request wakes it. 
+Render Docs+1
+
+
+This setup is suitable for an initial demonstration, not permanent production hosting.
+
+2. Prepare your project on your computer
+Before configuring Render or Vercel, verify your repository structure.
+
+Your project should approximately look like this:
+YOUR-GITHUB-REPOSITORY/
+│
+├── render.yaml
+│
+└── helpdesk-ai/
+    ├── client/
+    │   ├── src/
+    │   ├── public/
+    │   ├── scripts/
+    │   │   └── configure-vercel.mjs
+    │   ├── package.json
+    │   └── vite.config.js
+    │
+    └── server/
+        ├── prisma/
+        ├── scripts/
+        │   └── seed-cloud.js
+        ├── .security/
+        ├── package.json
+        └── .env
+
+
+
+This is the expected structure from your instructions. If your actual repository differs, use its actual folder names.
+Step 2.1 — Open PowerShell
+1. Open your project folder in VS Code.
+2. Select Terminal → New Terminal.
+3. Confirm the terminal is using PowerShell.
+4. Navigate to your Git repository root.
+Example:
+cd "C:\Users\BRYLLE\Documents\GitHub\YOUR-REPOSITORY"
+
+
+Replace the example path with your actual project folder.
+Step 2.2 — Check Node.js and Git
+Run:
+node -v
+npm -v
+git --version
+
+
+For this deployment, use Node.js 22.x, matching your planned Render/Vercel configuration.
+Step 2.3 — Verify required files
+From the repository root:
+Test-Path .\render.yaml
+Test-Path .\helpdesk-ai\server\package.json
+Test-Path .\helpdesk-ai\client\package.json
+Test-Path .\helpdesk-ai\server\scripts\seed-cloud.js
+Test-Path .\helpdesk-ai\client\scripts\configure-vercel.mjs
+
+
+Each should return:
+True
+
+
+If a required file is missing, resolve that before continuing.
+Step 2.4 — Protect your credentials
+Check your .gitignore file and ensure your secret files are excluded.
+
+Your applicable ignore rules should include:
+.env
+.env.*
+.security/
+**/.security/
+node_modules/
+dist/
+
+
+If you already have a .gitignore, append only the missing rules. Do not replace its existing contents.
+
+Check whether Git is already tracking secret files before pushing:
+git status --short
+git ls-files | Select-String '(^|/)(\.env|\.security/|cloud-runtime\.env)'
+
+
+Inspect any matching tracked files. Adding .gitignore does not untrack files that have already been committed.
+
+3. Create the PostgreSQL database in Render
+
+Open Render Dashboard
+
+Step 3.1 — Create your Render account
+1. Visit Render.
+2. Select Get Started or Sign Up.
+3. Continue using your GitHub account.
+4. Authorize the repository access required for deployment.
+5. Open the Render Dashboard.
+Step 3.2 — Create a database
+In Render:
+1. Click New.
+2. Select Postgres.
+3. Fill in the database details.
+Use the following configuration:
+Field	Value
+Name	helpdesk-ai-db
+Database	helpdesk_ai
+User	Render-generated owner
+Region	Singapore
+PostgreSQL Version	Supported default
+Instance Type	Free
+
+You can leave the database username and password generation to Render.
+
+Select Create Database, confirming the plan shows Free before submitting.
+Step 3.3 — Find your database URL
+After the database becomes available:
+1. Open helpdesk-ai-db.
+2. Look for the connection details.
+3. Locate External Database URL.
+4. Use its copy control.
+5. Store the URL privately.
+The connection URL has a structure resembling:
+postgresql://USERNAME:PASSWORD@HOSTNAME/DATABASE?sslmode=require
+
+
+Your values will be different.
+Important security requirement
+
+The External Database URL initially uses an owner-level database account. You will use this only for initial database maintenance and provisioning, not as the final API runtime account.
+Step 3.4 — Configure external database access
+In the Render database page:
+1. Find Access Control, Networking, or the external access configuration.
+2. Identify your current public IPv4 address through a trusted IP lookup.
+3. Add that address with a /32 prefix to the allowed range.
+4. Save the rule.
+Example format:
+203.0.113.25/32
+
+
+This is a format example, not your actual public IP.
+
+Do not use 0.0.0.0/0 unless temporarily necessary for controlled troubleshooting; restrict database access to the required networks.
+
+Render documents how its external database access rules work. 
+Render Docs
+
+
+4. Create the private database credentials file
+Return to VS Code.
+Step 4.1 — Open the server directory
+cd .\helpdesk-ai\server
+
+
+Step 4.2 — Create the security directory
+New-Item -ItemType Directory -Force .security
+
+
+Step 4.3 — Create the owner environment file
+Run:
+notepad .security\render-owner.env
+
+
+If Notepad asks to create the file, click Yes.
+Step 4.4 — Enter your credentials
+Paste this template and replace the values:
+ADMIN_DATABASE_URL="postgresql://RENDER_OWNER:RENDER_PASSWORD@RENDER_HOST/helpdesk_ai?sslmode=require"
+
+SEED_ADMIN_EMAIL="admin@example.com"
+SEED_ADMIN_PASSWORD="YOUR_NEW_STRONG_ADMIN_PASSWORD"
+
+SEED_USER_EMAIL="demo@example.com"
+SEED_USER_PASSWORD="YOUR_NEW_STRONG_DEMO_PASSWORD"
+
+
+Use your actual Render External Database URL in the first value.
+
+Important: Create two distinct, strong passwords for the seeded accounts. The admin and demo user are separate accounts.
+
+Save the file using Ctrl + S, then close Notepad.
+
+Do not upload this file to GitHub, Render, or Vercel. It remains on your development computer.
+
+5. Install dependencies and initialize the cloud database
+All commands in this section run from:
+YOUR-REPOSITORY/helpdesk-ai/server
+
+
+Step 5.1 — Install dependencies
+npm.cmd ci
+
+
+This installs the dependencies recorded in your package-lock.json.
+Step 5.2 — Generate the Prisma client
+npm.cmd run generate
+
+
+This prepares your application's database client based on the Prisma schema.
+Step 5.3 — Run production migrations
+npm.cmd run migrate:deploy -- --env-file .security/render-owner.env
+
+
+This should apply the existing database migrations to your new Render PostgreSQL database.
+Step 5.4 — Create a restricted database runtime account
+npm.cmd run security:provision-db -- --env-file .security/render-owner.env
+
+
+Your deployment tooling is expected to create a restricted database account named helpdesk_runtime and write its connection string to:
+helpdesk-ai/server/.security/cloud-runtime.env
+
+
+Step 5.5 — Create initial admin and demo accounts
+node scripts/seed-cloud.js --env-file .security/render-owner.env
+
+
+This should create the initial administrator and demo user using the email addresses and passwords from your private file.
+
+The deployment instructions indicate that those users must change their passwords after first login.
+Step 5.6 — Find the restricted database URL
+Open the generated file:
+notepad .security\cloud-runtime.env
+
+
+It should contain a DATABASE_URL value similar in structure to:
+DATABASE_URL="postgresql://helpdesk_runtime:GENERATED_PASSWORD@RENDER_HOST/helpdesk_ai?sslmode=require"
+
+
+Copy its actual value privately for the Render API configuration.
+
+This is an illustrative connection string; your provisioning script determines the actual output.
+
+Do not run the provisioning step repeatedly unless needed. According to your project instructions, running it again rotates the runtime account password, which also requires updating Render.
+
+If PostgreSQL refuses role creation, do not substitute the database owner account as the API runtime user. Your current application intentionally rejects privileged credentials.
+
+6. Prepare your GitHub repository
+Your database is now initialized. The next step is making sure Render can read your application source code.
+Step 6.1 — Return to your repository root
+From helpdesk-ai/server:
+cd ..\..
+
+
+Confirm your current location:
+Get-Location
+
+
+Step 6.2 — Review changes before uploading
+git status
+
+
+Review your pending changes. In particular, confirm that .security/ and your private environment files are not included.
+
+You can stage the reviewed deployment files:
+git add .
+git diff --cached --name-only
+
+
+Review the output before committing.
+Step 6.3 — Commit and push
+Once the staged files are safe:
+git commit -m "Prepare Helpdesk AI for cloud deployment"
+git push origin main
+
+
+Use your actual branch if it is not main.
+
+Your GitHub repository should now contain render.yaml at its root, together with the server and client source code.
+
+7. Create the Express API on Render
+
+Open Render Dashboard
+Step 7.1 — Create a Blueprint
+1. Go to your Render Dashboard.
+2. Click New → Blueprint.
+3. Connect GitHub if it is not already connected.
+4. Select your Helpdesk AI repository.
+5. Select the branch containing the deployment files.
+6. Set the Blueprint path to:
+render.yaml
+
+
+7. Review the proposed service configuration.
+
+Render Blueprints use the repository's render.yaml to define and deploy services. 
+Render Docs+1
+
+
+Before deploying, verify that your Blueprint specifies the expected API service configuration.
+Setting	Expected value
+Service type	Web Service
+Runtime	Node
+Plan	Free
+Region	Singapore
+Root directory	helpdesk-ai/server
+Build command	npm ci && npm run generate
+Start command	npm start
+Health check path	/api/ready
+Auto deploy	Disabled
+
+The root directory and other settings should come from your existing render.yaml. If the Blueprint shows an unexpected configuration, inspect the file before accepting the deployment.
+Step 7.2 — Add the environment variables
+Render should prompt you for environment variables marked sync: false in your Blueprint.
+
+Enter the following values:
+Variable	What to enter
+DATABASE_URL	Restricted URL from .security/cloud-runtime.env
+CLIENT_URL	Final Vercel URL, if already reserved
+AI_PROVIDER	deepseek or your configured provider
+AI_MODEL	deepseek-chat or your configured model
+AI_API_KEY	Your answer-provider API key
+OPENAI_API_KEY	Your OpenAI moderation API key
+
+For example, a future CLIENT_URL could be:
+CLIENT_URL=https://helpdesk-ai.vercel.app
+
+
+The URL above is only an example. If you have not yet reserved your Vercel project name, you can set the correct value after creating the Vercel project.
+
+If Render requires CLIENT_URL during creation, use your intended production origin temporarily, then replace it with the actual Vercel production origin before testing login.
+Step 7.3 — Use the correct database connection string
+Your API should use the restricted database account created in Step 5, not the original database owner.
+
+The value should start with something like:
+postgresql://helpdesk_runtime:
+
+
+For the initial deployment, you can use the restricted external connection URL if its access rules permit the connection.
+
+However, since your PostgreSQL database and Express API are both hosted on Render in Singapore, I recommend switching to an internal database connection after the service is configured.
+
+To do this, construct the restricted runtime URL using the database's Internal Hostname, while retaining the helpdesk_runtime username, password, and correct database name. Do not replace it with Render's owner-level Internal Database URL.
+
+Internal connections work for Render services and databases in the same account and region, and avoid the public internet. 
+Render Docs
+
+
+Keep the SSL configuration compatible with your application's database driver.
+Step 7.4 — Check Windows simulation settings
+Your Blueprint should set:
+WINDOWS_SIMULATIONS_ENABLED=false
+
+
+This is important because the free demonstration should not launch AWS instances.
+
+The two JWT secrets should be generated separately by your Blueprint. Do not use the same JWT secret for both token types, and don't manually replace Blueprint-generated values with sample passwords.
+Step 7.5 — Deploy the service
+Click Deploy Blueprint after reviewing everything.
+
+Open the generated API service, then select its Logs tab.
+
+Look for evidence that:
+- Node.js started successfully.
+- Prisma generated successfully.
+- The server is listening on the assigned Render port.
+- The application has no database authentication or connection errors.
+- The health check passes.
+If your app is implemented to listen on process.env.PORT, Render supplies the service port automatically.
+Step 7.6 — Copy your Render API address
+Render will assign a public URL, for example:
+https://helpdesk-ai-api.onrender.com
+
+
+This is an example, not an already-created deployment.
+
+Copy your actual Render URL.
+Step 7.7 — Test the backend
+Open a new browser tab and enter:
+https://YOUR-ACTUAL-SERVICE.onrender.com/api/ready
+
+
+According to your deployment specification, the successful response should be:
+{
+  "ok": true
+}
+
+
+You can also test it in PowerShell:
+Invoke-RestMethod -Uri "https://YOUR-ACTUAL-SERVICE.onrender.com/api/ready"
+
+
+Do not proceed with frontend testing until your backend responds successfully.
+
+8. Configure your React application for Vercel
+Now that you have the Render API URL, configure your frontend proxy.
+Step 8.1 — Return to the repository root
+In VS Code PowerShell, navigate to your repository root.
+Step 8.2 — Run the Vercel configuration script
+Replace the URL with your actual Render API hostname.
+node .\helpdesk-ai\client\scripts\configure-vercel.mjs https://YOUR-ACTUAL-SERVICE.onrender.com
+
+
+Important: Paste the URL as plain text. Do not include Markdown brackets or parentheses around the URL.
+
+Your script should generate or update:
+helpdesk-ai/client/vercel.json
+
+
+Step 8.3 — Inspect the Vercel configuration
+Open:
+notepad .\helpdesk-ai\client\vercel.json
+
+
+Your application-specific configuration should provide two types of routing:
+- Requests beginning with /api/ are forwarded to your Render API.
+- React application pages such as /admin, /login, and /modules load through the Vite single-page application.
+Do not blindly replace the generated configuration with a generic Vercel template. The API proxy needs to remain ahead of the SPA fallback so that /api/ready returns JSON rather than index.html.
+
+Vercel supports these rules using vercel.json. 
+Vercel+1
+
+Step 8.4 — Commit the generated configuration
+git add .\helpdesk-ai\client\vercel.json
+git commit -m "Configure Vercel proxy for Render API"
+git push origin main
+
+
+This ensures Vercel receives the proxy rules when it builds from GitHub.
+
+9. Create the frontend project on Vercel
+
+Open Vercel New Project
+Step 9.1 — Connect GitHub to Vercel
+1. Open Vercel.
+2. Sign in with GitHub.
+3. Select Add New → Project.
+4. Find your Helpdesk AI repository.
+5. Click Import.
+If the repository doesn't appear, check the GitHub repository permissions for your Vercel integration.
+Step 9.2 — Configure the build settings
+Use these settings:
+Vercel setting	Value
+Project Name	helpdesk-ai or another available name
+Framework Preset	Vite
+Root Directory	helpdesk-ai/client
+Node.js Version	22.x
+Build Command	npm run build
+Output Directory	dist
+Install Command	npm install or npm ci
+
+Use npm ci if the client has a committed, compatible package-lock.json.
+Important: Root Directory
+
+Your GitHub repository contains both the frontend and backend. Vercel must point to the client folder only.
+helpdesk-ai
+
+client
+Vercel root
+
+server
+
+
+
+Step 9.3 — Add frontend environment variables
+Expand the Environment Variables section.
+
+Add:
+Name	Value
+VITE_API_URL	/
+VITE_WINDOWS_SIMULATIONS_ENABLED	false
+
+Use these exact values for the initial demonstration.
+
+Do not set:
+VITE_GUACAMOLE_ORIGIN
+
+
+The Windows desktop feature is disabled.
+
+Also, never put the database URL, JWT secrets, AI API keys, or admin passwords in Vercel's frontend environment variables. Vite environment values exposed to client code are not private.
+Step 9.4 — Deploy the frontend
+Click Deploy.
+
+Once Vercel reports a successful deployment, open the generated production domain.
+
+For example:
+https://helpdesk-ai.vercel.app
+
+
+Your real URL depends on the project name and domain assigned by Vercel.
+
+If a later change to the environment variables is needed, redeploy for those values to take effect. 
+Vercel
+
+
+10. Connect Vercel and Render correctly
+This is a critical step for authentication, cookies, and API access.
+Step 10.1 — Copy your actual Vercel production URL
+For example:
+https://helpdesk-ai.vercel.app
+
+
+Do not use a randomly generated preview deployment URL.
+Step 10.2 — Update Render's CLIENT_URL
+1. Open Render Dashboard.
+2. Open your Express API web service.
+3. Navigate to Environment.
+4. Find CLIENT_URL.
+5. Replace it with your actual Vercel production URL.
+Example:
+CLIENT_URL=https://helpdesk-ai.vercel.app
+
+
+Do not add a trailing /.
+
+Save the environment change and deploy or restart the API as required.
+Step 10.3 — Verify the API proxy through Vercel
+Instead of visiting the Render hostname, open:
+https://YOUR-VERCEL-DOMAIN.vercel.app/api/ready
+
+
+It should return:
+{
+  "ok": true
+}
+
+
+This confirms the browser-facing frontend domain can reach the backend through the configured proxy.
+
+If it returns your React application HTML instead, the API rewrite is not working correctly.
+
+11. Test the complete deployed system
+Once both services are running, test the application using your actual Vercel domain.
+Deployment validation checklist
+
+0 / 12
+
+
+
+[ ] API health check returns JSON
+
+Open /api/ready through Vercel
+
+
+[ ] Admin account can log in
+
+Use the seeded administrator credentials
+
+
+[ ] Admin password can be changed
+
+Replace the initial password
+
+
+[ ] Login survives a page refresh
+
+Verify the refresh cookie and authentication flow
+
+
+[ ] Demo user can log in
+
+Test using the seeded demo account
+
+
+[ ] Chatbot responds successfully
+
+Send a test message using the configured AI provider
+
+
+[ ] Conversations remain saved
+
+Send messages, reload, and reopen a conversation
+
+
+[ ] Terminal simulations work
+
+Launch and complete a terminal-based exercise
+
+
+[ ] Admin can create and publish modules
+
+Create a sample module and verify it is visible to the user
+
+
+[ ] Admin audit records appear
+
+Inspect recent activity in the admin dashboard
+
+
+[ ] Direct /admin route loads
+
+Open and reload /admin in a new browser tab
+
+
+[ ] Windows AWS launches are disabled
+
+Confirm that Windows sessions cannot be started
+
+
+Mark each test after verifying it.
+Reset
+
+Note that your database is new. Your local chat history, locally created learning modules, and other development data will not automatically appear in the cloud. Create demonstration records from the deployed admin panel.
+
+12. Common deployment errors and solutions
+Error: Database authentication failed
+
+Possible causes: Incorrect DATABASE_URL, expired credentials, wrong database hostname, or using the owner account instead of helpdesk_runtime.
+
+Fix: Check the restricted connection URL and verify that it matches the latest generated .security/cloud-runtime.env. If provisioning was rerun, update the rotated password in Render.
+
+
+
+Error: Connection timeout or PostgreSQL connection refused
+
+Possible causes: External database access rules, network restrictions, wrong host, or database unavailability.
+
+Fix: Check the PostgreSQL connection hostname and allowed networks. For the Render API, prefer the internal hostname while keeping the restricted runtime account.
+
+
+
+Error: /api/ready returns React HTML or 404
+
+Possible cause: Incorrect Vercel rewrite configuration.
+
+Fix: Check helpdesk-ai/client/vercel.json, ensure the API proxy rule takes precedence over the SPA fallback, commit the changes, and redeploy.
+
+
+
+Error: Login works but logging in again is required after refreshing
+
+Possible causes: Incorrect CLIENT_URL, missing refresh cookie, authentication configuration, or proxy issues.
+
+Fix: Verify your final production origin, API requests and Set-Cookie headers using browser Developer Tools → Network. Use the Vercel domain for the full test, not a mix of Vercel and Render hostnames.
+
+
+
+Error: Chatbot cannot generate responses
+
+Possible causes: Wrong provider, invalid API key, unsupported model, no API credits, or failed moderation request.
+
+Fix: Check AI_PROVIDER, AI_MODEL, AI_API_KEY, and OPENAI_API_KEY in Render. Inspect the API logs for the specific provider error.
+
+
+
+Issue: The application takes a long time to respond initially
+
+Possible cause: The Render Free service has gone idle and is restarting.
+
+Fix: Allow the request to complete and test again. If reliable first-response performance is required, consider a paid always-on service.
+
+
+
+
+13. Protect the deployed system
+Before distributing your public URL, I recommend completing these security checks.
+1. Change the seeded passwords immediately after the first login. Demo users should never have access to the admin account.
+2. Keep database owner credentials and provisioning files only on your trusted development machine.
+3. Restrict external PostgreSQL access again after initial database setup. If the API uses the internal connection exclusively, you may disable external access until maintenance is needed.
+4. Never place AWS credentials, Guacamole passwords, or AI provider secrets in frontend code.
+5. Keep WINDOWS_SIMULATIONS_ENABLED=false in Render for this initial deployment.
+6. Confirm that public routes do not expose admin data and that admin endpoints enforce authorization on the backend.
+Remember the 30-day database expiry
+If you create your Free Render PostgreSQL database today, November 19, 2026, its nominal 30-day expiry is December 19, 2026. Confirm the exact expiration timestamp in Render.
+
+Render Free PostgreSQL does not include managed backups. Export the database yourself before the expiry, or upgrade to an appropriate paid plan. 
+Render Docs
+
+
+14. Enable Windows 10/11 simulations later
+For this initial deployment, your terminal-based simulations can remain available while Windows desktop sessions are disabled.
+
+To enable Windows desktop sessions in the future, you'll need to complete these steps in order:
+1. Configure a stable hostname for your Guacamole server.
+2. Install a valid HTTPS certificate.
+3. Replace the HTTP Guacamole backend URLs with HTTPS URLs.
+4. Configure and secure the AWS EC2 launch credentials.
+5. Implement an independent AWS session cleanup mechanism, because Render Free services can sleep or restart.
+6. Enable Windows simulations on the backend and frontend.
+7. Redeploy both services and test session creation, remote desktop access, manual termination, and automatic expiry.
+Do not enable this feature just by changing the frontend flag. The backend, Guacamole gateway, and EC2 lifecycle management must be working together.
+
+15. Final deployment summary
+
+Render PostgreSQL
+
+Cloud database for application data
+Free — 30-day database lifetime
+
+
+
+
+Render Web Service
+
+Express API and AI processing
+Free — sleeps when idle
+
+
+
+
+Vercel
+
+React frontend, routing, and API proxy
+Free Hobby tier, subject to eligibility and limits
+
+
+
+Once these steps are completed and the validation checks pass, your Helpdesk AI demonstration will be accessible through its Vercel production URL without requiring your local Node.js or PostgreSQL servers to run.
+
+My recommendation: Keep this deployment limited to user management, chat, saved conversations, learning modules, terminal practice, and admin functions. Move to a persistent database and reliable backend hosting before using it with real users over an extended period, and treat AWS Windows simulation deployment as a separate phase.
