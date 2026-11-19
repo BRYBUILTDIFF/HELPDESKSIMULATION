@@ -30,6 +30,7 @@ async function main() {
       await tx.$executeRawUnsafe(`GRANT USAGE ON SCHEMA public TO ${role}`);
       const tables = ["User", "RefreshToken", "UserSessionState", "PolicyConversation", "PolicyConfig", "PolicyRule", "SimulationModule", "SimulationCompletion", "SimulationSession", "PolicyEvent", "ChatSession", "RequestLimit", "PromptInsightDismissal", "SimulationAttempt", "SessionRestriction", "SimulationDraft", "ChatTurn"];
       for (const table of tables) await tx.$executeRawUnsafe(`GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "${table}" TO ${role}`);
+      for (const table of ['SecurityLease', 'AdminSecurity']) await tx.$executeRawUnsafe(`GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "${table}" TO ${role}`);
       for (const table of ["SimulationRevision", "SimulationTestReceipt"]) {
         await tx.$executeRawUnsafe(`REVOKE ALL ON TABLE "${table}" FROM ${role}`);
         await tx.$executeRawUnsafe(`GRANT SELECT, INSERT ON TABLE "${table}" TO ${role}`);

@@ -1,9 +1,9 @@
 name: HelpDesk checks
 on:
   push:
-    paths: ['helpdesk-ai/**', '.github/workflows/helpdesk-checks.yml']
+    paths: ['helpdesk-ai/**', 'render.yaml', '.github/workflows/**']
   pull_request:
-    paths: ['helpdesk-ai/**', '.github/workflows/helpdesk-checks.yml']
+    paths: ['helpdesk-ai/**', 'render.yaml', '.github/workflows/**']
 permissions:
   contents: read
 jobs:
@@ -25,15 +25,24 @@ jobs:
       VITE_GUACAMOLE_ORIGIN: https://lab.example.invalid
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: node helpdesk-ai/server/scripts/scan-new-secrets.js
+        env:
+          SECRET_SCAN_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
       - run: npm ci
         working-directory: helpdesk-ai/server
       - run: npm run generate && npm run lint && npm test
         working-directory: helpdesk-ai/server
       - run: node --test test/review.database.integration.js
         working-directory: helpdesk-ai/server
+      - run: node scripts/test-security-baseline.js
+        working-directory: helpdesk-ai/server
+        env:
+          SECURITY_TEST_ADMIN_URL: ${{ env.DATABASE_URL }}
       - run: npm audit --omit=dev --audit-level=high
         working-directory: helpdesk-ai/server
       - run: npm ci && npm run build

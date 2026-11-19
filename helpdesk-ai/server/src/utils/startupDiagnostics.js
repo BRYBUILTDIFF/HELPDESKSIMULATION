@@ -11,7 +11,7 @@ function databaseSettingCode(value) {
 
 function startupDiagnostic(error) {
   const explicit = String(error?.code || error?.errorCode || '');
-  if (/^(P\d{4}|MAINTENANCE_CREDENTIALS_PRESENT|PRIVILEGED_RUNTIME_ROLE|DATABASE_URL_(MISSING|FORMAT|LOCALHOST))$/.test(explicit)) return explicit;
+  if (/^(P\d{4}|SECURITY_ENCRYPTION_KEY_INVALID|MAINTENANCE_CREDENTIALS_PRESENT|PRIVILEGED_RUNTIME_ROLE|DATABASE_URL_(MISSING|FORMAT|LOCALHOST))$/.test(explicit)) return explicit;
   // Some Prisma initialization failures include only a message. Inspect it but
   // return fixed labels only: never return its text, URL, stack or credentials.
   const message = String(error?.message || '');

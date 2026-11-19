@@ -32,6 +32,24 @@ model User {
   simulationCompletions SimulationCompletion[]
   simulationDrafts SimulationDraft[]
   chatTurns ChatTurn[]
+  adminSecurity AdminSecurity?
+}
+
+model SecurityLease {
+  id String @id
+  userId Int
+  expiresAt DateTime
+  @@index([expiresAt])
+}
+
+model AdminSecurity {
+  userId Int @id
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  secret String?
+  pendingSecret String?
+  pendingExpiresAt DateTime?
+  lastCounter BigInt @default(-1)
+  recoveryHashes Json @default("[]")
 }
 
 model RefreshToken {
@@ -139,6 +157,7 @@ model SimulationSession {
   status        SimulationSessionStatus @default(PROVISIONING)
   ec2InstanceId String?                 @unique
   privateIp     String?
+  credential    String?
   expiresAt     DateTime
   endedAt       DateTime?
   createdAt     DateTime                @default(now())

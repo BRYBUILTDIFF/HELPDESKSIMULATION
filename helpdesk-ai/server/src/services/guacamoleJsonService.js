@@ -51,7 +51,7 @@ function getGuacamoleConfig() {
   if (
     !baseUrl ||
     !username ||
-    !password ||
+    (!require('./windowsCredentials').uniqueCredentialsEnabled() && !password) ||
     !/^[a-fA-F0-9]{32}$/.test(secret)
   ) {
     throw new SimulationServiceError(
@@ -160,8 +160,7 @@ function createGuacamoleUrl(session) {
           hostname: session.privateIp,
           port: "3389",
 
-          username,
-          password,
+          ...require('./windowsCredentials').credentials(session),
 
           security: securityMode,
 

@@ -17,6 +17,8 @@ All project Markdown documentation lives in this folder.
 | [Deployment audit](DEPLOYMENT_AUDIT_2026-11-19.md) | Vercel/Render readiness, confirmed blockers, verification results, and release checklist |
 | [Vercel + Render demo](DEPLOYMENT_VERCEL_RENDER.md) | Free demo setup, restricted cloud database, API proxy, and Windows HTTPS follow-up |
 | [Online security checklist](ONLINE_SECURITY_CHECKLIST.md) | Prioritized post-deployment checks for credentials, accounts, isolation, database access, AI, backups and Windows labs |
+| [Codebase security audit](CODEBASE_SECURITY_AUDIT_2026-11-19.md) | Evidence-based implementation backlog, priorities, existing controls and acceptance checks for public deployment |
+| [Security release setup](SECURITY_RELEASE_SETUP.md) | Deployment order for MFA, AI/chat limits, per-instance Windows credentials, migration/grants and backup operations |
 | [Security audit](AUDIT.MD) | Audit findings and remediation history |
 | [Prompt reference](PROMP.MD) | Project prompt notes |
 | [Review](review.md) | Project review notes |

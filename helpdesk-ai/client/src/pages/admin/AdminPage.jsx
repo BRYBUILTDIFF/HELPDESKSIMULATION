@@ -1,4 +1,5 @@
 import AuditLogPage from './AuditLogPage';
+import AdminSecurityGate from './AdminSecurityGate';
 import { useDraftAutosave } from './useDraftAutosave';
 import ModuleRevisionHistory from './ModuleRevisionHistory';
 import ModalCloseButton from '../../components/ModalCloseButton';
@@ -378,7 +379,8 @@ function SimulationEmptyState({ type, title, message }) {
   );
 }
 
-export default function AdminPage() {
+export default function AdminPage() { return <AdminSecurityGate><AdminPageContent /></AdminSecurityGate>; }
+function AdminPageContent() {
   const { user, logout, refreshAccessToken } = useAuth();
   const api = useAxios();
   const profileMenuRef = useRef(null);

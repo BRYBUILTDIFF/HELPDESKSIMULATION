@@ -15,6 +15,10 @@ services:
         value: 22.22.0
       - key: NODE_ENV
         value: production
+      - key: SECURITY_ENCRYPTION_KEY
+        sync: false
+      - key: ADMIN_MFA_REQUIRED
+        value: 'true'
       - key: TRUST_PROXY_HOPS
         value: '1'
       - key: WINDOWS_SIMULATIONS_ENABLED

@@ -6,7 +6,7 @@ const { execFile } = require("child_process");
 const { promisify } = require("util");
 const run = promisify(execFile);
 function pgArgs(url) { return ["-h", url.hostname, "-p", url.port || "5432", "-U", decodeURIComponent(url.username)]; }
-function pgEnv(url) { return { ...process.env, PGPASSWORD: decodeURIComponent(url.password) }; }
+function pgEnv(url) { return { ...process.env, PGPASSWORD: decodeURIComponent(url.password), PGSSLMODE: url.searchParams.get('sslmode') || (['localhost','127.0.0.1'].includes(url.hostname) ? 'prefer' : 'require') }; }
 function backupKey() {
   if (!/^[a-f0-9]{64}$/i.test(process.env.BACKUP_ENCRYPTION_KEY || "")) throw new Error("Set BACKUP_ENCRYPTION_KEY to 32 random hex-encoded bytes.");
   return Buffer.from(process.env.BACKUP_ENCRYPTION_KEY, "hex");

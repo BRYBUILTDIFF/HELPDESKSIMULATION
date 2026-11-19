@@ -1,4 +1,5 @@
 function errorHandler(err, _req, res, _next) {
+  if (res.headersSent || res.writableEnded) return;
   if (err.message === "Not allowed by CORS") return res.status(403).json({ message: "CORS origin forbidden" });
   const candidate = Number(err.status || err.statusCode);
   const status = Number.isInteger(candidate) && candidate >= 400 && candidate < 600 ? candidate : 500;

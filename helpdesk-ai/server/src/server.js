@@ -84,6 +84,10 @@ app.use(
   })
 );
 app.use(helmet());
+app.use('/api', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
 app.use(express.json({ limit: "256kb" }));
 app.use(cookieParser());
 
@@ -91,13 +95,15 @@ const perUser = req => String(req.user.id);
 const authLimiter = requestLimit("password-change", { max: 10, windowMs: 60000, key: perUser });
 const aiLimiter = requestLimit("ai", { max: 20, windowMs: 60000, key: perUser });
 app.use("/api/auth/login",
+  requestLimit('login-global', { max: 500, windowMs: 60000, key: () => 'all' }),
+  requestLimit('login-ip', { max: 60, windowMs: 15 * 60000, key: req => req.ip }),
   requestLimit("login-account", { max: 20, windowMs: 15 * 60000, key: emailKey }),
   requestLimit("login-pair", { max: 8, windowMs: 15 * 60000, key: req => `${req.ip}:${emailKey(req)}` }));
 app.use("/api/auth/refresh", requestLimit("refresh", { max: 120, windowMs: 60000, key: req => req.cookies.refreshToken || req.ip }));
 app.use("/api/auth/change-password", verifyToken, authLimiter);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
-app.use("/api/ai", verifyToken, aiLimiter, aiRoutes);
+app.use("/api/ai", verifyToken, aiLimiter, ...require('./middleware/aiResources').aiLimits, aiRoutes);
 app.use("/api/sessions", sessionRoutes);
 app.use("/api/simulations", simulationRoutes);
 app.use("/api/simulation-sessions", simulationSessionRoutes);
@@ -117,6 +123,7 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 async function startServer() {
   if (process.env.NODE_ENV === "production") {
+    require('./utils/encryptedSecret').encryptionKey();
     const settingCode = require("./utils/startupDiagnostics").databaseSettingCode(process.env.DATABASE_URL);
     if (settingCode) {
       const error = new Error("Invalid production database configuration");
@@ -154,6 +161,7 @@ startServer().catch(error => {
   const type = String(error?.name || '');
   console.error("Error type:", /^(PrismaClient(?:Initialization|KnownRequest|UnknownRequest|Validation|RustPanic)Error|Error)$/.test(type) ? type : 'OtherError');
   const hints = {
+    SECURITY_ENCRYPTION_KEY_INVALID: 'Set SECURITY_ENCRYPTION_KEY to a separate 64-character random hexadecimal key before deploying this security release.',
     P1000: "Database authentication failed. Check the current restricted runtime password.",
     P1001: "Database unreachable. Check hostname, region, availability, and network access rules.",
     P1002: "Database connection timed out. Check availability and network access rules.",

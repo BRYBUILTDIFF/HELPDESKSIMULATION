@@ -62,11 +62,14 @@ async function createWindowsSimulationSession(session) {
     const current = await prisma.simulationSession.findUnique({ where: { id: session.id } });
     if (!current || !ACTIVE_STATUSES.includes(current.status)) throw new SimulationServiceError("This Windows lab was ended before launch.", 409);
     const { launchTemplateId } = getConfig();
+    const identity = require('./windowsCredentials');
+    session = await identity.prepare(current, prisma);
     const response = await getEc2Client().send(
       new RunInstancesCommand({
         MinCount: 1,
         MaxCount: 1,
         ClientToken: session.id,
+        ...(identity.uniqueCredentialsEnabled() ? {UserData:identity.userData(session)} : {}),
         LaunchTemplate: { LaunchTemplateId: launchTemplateId, Version: process.env.AWS_SIMULATION_LAUNCH_TEMPLATE_VERSION || "$Default" },
         MetadataOptions: { HttpTokens: "required", HttpPutResponseHopLimit: 1, InstanceMetadataTags: "disabled" },
         TagSpecifications: [{ ResourceType: "instance", Tags: expectedTags(session) }]
@@ -129,7 +132,7 @@ async function refreshWindowsSimulationSession(session) {
       });
     }
     if (["shutting-down", "terminated"].includes(state)) {
-      return prisma.simulationSession.update({ where: { id: session.id }, data: { status: "ENDED", endedAt: new Date() } });
+      return prisma.simulationSession.update({ where: { id: session.id }, data: { status: "ENDED", endedAt: new Date(), credential: null } });
     }
     if (["stopping", "stopped"].includes(state)) {
       await terminateWindowsSimulationSession(session);
@@ -149,7 +152,7 @@ async function terminateWindowsSimulationSession(session) {
     data: { status: "TERMINATING" }
   });
   if (!terminating.ec2InstanceId) {
-    return prisma.simulationSession.update({ where: { id: session.id }, data: { status: "ENDED", endedAt: new Date() } });
+    return prisma.simulationSession.update({ where: { id: session.id }, data: { status: "ENDED", endedAt: new Date(), credential: null } });
   }
   try {
     const inspect = await getEc2Client().send(new DescribeInstancesCommand({ InstanceIds: [terminating.ec2InstanceId] }));
@@ -158,10 +161,10 @@ async function terminateWindowsSimulationSession(session) {
     if (instance && !["shutting-down", "terminated"].includes(instance.State?.Name)) {
       await getEc2Client().send(new TerminateInstancesCommand({ InstanceIds: [terminating.ec2InstanceId] }));
     }
-    return prisma.simulationSession.update({ where: { id: session.id }, data: { status: "ENDED", endedAt: new Date() } });
+    return prisma.simulationSession.update({ where: { id: session.id }, data: { status: "ENDED", endedAt: new Date(), credential: null } });
   } catch (error) {
     if ((error?.name || error?.code) === "InvalidInstanceID.NotFound") {
-      return prisma.simulationSession.update({ where: { id: session.id }, data: { status: "ENDED", endedAt: new Date() } });
+      return prisma.simulationSession.update({ where: { id: session.id }, data: { status: "ENDED", endedAt: new Date(), credential: null } });
     }
     console.error("Windows simulation termination failed", { sessionId: session.id, code: error?.name || error?.code });
     throw new SimulationServiceError("Unable to end the Windows workspace. It will be retried automatically.");
@@ -213,7 +216,7 @@ async function reconcileWindowsSimulationInstances() {
         const expired = Number.isFinite(deadline) && deadline <= Date.now();
         if (expired || !session || !ACTIVE_STATUSES.includes(session.status) || session.expiresAt <= new Date()) {
           await client.send(new TerminateInstancesCommand({ InstanceIds: [instance.InstanceId] }));
-          if (session) await prisma.simulationSession.update({ where: { id: session.id }, data: { status: "ENDED", endedAt: new Date() } });
+          if (session) await prisma.simulationSession.update({ where: { id: session.id }, data: { status: "ENDED", endedAt: new Date(), credential: null } });
         } else if (!session.ec2InstanceId) {
           await prisma.simulationSession.update({ where: { id: session.id }, data: { ec2InstanceId: instance.InstanceId } });
         }

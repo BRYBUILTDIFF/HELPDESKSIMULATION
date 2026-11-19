@@ -260,7 +260,7 @@ async function classifyWithDeepSeek(message, history, policy) {
       ...sanitizeHistory(history),
       { role: "user", content: String(message || "").trim() }
     ]
-  }, { timeout: Math.max(1000, Number(process.env.POLICY_PROVIDER_TIMEOUT_MS) || 15000), maxRetries: 0 });
+  }, { timeout: Math.max(1000, Number(process.env.POLICY_PROVIDER_TIMEOUT_MS) || 15000), maxRetries: 0, signal: require('../services/aiRequestContext').context.getStore()?.signal });
   const parsed = findClassifierPayloadInText(completion.choices?.[0]?.message?.content);
   if (!parsed) throw new Error("Configured provider returned an invalid scope decision.");
   const confidence = Number(parsed.confidence);

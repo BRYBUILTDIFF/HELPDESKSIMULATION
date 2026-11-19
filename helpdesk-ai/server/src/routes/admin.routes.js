@@ -39,6 +39,14 @@ const { requestLimit } = require("../middleware/requestLimits");
 router.use((req, res, next) => ["POST", "PATCH", "PUT", "DELETE"].includes(req.method)
   ? requestLimit("admin-writes", { max: 60, windowMs: 60000, key: req => req.user.id })(req, res, next) : next());
 router.post("/simulation-modules/draft", requestLimit("admin-generation", { max: 10, windowMs: 3600000, key: req => req.user.id }));
+router.post('/simulation-modules/draft', ...require('../middleware/aiResources').aiLimits);
+router.post('/simulation-modules', (req, res, next) => {
+  if (req.body?.mode !== 'from_prompt') return next();
+  const chain = require('../middleware/aiResources').aiLimits;
+  let index = 0;
+  const advance = error => error ? next(error) : index === chain.length ? next() : chain[index++](req, res, advance);
+  advance();
+});
 router.post("/simulation-modules", (req, res, next) => req.body?.mode === "from_prompt"
   ? requestLimit("admin-generation", { max: 10, windowMs: 3600000, key: req => req.user.id })(req, res, next) : next());
 router.post("/session-restrictions/:userId/reset", [param("userId").isInt({ min: 1 }).toInt(), body("sessionId").isString().isLength({ min: 1, max: 120 })], validateRequest, async (req, res, next) => {

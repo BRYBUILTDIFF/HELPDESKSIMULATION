@@ -111,6 +111,7 @@ async function generateSuggestedTickets(_req, res) {
   try {
     const completion = await client.chat.completions.create({
       model: getDefaultModel(getAIProvider()),
+      max_tokens: 1200,
       temperature: 0.55,
       messages: [
         {
@@ -315,6 +316,7 @@ async function chat(req, res, next) {
     operation = "generate-answer";
     const completion = await client.chat.completions.create({
       model: getDefaultModel(provider),
+      max_tokens: require('../services/aiRequestContext').bounded('AI_MAX_OUTPUT_TOKENS', 1200, 128, 4000),
       temperature: 0.3,
       messages: [
         { role: "system", content: SYSTEM_PROMPT.trim() },

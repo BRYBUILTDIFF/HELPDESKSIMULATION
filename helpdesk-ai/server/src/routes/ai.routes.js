@@ -29,6 +29,7 @@ router.post(
     body("sessionId").isString().trim().isLength({ min: 1, max: 120 }).withMessage("sessionId must be between 1 and 120 characters")
   ],
   validateRequest,
+  require('../services/chatQuota').chatQuota,
   chat
 );
 

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
+import { clearAdminVerification } from '../utils/adminVerification';
 
 const API_URL = import.meta.env.VITE_API_URL || "/";
 let pendingRefresh = null;
@@ -33,6 +34,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const clearAuth = useCallback(() => {
+    clearAdminVerification();
     setUser(null);
     persistAccessToken(null);
   }, [persistAccessToken]);

@@ -4,6 +4,8 @@
   "private": true,
   "main": "src/server.js",
   "scripts": {
+    "security:scan-new-secrets": "node scripts/scan-new-secrets.js",
+    "test:security-baseline": "node scripts/test-security-baseline.js",
     "dev": "nodemon src/server.js",
     "migrate": "node scripts/migrate-as-owner.js dev",
     "seed": "node prisma/seed.js",

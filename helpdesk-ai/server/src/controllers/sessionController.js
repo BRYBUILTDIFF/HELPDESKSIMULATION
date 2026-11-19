@@ -3,15 +3,19 @@ const { redactObject } = require("../utils/redact");
 const { endUserLabs } = require("../services/labLifecycleService");
 async function getMySessions(req, res, next) {
   try {
-    const rows = await prisma.chatSession.findMany({ where: { userId: req.user.id }, orderBy: { updatedAt: "desc" }, take: 500 });
-    const turns=await prisma.chatTurn.findMany({where:{userId:req.user.id},orderBy:[{createdAt:'desc'},{id:'desc'}],take:5000});
+    const cursor = typeof req.query?.cursor === 'string' ? req.query.cursor : '';
+    if(cursor.length>120)return res.status(400).json({message:'Invalid conversation cursor.'});
+    const page = await prisma.$queryRaw`SELECT id FROM (SELECT id FROM "ChatSession" WHERE "userId"=${req.user.id} UNION SELECT "sessionId" AS id FROM "ChatTurn" WHERE "userId"=${req.user.id}) c WHERE id > ${cursor} ORDER BY id LIMIT 6`;
+    const idsForPage=page.slice(0,5).map(row=>row.id);
+    const rows = await prisma.chatSession.findMany({ where: { userId: req.user.id, id:{in:idsForPage} }, orderBy: { updatedAt: "desc" } });
+    const turns=await prisma.chatTurn.findMany({where:{userId:req.user.id,sessionId:{in:idsForPage}},orderBy:[{createdAt:'desc'},{id:'desc'}]});
     const groups=new Map();
     for(const turn of turns.reverse()){if(!groups.has(turn.sessionId))groups.set(turn.sessionId,[]);groups.get(turn.sessionId).push(turn);}
     const recover=require('../store/chatHistoryStore').recoverSession;
     const sessions=rows.map(row=>recover(row.data,groups.get(row.id)||[]));
     const ids=new Set(rows.map(row=>row.id));
     for(const [id,history] of groups){if(!ids.has(id)&&sessions.length<500)sessions.push(recover({id,title:history[0].message.slice(0,42),createdAt:history[0].createdAt,updatedAt:history[history.length-1].createdAt,messages:[]},history));}
-    return res.json({sessions,versions:Object.fromEntries(rows.map(row=>[row.id,row.version]))});
+    return res.json({sessions,versions:Object.fromEntries(rows.map(row=>[row.id,row.version])),nextCursor:page.length>5?idsForPage[idsForPage.length-1]:null});
   } catch (err) { return next(err); }
 }
 async function saveSession(req, res, next) {
@@ -30,6 +34,7 @@ async function saveSession(req, res, next) {
       if (!existing && await tx.chatSession.count({ where: { userId: req.user.id } }) >= 500) {
         const error = new Error("Session quota exceeded"); error.status = 409; error.publicMessage = "Delete an old chat before creating another."; throw error;
       }
+      if (!existing) await require('../services/chatQuota').assertChatQuota(tx, req.user.id, req.params.id);
       const turns=await tx.chatTurn.findMany({where:{userId:req.user.id,sessionId:req.params.id},orderBy:[{createdAt:'asc'},{id:'asc'}]});
       data=require('../store/chatHistoryStore').recoverSession(data,turns);
       if(data.messages.length>1000 || Buffer.byteLength(JSON.stringify(data))>200*1024){const error=new Error('This chat is full. Start a new chat.');error.status=413;error.publicMessage=error.message;throw error;}

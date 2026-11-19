@@ -1624,14 +1624,24 @@ export default function DashboardPage() {
       savedSessionsRef.current = new Map();
       savedSessionVersionsRef.current = new Map();
       try {
-        const response = await api.get("/api/sessions");
-        const source = Array.isArray(response.data?.sessions) ? response.data.sessions : [];
+        const source = [];
+        const versions = {};
+        let cursor;
+        do {
+          const page = await api.get('/api/sessions', {params:cursor?{cursor}:undefined});
+          if(cancelled)return;
+          source.push(...(Array.isArray(page.data?.sessions)?page.data.sessions:[]));
+          Object.assign(versions,page.data?.versions || {});
+          const next=page.data?.nextCursor;
+          if(next && next===cursor)throw new Error('Conversation pagination did not advance.');
+          cursor=next;
+        } while(cursor);
 
         if (cancelled) {
           return;
         }
 
-        savedSessionVersionsRef.current = new Map(Object.entries(response.data?.versions || {}));
+        savedSessionVersionsRef.current = new Map(Object.entries(versions));
         savedSessionsRef.current = new Map(source.map(session => [session.id, JSON.stringify(session)]));
         const normalized = source.map((session, idx) => normalizeLoadedSession(session, idx));
         const savedActiveSessionId = activeSessionStorageKey

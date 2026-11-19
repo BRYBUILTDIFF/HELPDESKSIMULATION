@@ -330,6 +330,7 @@ async function generateSimulationDraftFromPrompt(prompt, occurrences = 1, option
       : 'Include 5 to 7 practical GUI steps appropriate for this OS surface. Do not invent proof of real OS actions.';
     const completion = await client.chat.completions.create({
       model: getDefaultModel(provider),
+      max_tokens: require('../services/aiRequestContext').bounded('AI_DRAFT_MAX_OUTPUT_TOKENS', 3000, 512, 6000),
       temperature: 0.3,
       response_format: { type: "json_object" },
       messages: [

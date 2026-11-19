@@ -1,4 +1,5 @@
 const OpenAI = require("openai");
+const { bounded, requestFetch } = require('../services/aiRequestContext');
 
 let client = null;
 let clientSignature = "";
@@ -42,9 +43,10 @@ function getOpenAIClient() {
     return null;
   }
 
-  const signature = `${provider}|${baseURL || ""}|${apiKey.slice(0, 8)}`;
+  const timeout = bounded('AI_TIMEOUT_MS', 25000, 1000, 60000);
+  const signature = `${provider}|${baseURL || ""}|${require('crypto').createHash('sha256').update(apiKey).digest('hex')}|${timeout}`;
   if (!client || signature !== clientSignature) {
-    const config = { apiKey };
+    const config = { apiKey, timeout, maxRetries: 0, fetch: requestFetch };
     if (baseURL) {
       config.baseURL = baseURL;
     }
@@ -60,9 +62,10 @@ function getOpenAIModerationClient() {
   const apiKey = process.env.OPENAI_API_KEY || (provider === "openai" ? process.env.AI_API_KEY || "" : "");
   if (!apiKey) return null;
 
-  if (!moderationClient || moderationClientKey !== apiKey.slice(0, 8)) {
-    moderationClient = new OpenAI({ apiKey });
-    moderationClientKey = apiKey.slice(0, 8);
+  const keySignature = require('crypto').createHash('sha256').update(apiKey).digest('hex');
+  if (!moderationClient || moderationClientKey !== keySignature) {
+    moderationClient = new OpenAI({ apiKey, timeout: bounded('AI_MODERATION_TIMEOUT_MS', 8000, 1000, 15000), maxRetries: 0, fetch: requestFetch });
+    moderationClientKey = keySignature;
   }
   return moderationClient;
 }

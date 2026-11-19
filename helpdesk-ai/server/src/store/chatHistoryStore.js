@@ -16,6 +16,8 @@ async function appendChatTurn(userId, sessionId, message, reply, userMessageId) 
   if(!sessionId)return null;
   const data={userId,sessionId,userMessageId:typeof userMessageId==='string'&&userMessageId.length<=120?userMessageId:randomUUID(),assistantMessageId:randomUUID(),message:redactSecrets(message).slice(0,4000),reply:redactSecrets(reply).slice(0,4000)};
   return prisma.$transaction(async tx=>{
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`sessions:${userId}`}))`;
+    await require('../services/chatQuota').assertChatQuota(tx,userId,sessionId);
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${userId}:${sessionId}`}))`;
     const turn=await tx.chatTurn.create({data});
     const recent=await tx.chatTurn.findMany({where:{userId,sessionId},orderBy:[{createdAt:'desc'},{id:'desc'}],take:5});
