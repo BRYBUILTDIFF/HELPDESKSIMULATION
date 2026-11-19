@@ -18,7 +18,8 @@ server {
   access_log /var/log/nginx/guacamole-access.log guac_no_args;
   add_header Referrer-Policy no-referrer always;
   add_header X-Content-Type-Options nosniff always;
-  add_header Content-Security-Policy "frame-ancestors APP_ORIGIN" always;
+  # Launcher nests Guacamole in a same-origin frame; allow both ancestors.
+  add_header Content-Security-Policy "frame-ancestors 'self' APP_ORIGIN" always;
   location = /guac-launch.html { root /var/www/html; }
   location /guacamole/ {
     proxy_pass http://127.0.0.1:8080/guacamole/;
