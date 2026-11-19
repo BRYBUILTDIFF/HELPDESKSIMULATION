@@ -1,0 +1,417 @@
+
+HELP DESK WINDOWS SIMULATION
+AWS + Windows Server 2025 + Apache Guacamole
+Final Implementation, Deployment, Troubleshooting, and Operations Guide
+Purpose
+This document consolidates the complete working implementation of the browser-based Windows simulation environment used by the Help Desk system. It covers the AWS network, Windows Server 2025 image, isolated per-session EC2 provisioning, Apache Guacamole, security groups, backend integration, environment variables, troubleshooting decisions, and cost-control procedures.
+Version 1.0 • November 2026
+
+Security Notice
+Credentials previously exposed during setup must not be reused.
+AWS access keys, the Guacamole JSON secret, and the Windows lab password were displayed during troubleshooting. The final setup should use newly generated values. This guide intentionally uses placeholders instead of reproducing any exposed secret.
+Rotate the IAM access key before using the environment again.
+Generate a new 32-hex-character GUAC_JSON_SECRET and use the same value in Ubuntu and Express.
+Use a new hidden password for the Windows lab account before creating the final reusable AMI.
+Never commit server/.env, PEM private keys, or credentials to Git.
+Never expose AWS access keys, Windows passwords, Guacamole secrets, AMI controls, or private EC2 addresses to the React client.
+Contents
+1. Final System Overview
+2. Final AWS Resource Model
+3. Network Architecture and VPC Design
+4. Security Group Design
+5. Windows Server 2025 Master and Custom AMI
+6. Windows Lab Account and RDP Configuration
+7. Launch Template and Private Windows Instances
+8. Apache Guacamole Gateway
+9. Nginx and Direct Launch Page
+10. Guacamole JSON Authentication
+11. Backend Environment Variables
+12. Express / AWS SDK Integration
+13. Simulation Session Database Model
+14. API and Frontend Lifecycle
+15. End-to-End Execution Flow
+16. Problems Encountered and Fixes
+17. Validation and Test Checklist
+18. Cost Control and Resource Cleanup
+19. Final Production Recommendations
+20. Reference Resource IDs and Commands
+Appendix A. Daily Operations Runbook
+Appendix B. Final Working Architecture Summary
+
+1. Final System Overview
+The Help Desk system provides a real Windows desktop inside the browser. A learner starts a simulation from the React application. The Express backend creates one temporary Windows Server 2025 EC2 instance for that simulation session. Apache Guacamole then connects to the Windows VM over private RDP and streams the desktop to the browser using HTML5.
+Key architectural rule
+Users never receive direct RDP access. The Windows VM has no public IP and accepts TCP 3389 only from the Guacamole security group. Every simulation receives a fresh Windows VM and the VM is terminated when the session ends or expires.
+User Browser   |   | HTTP/HTTPS   vReact Help Desk Application   |   | authenticated API   vExpress Backend   |   | AWS SDK   vAWS EC2   |   +--> Temporary Windows Server 2025 VM (private subnet, no public IP)   |   +--> Guacamole Gateway (Ubuntu, public subnet)              |              | private RDP TCP 3389              v        Windows Server 2025
+Application control: React and Express decide when a user may create, connect to, and terminate a simulation.
+Infrastructure control: the AWS Launch Template decides the AMI, instance type, subnet, storage, metadata policy, and security group used by Windows.
+Remote desktop delivery: Guacamole/guacd performs RDP and exposes an HTML5 desktop to the browser.
+2. Final AWS Resource Model
+Resource
+Purpose
+Lifecycle
+helpdesk-simulation-vpc
+Isolated network for Guacamole and Windows simulations.
+Permanent
+Public subnet
+Hosts Guacamole and provides internet/SSH/HTTP access.
+Permanent
+Private subnet
+Hosts temporary Windows simulation VMs.
+Permanent
+helpdesk-guacamole
+Ubuntu EC2 running Docker, guacd, Guacamole, and Nginx.
+Permanent while simulations are available
+helpdesk-guacamole-sg
+Controls administrative/web access to Guacamole and acts as the RDP source identity.
+Permanent
+helpdesk-windows-sg
+Allows RDP only from helpdesk-guacamole-sg.
+Permanent
+Windows Server 2025 custom AMI
+Reusable clean Windows image with RDP and labuser configured.
+Permanent
+helpdesk-windows-simulation Launch Template
+Defines how temporary Windows VMs are created.
+Permanent
+Simulation Windows VM
+One isolated Windows desktop for one active simulation.
+Temporary
+helpdesk-simulation-backend IAM identity
+Allows local Express to provision/describe/tag/terminate EC2.
+Permanent for local development
+3. Network Architecture and VPC Design
+The working VPC is the Help Desk VPC, not the AWS default VPC.
+Item
+Working configuration
+VPC name
+helpdesk-simulation-vpc
+VPC CIDR
+10.0.0.0/16
+Current known VPC ID
+vpc-0c551c30555b196d5
+Public subnet
+helpdesk-simulation-subnet-public1-...
+Current public subnet ID
+subnet-0a9ba2f64d8bde7ea
+Private subnet
+helpdesk-simulation-subnet-private1-...
+Current private subnet ID
+subnet-039cf2f8b0f99fd70
+3.1 Public subnet
+The public subnet is used for the Guacamole gateway and temporary master/diagnostic hosts when direct administration is required.
+Public route tableDestination      Target10.0.0.0/16     local0.0.0.0/0       Internet Gateway
+The Guacamole EC2 instance must have Auto-assign public IPv4 enabled when no stable public address/domain is used.
+3.2 Private subnet
+All student Windows simulation VMs launch into the private subnet. They do not need a public IPv4 address because Guacamole reaches them through their private 10.0.x.x address.
+Private subnet  |  +-- Windows Server 2025 VM      Private IPv4: 10.0.x.x      Public IPv4: none
+Important lesson from troubleshooting
+The original Windows master was created in the AWS default VPC (172.31.0.0/16) while the rebuilt Guacamole server was in helpdesk-simulation-vpc (10.0.0.0/16). That mismatch caused Guacamole to report that the remote desktop server was unreachable. The Launch Template was corrected so all new Windows simulations use the Help Desk private subnet.
+4. Security Group Design
+4.1 Guacamole security group
+Direction
+Protocol/Port
+Source/Destination
+Purpose
+Inbound
+SSH TCP 22
+My IP
+Administrative SSH during development
+Inbound
+HTTP TCP 80
+My IP during development
+Browser access to Nginx/Guacamole
+Outbound
+All traffic
+0.0.0.0/0 during development
+Allows updates and RDP initiation
+helpdesk-guacamole-sgSG ID: sg-0d59c472c68af8fa9VPC: vpc-0c551c30555b196d5
+4.2 Windows security group
+Direction
+Protocol/Port
+Source
+Purpose
+Inbound
+RDP TCP 3389
+helpdesk-guacamole-sg
+Allows private RDP only from Guacamole
+Outbound
+Default / as required
+Configured by project policy
+Windows initialization and related traffic
+helpdesk-windows-sgSG ID: sg-04340bd3e3e21418bVPC: vpc-0c551c30555b196d5Inbound:RDP TCP 3389Source SG: sg-0d59c472c68af8fa9
+Do not use public RDP in the final design
+RDP 3389 from My IP was used temporarily while preparing or diagnosing Windows. Once Guacamole works, remove that rule. Do not use 0.0.0.0/0 for RDP.
+5. Windows Server 2025 Master and Custom AMI
+The final OS is Microsoft Windows Server 2025 Base (Desktop Experience), not Windows Server 2022 and not Server Core.
+Step 1 - Launch the temporary master
+Name: helpdesk-windows-2025-masterAMI: Microsoft Windows Server 2025 BaseInstance type: t3.smallVPC: helpdesk-simulation-vpcSubnet: public subnet (temporary master only)Public IPv4: enabled (temporary)Security group: helpdesk-windows-sgStorage: 30 GiB gp3, encryptedMetadata: IMDSv2 required
+For the temporary master, add a temporary RDP 3389 rule from My IP so the administrator can configure the desktop.
+Step 2 - Retrieve the Administrator password and connect by RDP
+Wait for the EC2 instance to be Running and pass status checks.
+Use EC2 > Connect > RDP client > Get password.
+Decrypt the password with the matching PEM key.
+Connect to the instance public IPv4 using mstsc.
+Run winver and confirm Windows Server 2025.
+Step 3 - Configure the Windows image
+Enable Remote Desktop and Windows Firewall Remote Desktop rules.
+Set TermService startup type to Automatic and verify it is Running.
+Verify TCP 3389 is listening.
+Create the local labuser account.
+Add labuser to Remote Desktop Users.
+Prepare Help Desk tools, shortcuts, sample files, and simulation scenarios.
+Remove unnecessary EC2 Feedback / EC2 Microsoft Windows Guide shortcuts from the user/default/public desktops.
+Install Windows updates and reboot.
+Remove browser history, credentials, personal files, and temporary installers.
+Step 4 - Prepare a reusable image
+Use EC2Launch/Sysprep preparation, then create a custom AMI after Windows is clean and RDP/labuser have been tested. The resulting image becomes the template for every learner session.
+Example AMI name:helpdesk-windows-server-2025-v1
+Sysprep system-log behavior observed
+New instances initially showed SysprepState=IMAGE_STATE_UNDEPLOYABLE during early boot, then completed Sysprep configuration, created the RDP certificate, and eventually logged 'Message: Windows is Ready to use'. The early UNDEPLOYABLE line was not the final state.
+6. Windows Lab Account and RDP Configuration
+Students experience passwordless access, but the Windows account itself must have a real password. Guacamole supplies it automatically.
+Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" `  -Name "fDenyTSConnections" -Value 0Enable-NetFirewallRule -DisplayGroup "Remote Desktop"Set-Service TermService -StartupType AutomaticStart-Service TermService$password = Read-Host "Enter hidden labuser password" -AsSecureStringNew-LocalUser -Name "labuser" -Password $password -FullName "Help Desk Simulation User"Add-LocalGroupMember -Group "Remote Desktop Users" -Member "labuser"Set-LocalUser -Name "labuser" -PasswordNeverExpires $true
+Verification commands:
+Get-LocalUser labuserGet-LocalGroupMember "Remote Desktop Users"Get-Service TermServiceGet-NetTCPConnection -LocalPort 3389 -State Listen
+Windows may display the account as EC2AMAZ-XXXXXXX\labuser. The backend must still use only labuser because the EC2 computer name can change between instances.
+7. Launch Template and Private Windows Instances
+Setting
+Final value
+Launch Template
+helpdesk-windows-simulation
+AMI
+Current custom Windows Server 2025 AMI
+Instance type
+t3.small
+Subnet
+helpdesk-simulation private subnet
+Public IPv4
+Disabled
+Security group
+helpdesk-windows-sg
+Storage
+30 GiB gp3, encrypted, delete on termination
+Metadata
+IMDSv2 required
+Version behavior
+Backend launches $Default
+7.1 Updating the Launch Template
+EC2 > Launch Templates > helpdesk-windows-simulation.
+Actions > Modify template > Create new version.
+Use the current/default version as the source.
+Select the custom Windows Server 2025 AMI.
+Select the Help Desk private subnet (not the default VPC subnet).
+Disable public IPv4.
+Select helpdesk-windows-sg from helpdesk-simulation-vpc.
+Create the new version.
+Set the new version as Default.
+Keep the backend on Version: "$Default".
+LaunchTemplate: {  LaunchTemplateId: process.env.AWS_SIMULATION_LAUNCH_TEMPLATE_ID,  Version: "$Default",}
+8. Apache Guacamole Gateway
+The Guacamole gateway is an Ubuntu EC2 instance in the public subnet. It remains running while the browser-based Windows simulator is available.
+Step 1 - Launch Ubuntu
+Name: helpdesk-guacamoleOS: Ubuntu Server 24.04 LTSInstance type: t3.microVPC: helpdesk-simulation-vpcSubnet: public subnetAuto-assign public IPv4: enabledSecurity group: helpdesk-guacamole-sgStorage: 12-16 GiB gp3
+Step 2 - SSH from the local Windows PC
+Test-NetConnection <GUAC_PUBLIC_IP> -Port 22ssh -i ".\helpdesk-guacamole-keys.pem" ubuntu@<GUAC_PUBLIC_IP>
+If Windows rejects the PEM file as too open, restrict its ACL before retrying SSH.
+Step 3 - Update Ubuntu and add swap
+sudo apt updatesudo apt upgrade -ysudo fallocate -l 2G /swapfilesudo chmod 600 /swapfilesudo mkswap /swapfilesudo swapon /swapfileecho '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+Step 4 - Install Docker Engine and Compose
+Install Docker Engine, Docker CLI, containerd, Buildx, and the Docker Compose plugin using Docker's Ubuntu repository. Verify Docker before proceeding.
+sudo docker run hello-worldsudo docker compose version
+Step 5 - Create Guacamole directory
+mkdir -p ~/guacamolecd ~/guacamole
+9. Nginx and Direct Launch Page
+Nginx exposes Guacamole on port 80 during local development while Guacamole itself remains bound to 127.0.0.1:8080.
+server {    listen 80;    server_name _;    location = /guac-launch.html {        root /var/www/html;        add_header Cache-Control "no-store, no-cache, must-revalidate";        add_header Pragma "no-cache";        expires -1;    }    location /guacamole/ {        proxy_pass http://127.0.0.1:8080;        proxy_buffering off;        proxy_http_version 1.1;        proxy_set_header Host $host;        proxy_set_header X-Real-IP $remote_addr;        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;        proxy_set_header X-Forwarded-Proto $scheme;        proxy_set_header Upgrade $http_upgrade;        proxy_set_header Connection "upgrade";    }}
+9.1 Direct-launch page
+The launcher prevents users from seeing the Guacamole home screen or having to manually logout/re-login when stale Guacamole browser authentication exists.
+iframe  -> /guac-launch.html?data=<encrypted-token>  -> clear stale Guacamole browser auth state  -> /guacamole/?data=<encrypted-token>  -> open Windows connection
+10. Guacamole JSON Authentication
+The system uses Guacamole JSON authentication so Express can provide a short-lived signed/encrypted connection definition without exposing the Windows password to React.
+Step 1 - Generate the shared secret
+openssl rand -hex 16
+This produces 32 hexadecimal characters. The same value must be present in both Ubuntu and Express.
+Ubuntu ~/guacamole/.envGUAC_JSON_SECRET=<NEW_32_HEX_SECRET>Express server/.envGUAC_JSON_SECRET=<THE_EXACT_SAME_SECRET>
+Important troubleshooting result
+An early Invalid Login problem was caused because the running Guacamole container had JSON_ENABLED=true but JSON_SECRET_KEY length 0. Editing .env alone did not update the existing container. The container had to be recreated after the secret was set.
+Step 2 - Docker Compose environment
+JSON_ENABLED: "true"JSON_SECRET_KEY: "${GUAC_JSON_SECRET:?GUAC_JSON_SECRET is required}"
+Step 3 - Recreate containers after secret/config changes
+cd ~/guacamolesudo docker compose downsudo docker compose up -d --force-recreatesudo docker compose ps
+Step 4 - Verify the key is inside the running container
+sudo docker inspect helpdesk-guacamole \  --format '{{range .Config.Env}}{{println .}}{{end}}' |  awk -F= '/^JSON_SECRET_KEY=/{print "JSON_SECRET_KEY length:", length($2)}'
+Expected: JSON_SECRET_KEY length: 32.
+10.1 RDP connection payload
+{  "username": "helpdesk-<userId>-<sessionId>",  "expires": <short-lived epoch milliseconds>,  "connections": {    "Windows Help Desk Lab": {      "protocol": "rdp",      "parameters": {        "hostname": "<session.privateIp>",        "port": "3389",        "username": "labuser",        "password": "<backend-only password>",        "security": "any",        "ignore-cert": "true"      }    }  }}
+The working configuration ultimately used automatic RDP security negotiation (security: "any") instead of forcing NLA. During troubleshooting, guacd logs showed Security mode: NLA followed by Server refused connection (wrong security type?), which isolated the issue to RDP security negotiation.
+11. Backend Environment Variables
+Use placeholders and rotated credentials
+Do not reuse or paste previously exposed AWS keys, Guacamole secrets, or Windows passwords. Replace every placeholder below with newly generated values.
+# AWSAWS_ACCESS_KEY_ID=<NEW_AWS_ACCESS_KEY>AWS_SECRET_ACCESS_KEY=<NEW_AWS_SECRET_ACCESS_KEY>AWS_REGION=ap-southeast-1# AWS WINDOWS SIMULATIONAWS_SIMULATION_LAUNCH_TEMPLATE_ID=<CURRENT_LAUNCH_TEMPLATE_ID>SIMULATION_TTL_MINUTES=20SIMULATION_MAX_PER_USER=1SIMULATION_GLOBAL_MAX=1# WINDOWS LABWINDOWS_LAB_USERNAME=labuserWINDOWS_LAB_PASSWORD=<PASSWORD_BAKED_INTO_FINAL_AMI># GUACAMOLEGUACAMOLE_BASE_URL=http://<CURRENT_GUAC_PUBLIC_IP>/guacamoleGUACAMOLE_LAUNCH_URL=http://<CURRENT_GUAC_PUBLIC_IP>/guac-launch.htmlGUAC_JSON_SECRET=<NEW_32_HEX_SECRET>
+If the Guacamole EC2 is stopped/started and its automatically assigned public IPv4 changes, update both Guacamole URLs and restart Express.
+12. Express / AWS SDK Integration
+12.1 AWS SDK
+npm install @aws-sdk/client-ec2
+import { EC2Client } from "@aws-sdk/client-ec2";export const ec2 = new EC2Client({  region: process.env.AWS_REGION,});
+12.2 Provisioning behavior
+The backend creates a SimulationSession first, then calls EC2 RunInstances using only the Launch Template ID. It should never accept AMI, subnet, security group, instance type, or private IP values from React.
+RunInstances  MinCount: 1  MaxCount: 1  LaunchTemplateId: AWS_SIMULATION_LAUNCH_TEMPLATE_ID  Version: "$Default"  Tags:    Project=HelpDeskAI    Purpose=UserSimulation    SessionId=<session-id>    UserId=<user-id>    ModuleId=<module-id>    AutoTerminateAt=<ISO timestamp>
+12.3 IAM permissions
+ec2:RunInstancesec2:DescribeInstancesec2:TerminateInstancesec2:CreateTagsec2:DescribeLaunchTemplatesec2:DescribeLaunchTemplateVersions
+If an instance profile is attached through the Launch Template, add a restricted iam:PassRole permission for that specific role.
+13. Simulation Session Database Model
+enum SimulationSessionStatus {  PROVISIONING  READY  ACTIVE  TERMINATING  ENDED  FAILED}model SimulationSession {  id            String   @id @default(cuid())  userId        Int  moduleId      String  surface       String  status        SimulationSessionStatus @default(PROVISIONING)  ec2InstanceId String?  @unique  privateIp     String?  expiresAt     DateTime  endedAt       DateTime?  createdAt     DateTime @default(now())  updatedAt     DateTime @updatedAt}
+The internal simulation surface remains windows-os. The OS version is infrastructure detail and should not become windows-2025 or windows-server-2025 in module persistence.
+14. API and Frontend Lifecycle
+Endpoint
+Responsibility
+POST /api/simulation-sessions
+Validate user/module/limits; create session; launch EC2; return PROVISIONING.
+GET /api/simulation-sessions/:id
+Return status only; refresh EC2 state; do not regenerate Guacamole URLs repeatedly.
+POST /api/simulation-sessions/:id/connect
+Verify ownership + READY/ACTIVE; generate one fresh Guacamole URL.
+POST /api/simulation-sessions/:id/end
+Terminate the exact session EC2 instance; mark ENDED.
+14.1 Frontend state machine
+IDLE  -> PROVISIONING  -> READY  -> CONNECTING  -> ACTIVE  -> TERMINATING  -> ENDED / FAILED
+Do not render the Guacamole iframe during PROVISIONING.
+Stop status polling when the backend reaches READY.
+Call the connect endpoint exactly once per connection attempt.
+Mount one iframe only after a valid Guacamole URL is returned.
+Clear the iframe immediately when ending the simulation.
+A reconnect should request a fresh Guacamole token; it should not create another EC2 instance unless the current VM is no longer usable.
+15. End-to-End Execution Flow
+1. User opens a module where simulation.surface = "windows-os".2. User clicks Start Simulation.3. React POSTs /api/simulation-sessions.4. Express validates authentication, module surface, per-user limit, global limit, and config.5. Express creates SimulationSession(status=PROVISIONING).6. Express calls RunInstances with the Launch Template default version.7. AWS launches Windows Server 2025 in the private subnet.8. Backend describes the instance until it is running and has a private IPv4.9. Windows completes EC2Launch/Sysprep and becomes RDP-ready.10. Session becomes READY.11. React stops polling and POSTs /connect once.12. Express creates a short-lived encrypted Guacamole JSON token.13. React mounts the iframe with GUACAMOLE_LAUNCH_URL?data=<token>.14. guac-launch.html clears stale Guacamole browser authentication and redirects.15. Guacamole authenticates the JSON payload.16. guacd connects to Windows private-ip:3389 using labuser.17. User sees the Windows Server 2025 desktop.18. User completes or ends the simulation.19. React clears the iframe and POSTs /end.20. Express calls TerminateInstances.21. SimulationSession becomes ENDED.
+16. Problems Encountered and Fixes
+Problem
+Cause
+Resolution
+SSH timeout to Ubuntu
+Wrong/missing SG rule, public IP, subnet/VPC confusion, or public routing.
+Use Help Desk VPC public subnet, enable public IP, allow SSH 22 from My IP, verify 0.0.0.0/0 -> Internet Gateway.
+UNPROTECTED PRIVATE KEY FILE
+Windows PEM ACL allowed additional local groups.
+Remove inherited permissions and allow only the intended Windows account to read the PEM.
+Guacamole Invalid Login
+Running Guacamole container had JSON_SECRET_KEY length 0 / secret mismatch.
+Set .env correctly, recreate container, verify length 32, use identical secret in Express.
+Guacamole No Connections until logout/relogin
+Stale Guacamole browser authentication / lifecycle issues.
+Add same-origin guac-launch.html; stop polling before iframe mount; generate one connect token.
+Remote desktop server unreachable
+Windows and Guacamole were initially in different VPCs.
+Correct Launch Template to use Help Desk private subnet and new Windows SG in the same VPC.
+RDP worked only from personal IP
+Temporary My IP RDP rule enabled direct access but did not represent final architecture.
+Use Windows SG inbound 3389 from Guacamole SG; remove My IP rule after testing.
+guacd: wrong security type?
+Backend forced NLA but target rejected the negotiation.
+Use security='any' for automatic RDP security negotiation.
+SysprepState IMAGE_STATE_UNDEPLOYABLE early in boot
+Intermediate initialization state.
+Wait for Windows sysprep configuration complete and Windows is Ready to use.
+17. Validation and Test Checklist
+17.1 Infrastructure
+Guacamole VPC ID equals Windows simulation VPC ID.
+Guacamole and Windows private IPs are both in 10.0.0.0/16.
+Windows VM is in the private subnet and has no public IPv4.
+Windows VM uses helpdesk-windows-sg.
+Guacamole uses helpdesk-guacamole-sg.
+Windows SG inbound TCP 3389 source is the Guacamole SG ID.
+Guacamole outbound allows the required RDP connection.
+17.2 Ubuntu / Guacamole
+sudo docker compose pscurl -I http://127.0.0.1:8080/guacamole/curl -I http://127.0.0.1/guacamole/nc -vz <WINDOWS_PRIVATE_IP> 3389sudo docker compose logs -f guacd
+17.3 Windows
+System log eventually contains 'Message: Windows is Ready to use'.
+TermService is Running.
+TCP 3389 is listening.
+labuser exists and is enabled.
+labuser belongs to Remote Desktop Users.
+The hidden Windows password exactly matches WINDOWS_LAB_PASSWORD in Express.
+17.4 Application
+Start Simulation creates exactly one EC2 instance.
+The instance receives a 10.0.x.x private IP.
+Status polling stops when READY is reached.
+Connect endpoint is called once.
+The iframe opens Windows directly without a Guacamole login/home screen.
+No secret or private IP appears in API responses to React.
+End Simulation terminates the EC2 instance.
+Starting a new simulation produces a fresh VM and clean Windows desktop.
+18. Cost Control and Resource Cleanup
+The final design keeps only the gateway running permanently. Windows compute is temporary.
+Resource
+Keep / Stop / Terminate
+helpdesk-guacamole Ubuntu EC2
+Keep running while simulation feature is available; stop when not in use if acceptable.
+Windows Server 2025 master
+Terminate after the final AMI has been created and tested.
+Diagnostic Windows instances
+Terminate after troubleshooting.
+Active Windows simulation instance
+Terminate automatically on End Simulation or TTL expiry.
+Custom Windows Server 2025 AMI
+Keep.
+Launch Template
+Keep.
+VPC/subnets/security groups
+Keep while the feature exists.
+Old unused AMIs/snapshots
+Deregister/delete after rollback is no longer needed.
+18.1 Automatic limits
+SIMULATION_TTL_MINUTES=20SIMULATION_MAX_PER_USER=1SIMULATION_GLOBAL_MAX=1
+A cleanup job should periodically terminate sessions whose expiresAt has passed. An AWS-side cleanup backstop can be added later.
+19. Final Production Recommendations
+Move Guacamole from plain HTTP to HTTPS before real learners use the environment.
+Use a stable hostname instead of embedding a changeable EC2 public IP in application configuration.
+Use IAM roles/temporary credentials when the backend is deployed on AWS instead of long-lived IAM user keys.
+Tighten IAM permissions around the specific Launch Template, tags, and instance profile.
+Keep Windows RDP private and never expose 3389 to 0.0.0.0/0.
+Retain the same internal module surface value: windows-os.
+Use visible UI wording that matches the actual OS: Windows Server 2025, not Windows 11, unless true Windows 11 is later implemented.
+Make READY represent RDP usability, not only EC2 running state.
+Add budgets/alarms for EC2, EBS snapshots, public IPv4 usage, and unexpected instance counts.
+Store production secrets in a dedicated secrets service or protected deployment environment.
+20. Reference Resource IDs and Commands
+These IDs reflect the working setup observed during implementation. If resources are recreated, the IDs will change; use names and VPC membership as the authoritative guide.
+Resource
+Known ID / value
+Help Desk VPC
+vpc-0c551c30555b196d5
+Public subnet
+subnet-0a9ba2f64d8bde7ea
+Private subnet
+subnet-039cf2f8b0f99fd70
+Guacamole SG
+sg-0d59c472c68af8fa9
+Windows SG
+sg-04340bd3e3e21418b
+VPC CIDR
+10.0.0.0/16
+AWS region
+ap-southeast-1 (Singapore)
+Windows instance type
+t3.small
+Guacamole instance type
+t3.micro
+20.1 High-value troubleshooting commands
+# Local Windows PCTest-NetConnection <GUAC_PUBLIC_IP> -Port 22ssh -i ".\helpdesk-guacamole-keys.pem" ubuntu@<GUAC_PUBLIC_IP># Guacamole Ubuntucd ~/guacamolesudo docker compose pssudo docker compose logs --tail=100 guacamolesudo docker compose logs --tail=100 guacdnc -vz <WINDOWS_PRIVATE_IP> 3389# Verify JSON key without printing itsudo docker inspect helpdesk-guacamole \  --format '{{range .Config.Env}}{{println .}}{{end}}' |  awk -F= '/^JSON_SECRET_KEY=/{print "JSON_SECRET_KEY length:", length($2)}'# Windows PowerShellGet-Service TermServiceGet-NetTCPConnection -LocalPort 3389 -State ListenGet-LocalUser labuserGet-LocalGroupMember "Remote Desktop Users"
+
+Appendix A - Daily Operations Runbook
+A.1 Start of development/test session
+1. Confirm helpdesk-guacamole is Running.
+2. Confirm its current public IPv4 matches GUACAMOLE_BASE_URL and GUACAMOLE_LAUNCH_URL.
+3. SSH to Guacamole and run sudo docker compose ps.
+4. Confirm helpdesk-guacamole and helpdesk-guacd are Up.
+5. Start the Express backend and React frontend.
+6. Start one Windows simulation and confirm the new instance is created in the Help Desk private subnet.
+7. Verify the simulation opens Windows directly in the iframe.
+A.2 End of development/test session
+1. End any active simulation from the application.
+2. Verify the Windows simulation EC2 instance terminates.
+3. Terminate any manual diagnostic Windows VM that is no longer required.
+4. Optionally stop Guacamole to save compute when the simulator will not be used.
+5. If Guacamole is stopped/started later and receives a new public IP, update both Guacamole URLs in server/.env and restart Express.
+Appendix B - Final Working Architecture Summary
+Permanent:  helpdesk-simulation-vpc  public subnet  private subnet  helpdesk-guacamole-sg  helpdesk-windows-sg  helpdesk-guacamole (while feature is online)  Windows Server 2025 custom AMI  helpdesk-windows-simulation Launch Template  IAM backend identity / permissionsTemporary:  Windows Server 2025 EC2 instance per active simulation sessionFinal connectivity:  Browser -> React/Express -> AWS API  Browser -> Nginx/Guacamole  Guacamole SG -> Windows SG : TCP 3389  Windows VM -> private subnet only

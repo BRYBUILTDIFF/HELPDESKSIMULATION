@@ -51,10 +51,9 @@ router.get("/session-restrictions", async (_req, res, next) => {
   try { return res.json({ restrictions: await require("../prisma").sessionRestriction.findMany({ where: { expiresAt: { gt: new Date() } }, take: 200, orderBy: { expiresAt: "desc" } }) }); }
   catch (error) { next(error); }
 });
-router.get("/audit", async (_req, res, next) => {
-  try { const rows = await require("../prisma").adminAuditLog.findMany({ take: 200, orderBy: { at: "desc" } }); return res.json({ events: rows.map(row => ({ ...row, id: String(row.id) })) }); }
-  catch (err) { return next(err); }
-});
+const auditController = require('../controllers/adminAuditController');
+router.get('/audit', auditController.listAuditEvents);
+router.get('/audit/actors', auditController.listAuditActors);
 
 const labRecovery = require("../controllers/simulationSessionController");
 router.get("/simulation-sessions/stuck", labRecovery.listStuckSessions);

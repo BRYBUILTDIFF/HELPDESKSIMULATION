@@ -1,9 +1,10 @@
 const { listModules, recordModuleCompletion } = require("../store/simulationModuleStore");
+const { windowsSimulationsEnabled } = require("../utils/simulationAvailability");
 
 async function listEnabledSimulationModules(_req, res, next) {
   try {
     const modules = await listModules({ onlyEnabled: true });
-    return res.status(200).json({ modules });
+    return res.status(200).json({ modules: windowsSimulationsEnabled() ? modules : modules.filter(module => module.simulation?.surface !== "windows-os") });
   } catch (err) {
     return next(err);
   }

@@ -1,0 +1,37 @@
+# Create/migrate the database first: helpdesk-ai/docs/DEPLOYMENT_VERCEL_RENDER.md
+services:
+  - type: web
+    name: helpdesk-ai-api
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: helpdesk-ai/server
+    buildCommand: npm ci && npm run generate
+    startCommand: npm start
+    healthCheckPath: /api/ready
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: NODE_VERSION
+        value: 22.22.0
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY_HOPS
+        value: '1'
+      - key: WINDOWS_SIMULATIONS_ENABLED
+        value: 'false'
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: CLIENT_URL
+        sync: false
+      - key: AI_PROVIDER
+        sync: false
+      - key: AI_MODEL
+        sync: false
+      - key: AI_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false

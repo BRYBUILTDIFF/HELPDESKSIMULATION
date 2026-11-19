@@ -1,4 +1,5 @@
 const prisma = require("../prisma");
+const { windowsSimulationsEnabled } = require("../utils/simulationAvailability");
 const { getModuleById } = require("../store/simulationModuleStore");
 const {
   ACTIVE_STATUSES,
@@ -30,6 +31,7 @@ function safeSession(session, guacamoleUrl) {
 
 async function createSimulationSession(req, res, next) {
   try {
+    if (!windowsSimulationsEnabled()) return res.status(503).json({ message: "Windows desktop practice is temporarily unavailable. Please use a terminal simulation." });
     const moduleId = String(req.body?.moduleId || "").trim();
     const chatSessionId = req.body?.chatSessionId ? String(req.body.chatSessionId) : null;
     const module = await getModuleById(moduleId);

@@ -7,7 +7,9 @@ export default defineConfig(({ mode }) => {
   try { apiOrigin = new URL(env.VITE_API_URL).origin; } catch (_) { /* Same-origin API. */ }
   let guacamoleOrigin = "";
   try { guacamoleOrigin = new URL(env.VITE_GUACAMOLE_ORIGIN).origin; } catch (_) {}
-  if (mode === "production" && !guacamoleOrigin) throw new Error("Set VITE_GUACAMOLE_ORIGIN to the exact Guacamole origin before building production.");
+  const windowsEnabled = env.VITE_WINDOWS_SIMULATIONS_ENABLED !== "false";
+  if (mode === "production" && windowsEnabled && !guacamoleOrigin.startsWith("https://")) throw new Error("Set VITE_GUACAMOLE_ORIGIN to the HTTPS Guacamole origin, or set VITE_WINDOWS_SIMULATIONS_ENABLED=false for a demo without Windows labs.");
+  const frameSources = windowsEnabled ? `'self' ${guacamoleOrigin}` : "'none'";
   return {
   plugins: [react(), {
     name: "production-content-security-policy",
@@ -15,7 +17,7 @@ export default defineConfig(({ mode }) => {
     transformIndexHtml() {
       return [{ tag: "meta", attrs: {
         "http-equiv": "Content-Security-Policy",
-        content: `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' ${apiOrigin}; frame-src 'self' ${guacamoleOrigin}; object-src 'none'; base-uri 'self'; form-action 'self'`
+        content: `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' ${apiOrigin}; frame-src ${frameSources}; object-src 'none'; base-uri 'self'; form-action 'self'`
       }, injectTo: "head-prepend" }];
     }
   }],

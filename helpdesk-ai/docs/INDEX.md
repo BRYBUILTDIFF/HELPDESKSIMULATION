@@ -5,11 +5,16 @@ All project Markdown documentation lives in this folder.
 | Document | Purpose |
 | --- | --- |
 | [Setup guide](README.md) | Installation, configuration, startup, and API overview |
+| [Generalized use cases](GENERALIZED_USE_CASES.md) | Administrator and User goals, feature scope, and use-case diagrams |
+| [Administrator flowchart](ADMIN_FLOWCHART.md) | Administrator sign-in, feature navigation, and work cycle |
+| [User flowchart](USER_FLOWCHART.md) | User troubleshooting, saved conversations, and simulation workflow |
 | [System overview](SYSTEM_OVERVIEW.md) | Architecture and system behavior |
 | [AI overview](AIOVERVIEW.MD) | Detailed AI answering flow, policy, context, safety, and simulation integration |
 | [Windows simulation](WINDOWS_OS_SIMULATION.md) | Windows lab and Guacamole setup |
 | [Module creation](Module_Creation_Overview.md) | Module creation reference |
 | [Test cases](TESTCASES.MD) | Manual testing scenarios |
+| [Deployment audit](DEPLOYMENT_AUDIT_2026-11-19.md) | Vercel/Render readiness, confirmed blockers, verification results, and release checklist |
+| [Vercel + Render demo](DEPLOYMENT_VERCEL_RENDER.md) | Free demo setup, restricted cloud database, API proxy, and Windows HTTPS follow-up |
 | [Security audit](AUDIT.MD) | Audit findings and remediation history |
 | [Prompt reference](PROMP.MD) | Project prompt notes |
 | [Review](review.md) | Project review notes |

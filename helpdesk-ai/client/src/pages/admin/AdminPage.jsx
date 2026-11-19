@@ -1,3 +1,4 @@
+import AuditLogPage from './AuditLogPage';
 import { useDraftAutosave } from './useDraftAutosave';
 import ModuleRevisionHistory from './ModuleRevisionHistory';
 import ModalCloseButton from '../../components/ModalCloseButton';
@@ -34,7 +35,8 @@ const PAGE_META = {
   overview: { title: "Overview", nav: "Overview" },
   users: { title: "User Management", nav: "User Management" },
   policy: { title: "Policy Monitor", nav: "Policy Monitor" },
-  sims: { title: "Simulation Modules", nav: "Simulation Modules" }
+  sims: { title: "Simulation Modules", nav: "Simulation Modules" },
+  audit: { title: "Audit Log", nav: "Audit Log" }
 };
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_REGEX = { test: passwordAllowed };
@@ -269,6 +271,7 @@ function getModuleSimulationDefinition(module) {
 }
 
 function NavIcon({ id }) {
+  if(id==='audit')return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h11v18H5V7M8 3v4H5M9 11h6M9 15h6" /></svg>;
   if (id === "overview") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1560,9 +1563,10 @@ export default function AdminPage() {
           </header>
 
           <div className={`content ${activePage === "sims" ? "content-simulations" : ""}`}>
-            {error ? <div className="admin-alert error">{error}</div> : null}
-            {loading ? <div className="admin-alert">Loading admin data...</div> : null}
+            {error && activePage !== "audit" ? <div className="admin-alert error">{error}</div> : null}
+            {loading && activePage !== "audit" ? <div className="admin-alert">Loading admin data...</div> : null}
 
+            {activePage === "audit" ? <AuditLogPage /> : null}
             {!loading && activePage === "overview" ? (
               <div className="page active">
                 <div className="admin-tab-intro"><h1>Activity at a glance</h1><p>Review usage, recent activity, and simulation completions.</p></div>

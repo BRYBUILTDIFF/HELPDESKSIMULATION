@@ -5,6 +5,7 @@ const { PrismaClient } = require("@prisma/client");
 async function main() {
   if (!process.argv.includes("--apply")) { console.log("Use --apply to provision helpdesk_runtime and switch only the local runtime DATABASE_URL. ADMIN_DATABASE_URL is preserved for migrations."); return; }
   const adminUrl = process.env.ADMIN_DATABASE_URL || process.env.DATABASE_URL;
+  if (process.argv.includes("--env-file") && !process.env.ADMIN_DATABASE_URL) throw new Error("Cloud maintenance requires ADMIN_DATABASE_URL");
   const admin = new PrismaClient({ datasources: { db: { url: adminUrl } } });
   const password = crypto.randomBytes(32).toString("hex");
   const role = "helpdesk_runtime";
@@ -40,6 +41,13 @@ async function main() {
         await tx.user.count(); await tx.sessionRestriction.count(); await tx.adminAuditLog.count();
       });
     } finally { await runtime.$disconnect(); }
+    if (process.argv.includes("--env-file")) {
+      const outputPath = ".security/cloud-runtime.env";
+      fs.mkdirSync(".security", { recursive: true });
+      fs.writeFileSync(outputPath, `DATABASE_URL=${JSON.stringify(runtimeUrl.href)}\n`, { mode: 0o600 });
+      console.log("Cloud runtime role verified. DATABASE_URL saved to .security/cloud-runtime.env. Local environment files unchanged. Re-running rotates this role's password.");
+      return;
+    }
     let env = fs.readFileSync(".env", "utf8");
     fs.mkdirSync(".security", { recursive: true });
     let owner = fs.existsSync(".security/owner.env") ? fs.readFileSync(".security/owner.env", "utf8") : "";
